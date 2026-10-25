@@ -1,24 +1,117 @@
-<img align="center" src="github/logo.png">
+# Arcane2DEngine V2
 
-# Arcane2DEngine
-A game engine focused on 2D games for Windows OS. Done to be simple.
-Currently under development, the test code relies on main.cpp when option Debug is set.
+A lightweight, cross-platform (Windows/Linux) C++23 2D game engine: a shared
+runtime library, native C++ game modules, and (eventually) an integrated
+Dear ImGui editor. This is a ground-up rewrite; V1 remains unchanged at
+https://github.com/franklinjr12/Arcane2DEngine and in this repository's git
+history (see the initial commit).
 
-# Examples
-There are subprojects under examples folder of FlappyBird, Pong and Physics bodies test, which should handle more than 150 at 60 fps bodies without problem.
+See `docs/decisions.md` for the technical contracts settled for this
+foundation milestone, and `docs/PR_BODY.md` for a summary of what this PR
+contains and how it was validated.
 
-# Features
-Done: Objects as rectangles, collision, images and text rendering, scenes, inputs, events.
-Under development: Sound, animation, cinematics and scene editor with ImGui.
+## Status
 
-# Dependencies
-OPENGL
-GLFW
-GLEW
-STB
-SPDLOG
-IMGUI
-INIFILE-CPP
+This is **Foundation A**: reproducible builds, a minimal window + OpenGL
+3.3 core sprite renderer, logging, a fixed-timestep loop helper, a dynamic
+game-module loader, and tests. Scene graph, serialization, physics/audio
+gameplay wiring, and the editor are later foundations (see the vision doc).
 
-# Build
-Currently only Visual Studio 2022 solution. To build and run the test code under main.cpp use Debug option, to build the examples first slect EngineOnly Release or Debug option, build the Arcane2DEngine after do the build of the example.
+**Windows: CMake-correct and mingw cross-compiled on Linux, but UNTESTED on
+native Windows/MSVC.**
+
+## Layout
+
+```
+CMakeLists.txt          top-level build
+cmake/                  toolchain files and CMake helpers
+engine/include/arcane/  public runtime headers
+engine/src/             private runtime implementation
+player/                 arcane_player standalone launcher
+samples/sample_game/    native C++ game module used for validation
+tests/                  CTest executables (plain asserts, no framework)
+scripts/                dependency fetch + build/test scripts
+third_party/            vendored, pinned third-party sources
+docs/                   decisions, PR body
+```
+
+## Prerequisites
+
+### Linux
+- GCC 14+ or Clang 19+, CMake 3.28+, Ninja or Make
+- X11/Wayland dev headers for GLFW (`libx11-dev libxrandr-dev libxinerama-dev
+  libxcursor-dev libxi-dev` or your distro's Wayland equivalents), OpenGL
+  dev headers (`libgl1-mesa-dev`)
+- `xvfb-run` to run the GL-labeled tests without a real display
+- Optional: `mingw-w64` (posix threads variant) to cross-compile the Windows
+  target from Linux
+
+### Windows
+- Visual Studio 2022 17.10+ (MSVC v143, C++23) **or** MinGW-w64 GCC 14
+- CMake 3.28+
+
+## Dependencies
+
+All third-party sources are vendored under `third_party/` (trimmed: no
+tests/docs/examples/benchmarks) and committed, so a fresh clone builds
+offline without running any script. `scripts/fetch-deps.sh` re-derives
+`third_party/` from the pinned, checksummed sources in
+`third_party/MANIFEST.txt`; it is only needed to reproduce or refresh the
+vendored copies, not for a normal build.
+
+```sh
+# optional, only to re-fetch/verify third_party/ from scratch
+ARCANE_DEPS_CACHE=/path/to/local/cache scripts/fetch-deps.sh
+```
+
+## Build and test — Linux
+
+```sh
+# gcc, Debug, with tests
+cmake -S . -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-gcc
+xvfb-run -a ctest --test-dir build-gcc --output-on-failure
+
+# clang + ASan/UBSan
+CC=clang CXX=clang++ cmake -S . -B build-clang-san -G Ninja -DCMAKE_BUILD_TYPE=Debug -DARCANE_SANITIZE=ON
+cmake --build build-clang-san
+xvfb-run -a ctest --test-dir build-clang-san --output-on-failure
+
+# everything at once (gcc + clang/sanitizers + mingw cross-compile), matches CI gate
+scripts/build-and-test.sh /tmp/a2d-check
+```
+
+Run the player directly:
+
+```sh
+xvfb-run -a build-gcc/bin/arcane_player --frames 60 --hidden
+```
+
+## Build and test — Windows (untested on real hardware)
+
+Developer PowerShell / Visual Studio:
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Debug
+ctest --test-dir build -C Debug --output-on-failure
+```
+
+MinGW/Ninja:
+
+```powershell
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
+
+Cross-compiling the mingw target from Linux (build only, no run):
+
+```sh
+cmake -S . -B build-mingw -G Ninja -DCMAKE_TOOLCHAIN_FILE=cmake/toolchains/mingw-w64-x86_64.cmake -DARCANE_BUILD_TESTS=OFF
+cmake --build build-mingw
+```
+
+## License
+
+MIT, see `LICENSE.txt`.
