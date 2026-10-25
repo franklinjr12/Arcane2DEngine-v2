@@ -1,0 +1,15 @@
+# Arcane2DEngine V2 vendored third_party MANIFEST
+# name | version | url | sha256 (of the pristine upstream archive) | license
+#
+# Sources are vendored here trimmed (tests/docs/examples/benchmarks/samples
+# removed to keep the repo small); scripts/fetch-deps.sh re-derives this
+# directory from the pristine, checksummed upstream archives and performs
+# the same trim. A normal build does NOT need to run that script: the
+# trimmed sources below are committed and build offline from a fresh clone.
+Box2D | v3.2.0 | https://github.com/erincatto/box2d/archive/refs/tags/v3.2.0.tar.gz | ffec747b27a2267016f8d0240d658c82d187fb2271fa0f69fcbe53fbc067180d | MIT
+miniaudio | 0.11.25 | https://github.com/mackron/miniaudio/archive/refs/tags/0.11.25.tar.gz | b900edcffe979816e2560a0580b9b1216d674b4f17fbadeca8f777a7f8ab0274 | Public Domain / MIT-0
+ImGui-docking | v1.93.0-docking | https://github.com/ocornut/imgui/archive/refs/tags/v1.93.0-docking.tar.gz | 746c265540bd3aa109570f29492ef4d8f5b421dd9fd0049c35ca35f21496f1a5 | MIT
+GLFW | 3.5.1 | https://github.com/glfw/glfw/releases/download/3.5.1/glfw-3.5.1.zip | ea79bc5feffc254c87291980c2d0bce9acebb68c4983b79f961dcd2cb8a611a0 | zlib/libpng
+stb | commit-003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5 | https://github.com/nothings/stb/archive/003501f6d7a8668ce8b6d875e34dd97ad0d5d5b5.tar.gz | a6c31950b3bdf05eb92258768ba2a11bd44449490574b1aac67028452288c40d | Public Domain / MIT
+nlohmann-json | v3.12.0 | https://github.com/nlohmann/json/releases/download/v3.12.0/json.hpp | aaf127c04cb31c406e5b04a63f1ae89369fccde6d8fa7cdda1ed4f32dfc5de63 | MIT
+glad2-generated-gl3.3-core | v2.0.8 | generated locally: python -m glad --api gl:core=3.3 --extensions GL_KHR_debug --reproducible c (glad2==2.0.8) | 7d07e60b867033102fa3ea2760634e86b82e5647b4204f8691beb4e973418ce5 | WTFPL OR CC0-1.0, Apache-2.0 (Khronos spec/khrplatform)
