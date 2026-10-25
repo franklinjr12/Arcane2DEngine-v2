@@ -1,0 +1,95 @@
+#pragma once
+
+#include <cstdint>
+#include <expected>
+#include <memory>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "arcane/component.hpp"
+#include "arcane/component_registry.hpp"
+#include "arcane/export.hpp"
+#include "arcane/node.hpp"
+
+namespace arcane {
+
+// Owns a tree of Nodes (and, through them, Components). Node/Component IDs
+// are assigned from a single monotonically increasing per-scene counter
+// (see docs/decisions.md): simpler than random 64-bit IDs or per-kind
+// counters, no collision handling needed, and the counter itself is
+// persisted (next_id in the saved JSON) so reloading a scene never reuses
+// an ID that existed before, even if the node that held it was deleted.
+class ARCANE_API Scene {
+ public:
+  Scene() = default;
+  Scene(Scene&&) noexcept = default;
+  Scene& operator=(Scene&&) noexcept = default;
+  Scene(const Scene&) = delete;
+  Scene& operator=(const Scene&) = delete;
+
+  // Creates an owned node; parent == nullptr makes it a root. Must belong
+  // to this scene if non-null.
+  Node* create_node(std::string name, Node* parent = nullptr);
+
+  Node* find_node(NodeId id) const noexcept;
+  Component* find_component(ComponentId id) const noexcept;
+
+  // Looks up `type_name` in `registry` and attaches a new instance to
+  // `node`. Returns nullptr if the type is not registered.
+  Component* add_component(Node* node, const std::string& type_name, const ComponentRegistry& registry);
+
+  // Moves `node` (and its subtree) under `new_parent` (nullptr = becomes a
+  // root). Returns false and does nothing if new_parent is node itself or a
+  // descendant of node (which would create a cycle).
+  bool reparent(Node* node, Node* new_parent);
+
+  // Marks `id`'s node and its whole subtree for destruction. Safe to call
+  // while iterating the scene (e.g. from a component's on_update): nodes
+  // are only unlinked and their components' on_destroy() called during the
+  // next flush_destroyed(), which Scene::update() runs automatically after
+  // each tick.
+  void destroy_node(NodeId id);
+  void flush_destroyed();
+
+  // Runs one fixed-timestep tick over every live component (on_start on
+  // first tick, on_update on every tick including that one), then flushes
+  // any destructions queued during the tick.
+  void update(float fixed_dt);
+
+  const std::vector<std::unique_ptr<Node>>& roots() const noexcept { return roots_; }
+
+  NodeId next_id() const noexcept { return next_id_; }
+  // Only for restoring a scene from disk: see Scene::load_from_json.
+  void set_next_id(NodeId value) noexcept { next_id_ = value; }
+
+  // Serializes this scene (format_version 1; see docs/decisions.md) to a
+  // JSON string, using `registry` to know which properties each attached
+  // component declares.
+  std::string save_to_json(const ComponentRegistry& registry) const;
+
+  // Parses a scene previously produced by save_to_json. Fails (returning
+  // the error message) on a missing/unsupported format_version, malformed
+  // JSON, or a component whose registered type is not found in `registry`.
+  static std::expected<Scene, std::string> load_from_json(const std::string& text, const ComponentRegistry& registry);
+
+ private:
+  std::uint64_t allocate_id() noexcept { return next_id_++; }
+
+  Node* create_node_with_id(NodeId id, std::string name, Node* parent);
+  Component* add_component_with_id(Node* node, const std::string& type_name, ComponentId id,
+                                    const ComponentRegistry& registry);
+
+  bool is_descendant_of(const Node* candidate, const Node* ancestor) const noexcept;
+  void mark_pending_destroy(Node* node);
+  void collect_preorder(std::vector<Component*>& out) const;
+  void collect_preorder(const std::unique_ptr<Node>& node, std::vector<Component*>& out) const;
+  void unlink_and_destroy(std::unique_ptr<Node> node);
+
+  std::vector<std::unique_ptr<Node>> roots_;
+  std::unordered_map<NodeId, Node*> nodes_by_id_;
+  std::unordered_map<ComponentId, Component*> components_by_id_;
+  std::uint64_t next_id_ = 1;
+};
+
+}  // namespace arcane

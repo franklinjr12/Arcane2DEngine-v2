@@ -8,13 +8,24 @@
 // module (.so/.dll). Only plain-C-compatible types cross this boundary;
 // internal gameplay code on either side can be ordinary C++. The engine
 // checks engine_api_version before touching anything else in the struct.
+// `register_types` is the one exception: it takes a reference to the
+// engine's ComponentRegistry (see component_registry.hpp) rather than a
+// plain-C type, because the module is dlopen'd into the same process and
+// built against the same engine headers -- there is no cross-compiler ABI
+// boundary to protect against, only the engine/module version skew that
+// api_version already guards.
 namespace arcane {
 
-inline constexpr std::uint32_t kGameApiVersion = 1;
+class ComponentRegistry;
+
+inline constexpr std::uint32_t kGameApiVersion = 2;
 
 struct GameApi {
   std::uint32_t api_version;
   const char* game_name;
+  // Called once, right after a successful load, before on_load. May be
+  // nullptr if the module registers no component types.
+  void (*register_types)(ComponentRegistry& registry);
   void (*on_load)();
   void (*on_unload)();
   void (*on_update)(float delta_seconds);

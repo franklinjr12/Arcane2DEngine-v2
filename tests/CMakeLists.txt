@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -31,6 +31,12 @@ target_compile_definitions(test_module_load PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
   ARCANE_BAD_VERSION_MODULE_PATH="$<TARGET_FILE:bad_version_module>")
 add_test(NAME test_module_load COMMAND test_module_load)
+
+add_executable(test_module_registration test_module_registration.cpp)
+target_link_libraries(test_module_registration PRIVATE arcane_runtime)
+target_compile_definitions(test_module_registration PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_module_registration COMMAND test_module_registration)
 
 # --- GL-labeled tests: need a real (possibly offscreen) GL context --------
 # Under ARCANE_SANITIZE, the Mesa llvmpipe software rasterizer JIT-compiles

@@ -102,10 +102,16 @@ add_library(arcane_runtime SHARED
   engine/src/log.cpp
   engine/src/module.cpp
   engine/src/window.cpp
-  engine/src/renderer.cpp)
+  engine/src/renderer.cpp
+  engine/src/node.cpp
+  engine/src/scene.cpp
+  engine/src/scene_io.cpp
+  engine/src/component_registry.cpp
+  engine/src/property.cpp
+  engine/src/project.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
-  PRIVATE ${TP}/stb)
+  PRIVATE ${TP}/stb ${TP}/json)
 target_link_libraries(arcane_runtime
   PUBLIC glfw glad
   PRIVATE ${CMAKE_DL_LIBS})
