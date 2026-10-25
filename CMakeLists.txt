@@ -120,6 +120,11 @@ set_target_properties(arcane_runtime PROPERTIES
   CXX_VISIBILITY_PRESET hidden
   VISIBILITY_INLINES_HIDDEN ON)
 
+# --- editor core (testable, no GUI deps) ------------------------------------
+add_library(arcane_editor_core INTERFACE)
+target_include_directories(arcane_editor_core INTERFACE editor/editor_core/include)
+target_link_libraries(arcane_editor_core INTERFACE arcane_runtime)
+
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
   add_subdirectory(player)

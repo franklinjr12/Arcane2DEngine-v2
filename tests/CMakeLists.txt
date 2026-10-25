@@ -8,6 +8,10 @@ foreach(t test_logger test_timestep test_json test_scene test_scene_json)
 endforeach()
 target_include_directories(test_json PRIVATE ${TP}/json)
 
+add_executable(test_editor_state test_editor_state.cpp)
+target_link_libraries(test_editor_state PRIVATE arcane_editor_core)
+add_test(NAME test_editor_state COMMAND test_editor_state)
+
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
