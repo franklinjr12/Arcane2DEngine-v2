@@ -272,6 +272,7 @@ SpriteRenderer& SpriteRenderer::operator=(SpriteRenderer&& other) noexcept {
   return *this;
 }
 
+SpriteRenderer::SpriteRenderer() = default;
 SpriteRenderer::~SpriteRenderer() = default;
 
 void SpriteRenderer::set_camera(float x, float y, float zoom) {

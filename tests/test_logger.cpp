@@ -22,6 +22,7 @@ int main() {
   std::stringstream contents;
   contents << file.rdbuf();
   const std::string text = contents.str();
+  file.close();  // Windows can't remove a file that is still open
   ARCANE_ASSERT_TRUE(text.find("INFO") != std::string::npos);
   ARCANE_ASSERT_TRUE(text.find("test") != std::string::npos);
   ARCANE_ASSERT_TRUE(text.find("hello 42") != std::string::npos);

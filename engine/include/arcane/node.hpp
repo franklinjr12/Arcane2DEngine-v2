@@ -34,6 +34,9 @@ class Scene;
 // reused within that scene.
 class ARCANE_API Node {
  public:
+  Node(const Node&) = delete;
+  Node& operator=(const Node&) = delete;
+
   NodeId id() const noexcept { return id_; }
   const std::string& name() const noexcept { return name_; }
   void set_name(std::string name) { name_ = std::move(name); }

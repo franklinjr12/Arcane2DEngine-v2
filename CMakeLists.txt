@@ -87,7 +87,9 @@ add_library(imgui STATIC
 target_include_directories(imgui PUBLIC ${TP}/imgui ${TP}/imgui/backends)
 target_compile_definitions(imgui PUBLIC IMGUI_IMPL_OPENGL_LOADER_CUSTOM)
 target_link_libraries(imgui PUBLIC glfw glad)
-target_compile_options(imgui PRIVATE $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w> "SHELL:-include glad/gl.h")
+target_compile_options(imgui PRIVATE
+  $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-w "SHELL:-include glad/gl.h">
+  $<$<CXX_COMPILER_ID:MSVC>:/FIglad/gl.h>)
 
 add_library(miniaudio STATIC ${TP}/miniaudio/miniaudio.c)
 target_include_directories(miniaudio PUBLIC ${TP}/miniaudio)

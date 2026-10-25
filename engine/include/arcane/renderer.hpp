@@ -88,7 +88,7 @@ class ARCANE_API SpriteRenderer {
   Color read_pixel(int x, int y) const;
 
  private:
-  SpriteRenderer() = default;
+  SpriteRenderer();
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };
