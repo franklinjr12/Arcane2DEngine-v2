@@ -76,4 +76,10 @@ if(ARCANE_BUILD_SAMPLES)
     --frames 30 --hidden --play-frames 10)
   set_tests_properties(test_editor_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+  add_test(NAME test_player_project_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/sample_project --module $<TARGET_FILE:sample_game>
+    --frames 30 --hidden)
+  set_tests_properties(test_player_project_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()

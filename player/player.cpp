@@ -9,6 +9,8 @@
 #include "arcane/renderer.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane_editor/project_runtime.hpp"
+#include "arcane_editor/scene_render.hpp"
 
 namespace {
 constexpr std::string_view kLogCategory = "player";
@@ -17,6 +19,16 @@ struct Args {
   std::optional<int> frames;
   bool hidden = false;
   std::string module_path = ARCANE_DEFAULT_MODULE_PATH;
+  // If set, runs the on-disk project standalone (arcane_editor minus the
+  // GUI: no hierarchy/inspector/Play-Stop, the scene just always runs)
+  // instead of the checkerboard-texture smoke demo below.
+  std::string project_dir;
+  // --module override for --project mode. Deliberately separate from
+  // module_path (whose default equals ARCANE_DEFAULT_MODULE_PATH, which
+  // CTest also passes via --module for the demo mode): comparing the CLI
+  // value against that default to decide "was --module passed" breaks
+  // when they happen to be equal, see editor_main.cpp's module_override.
+  std::string project_module_override;
 };
 
 Args parse_args(int argc, char** argv) {
@@ -29,6 +41,9 @@ Args parse_args(int argc, char** argv) {
       args.hidden = true;
     } else if (arg == "--module" && i + 1 < argc) {
       args.module_path = argv[++i];
+      args.project_module_override = args.module_path;
+    } else if (arg == "--project" && i + 1 < argc) {
+      args.project_dir = argv[++i];
     }
   }
   return args;
@@ -50,10 +65,78 @@ std::vector<unsigned char> make_checkerboard_pixels(int size) {
   }
   return pixels;
 }
+
+// Runs an on-disk project standalone: no editor UI, the scene just ticks
+// and renders every frame (there is no Play/Stop mode here -- the player
+// *is* always in "Play"). Shares ProjectRuntime/TextureCache/render_scene
+// with arcane_editor so project loading and scene rendering behave
+// identically in both.
+int run_project(const Args& args) {
+  auto window = arcane::Window::create(
+      {.width = 1280, .height = 800, .title = "Arcane2D Player", .hidden = args.hidden});
+  if (!window) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create window: {}", window.error());
+    return 77;  // no GL-capable display; CTest SKIP convention, see test_renderer_gl.
+  }
+  if (!arcane::load_gl_functions()) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to load OpenGL functions");
+    return 1;
+  }
+
+  auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.project_module_override);
+  if (!runtime) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
+    return 1;
+  }
+
+  auto renderer = arcane::SpriteRenderer::create();
+  if (!renderer) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create sprite renderer: {}", renderer.error());
+    return 1;
+  }
+
+  arcane::editor::TextureCache textures;
+  textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
+
+  arcane::FixedTimestep timestep(60.0);
+  auto previous_time = std::chrono::steady_clock::now();
+  long frame_count = 0;
+
+  while (!window->should_close()) {
+    if (args.frames.has_value() && frame_count >= *args.frames) break;
+
+    const auto now = std::chrono::steady_clock::now();
+    const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
+    previous_time = now;
+
+    const int steps = timestep.advance(delta_seconds);
+    arcane::Scene& scene = runtime->session().scene();
+    for (int i = 0; i < steps; ++i) {
+      if (runtime->module_api()) runtime->module_api()->on_update(static_cast<float>(timestep.fixed_delta_seconds()));
+      scene.update(static_cast<float>(timestep.fixed_delta_seconds()));
+    }
+
+    int fb_width = 0, fb_height = 0;
+    window->framebuffer_size(fb_width, fb_height);
+    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height);
+    if (runtime->module_api()) runtime->module_api()->on_render();
+
+    window->swap_buffers();
+    window->poll_events();
+    ++frame_count;
+  }
+
+  ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
+  return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
   const Args args = parse_args(argc, argv);
+  if (!args.project_dir.empty()) {
+    return run_project(args);
+  }
 
   auto window = arcane::Window::create({.width = 640, .height = 480, .title = "Arcane2D Player", .hidden = args.hidden});
   if (!window) {
