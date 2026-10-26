@@ -6,6 +6,7 @@
 
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/scene.hpp"
 
 namespace arcane::editor {
@@ -42,18 +43,23 @@ class PlayStopController {
     auto loaded = Scene::load_from_json(json, registry);
     if (!loaded) return false;
     runtime_ = std::make_unique<Scene>(std::move(*loaded));
+    physics_.rebuild(*runtime_);
     mode_ = EditorMode::Play;
     return true;
   }
 
-  // Advances the runtime scene by one fixed tick. No-op outside Play.
+  // Advances the runtime scene by one fixed tick (components, then
+  // physics). No-op outside Play.
   void tick(float fixed_dt) {
-    if (mode_ == EditorMode::Play && runtime_) runtime_->update(fixed_dt);
+    if (mode_ != EditorMode::Play || !runtime_) return;
+    runtime_->update(fixed_dt);
+    physics_.step(*runtime_, fixed_dt);
   }
 
   // Discards the runtime scene; the authored scene was never touched.
   void stop() noexcept {
     runtime_.reset();
+    physics_ = PhysicsWorld();
     mode_ = EditorMode::Edit;
   }
 
@@ -66,6 +72,7 @@ class PlayStopController {
  private:
   EditorMode mode_ = EditorMode::Edit;
   std::unique_ptr<Scene> runtime_;
+  PhysicsWorld physics_;
 };
 
 }  // namespace arcane::editor

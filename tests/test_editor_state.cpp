@@ -3,6 +3,7 @@
 #include "arcane/component.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/scene.hpp"
 #include "arcane_editor/editor_state.hpp"
 #include "test_assert.hpp"
@@ -48,6 +49,33 @@ void test_play_stop_isolation() {
   ARCANE_ASSERT_TRUE(counter->value == 1);
 }
 
+// Play drives the runtime scene's PhysicsWorld (a falling body actually
+// falls), but Stop discards it entirely -- the authored scene's node
+// position must be exactly what the author set, never a physics result.
+void test_play_stop_isolation_with_physics() {
+  arcane::ComponentRegistry registry;
+  arcane::register_physics_components(registry);
+
+  arcane::Scene authored;
+  arcane::Node* node = authored.create_node("falling");
+  node->local_transform().position = {0.0f, 320.0f};
+  authored.add_component(node, "RigidBody2D", registry);
+  authored.add_component(node, "Collider2D", registry);
+
+  arcane::editor::PlayStopController controller;
+  ARCANE_ASSERT_TRUE(controller.play(authored, registry));
+
+  arcane::Scene* runtime = controller.active_scene(authored);
+  for (int i = 0; i < 30; ++i) controller.tick(1.0f / 60.0f);
+
+  arcane::Node* runtime_node = runtime->roots()[0].get();
+  ARCANE_ASSERT_TRUE(runtime_node->local_transform().position.y < 320.0f);
+
+  controller.stop();
+  ARCANE_ASSERT_TRUE(controller.active_scene(authored) == &authored);
+  ARCANE_ASSERT_TRUE(node->local_transform().position.y == 320.0f);
+}
+
 void test_selection() {
   arcane::editor::Selection selection;
   ARCANE_ASSERT_TRUE(!selection.has_selection());
@@ -62,6 +90,7 @@ void test_selection() {
 
 int main() {
   test_play_stop_isolation();
+  test_play_stop_isolation_with_physics();
   test_selection();
   return 0;
 }
