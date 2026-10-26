@@ -22,6 +22,10 @@ add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
 
+add_executable(test_physics_components test_physics_components.cpp)
+target_link_libraries(test_physics_components PRIVATE arcane_runtime)
+add_test(NAME test_physics_components COMMAND test_physics_components)
+
 add_executable(test_audio_null test_audio_null.cpp)
 target_link_libraries(test_audio_null PRIVATE miniaudio)
 add_test(NAME test_audio_null COMMAND test_audio_null)
