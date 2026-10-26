@@ -1,68 +1,99 @@
-# Foundation A — reproducible project and runtime
+# Foundation C — minimal integrated editor
 
 ## Summary
 
-Lays down V2 of Arcane2DEngine at the repo root: a C++23/CMake build, an
-`arcane_runtime` shared library (logging, a minimal GLFW+OpenGL 3.3 core
-window/renderer, a fixed-timestep loop helper, a cross-platform dynamic
-game-module loader), a native `sample_game` module loaded through that
-boundary, an `arcane_player` executable that runs it, and a CTest suite
-covering both headless logic and real (offscreen) GL rendering. Box2D,
-miniaudio, Dear ImGui (docking, GLFW+OpenGL3 backends), and nlohmann-json
-are vendored and build-verified now, ahead of the gameplay/editor work that
-will use them.
+Finishes Foundation C on top of the already-merged scaffold (`arcane_editor_core`
+with `Selection`/`PlayStopController`, PR #1): a working `arcane_editor`
+GUI executable, and a standalone `arcane_player --project <dir>` runner.
 
-The copied V1 engine files at the repo root have been removed in a
-dedicated commit; V1 is unaffected and remains available in this
-repository's git history and at `franklinjr12/Arcane2DEngine`.
+- **`arcane_editor`** (Dear ImGui docking + GLFW/OpenGL3, `editor/app/`):
+  Viewport (active scene rendered into an offscreen FBO via `SpriteRenderer`,
+  pan/zoom), Hierarchy (scene tree: select/create/delete/drag-reparent),
+  Inspector (transform + a generic walk of the component property
+  registry, "Add Component"), Assets (project image files, click to assign
+  a `Sprite::texture`), File > Save, and a Play/Stop toolbar backed by
+  `PlayStopController`'s snapshot isolation (authored data is restored
+  untouched on Stop — never leaks edits made by gameplay code during Play).
+  Headless smoke flags: `--project`, `--frames`, `--hidden`, `--play-frames`,
+  `--module` (see "Known gaps/pitfalls" below for why `--module` exists).
+- **Non-GUI logic lives in `arcane_editor_core`** (static library, testable
+  without a GL context): `ProjectSession` (project/scene JSON load+save+dirty
+  flag, reusing `project.hpp`'s pure (de)serialization), `AssetCatalog`
+  (stable FNV-1a asset ids from relative paths, no asset-database file),
+  `ProjectRuntime`/`TextureCache`/`render_scene` (shared project-loading and
+  scene-rendering plumbing used by both the editor and the player).
+- **Built-in components** (`Sprite`, `Camera`) added to `arcane_runtime` so
+  both the editor and a standalone player can render a scene without any
+  project-specific module.
+- **`arcane_player --project <dir>`**: runs an on-disk project standalone,
+  no editor UI — the scene just ticks and renders every frame (no Play/Stop
+  mode, the player always acts as "Play"). Shares the same
+  `ProjectRuntime`/`render_scene` code as the editor, so behavior is
+  identical in both.
+- **`samples/sample_project/`**: a minimal project (`project.json` +
+  `scenes/main.scene.json` with a `Camera` node and a `Sprite` + the
+  existing `sample_game` `Spinner` component on another node, `assets/`
+  with a tiny placeholder PNG) used by every headless smoke test below.
+- Undo is intentionally **not** implemented — the vision doc treats it as
+  "as capability grows," not a Foundation C acceptance item.
 
 ## How to build/test
 
 ```sh
-# everything this PR is validated against (gcc required, clang+sanitizers,
-# mingw cross-compile build-only), matches what CI would run
 xvfb-run -a scripts/build-and-test.sh /tmp/a2d-check
 
-# or just the required config
-cmake -S . -B build-gcc -G Ninja -DCMAKE_BUILD_TYPE=Debug
-cmake --build build-gcc
-xvfb-run -a ctest --test-dir build-gcc --output-on-failure
+# run the editor on the sample project
+xvfb-run -a build-gcc/bin/arcane_editor --project samples/sample_project
 
-# run the player
-xvfb-run -a build-gcc/bin/arcane_player --frames 60 --hidden
+# run the sample project standalone, no editor UI
+xvfb-run -a build-gcc/bin/arcane_player --project samples/sample_project
 ```
 
-See `README.md` for the full prerequisites and per-OS instructions.
+See `README.md`'s new "Editor" section for flags and panel descriptions.
 
 ## Test results (this PR, run under `xvfb-run -a`)
 
-| Config | Result | Detail |
-| ------ | ------ | ------ |
-| gcc 14 Debug | **PASS** | 9/9 tests, including the 2 `gl`-labeled tests (not skipped — real offscreen GL context via Xvfb/Mesa llvmpipe) |
-| clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) | **PASS** | 9/9 tests; GL-labeled tests run with `ASAN_OPTIONS=detect_leaks=0` to avoid a false positive from Mesa llvmpipe's JIT-compiled shader code (see `docs/decisions.md` #19) |
-| mingw-w64 cross-compile | **PASS** (build only) | Toolchain file `cmake/toolchains/mingw-w64-x86_64.cmake`; not run (no Windows host here) |
+| Config | Result |
+| ------ | ------ |
+| gcc 14 Debug | **PASS** — 16/16 tests (4 `gl`-labeled, run for real via Xvfb/Mesa llvmpipe, not skipped) |
+| clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) | **PASS** — 16/16 tests |
+| mingw-w64 cross-compile | **PASS** (build only) — `arcane_editor.exe`/`arcane_player.exe` cross-compile cleanly; not run |
 
-Covered by the 9 tests: logger (levels/format/file sink), fixed-timestep
-accumulator logic, dynamic module load of `sample_game` + API-version
-mismatch rejection, JSON round trip, headless Box2D world step, miniaudio
-null-backend context init, ImGui context create/destroy (no GL), a real GL
-renderer draw-and-read-back-pixels check, and `arcane_player --frames 30
---hidden` exiting 0.
+New tests this PR: `test_editor_state` (Selection; Play values don't leak
+after Stop), `test_editor_project` (registry walk covers builtin + module
+component types; `ProjectSession` save/reopen keeps edited property values
+— the literal Foundation C acceptance condition; asset ids are stable and
+listable), `test_editor_frames` (gl, `arcane_editor --project
+samples/sample_project --frames 30 --hidden --play-frames 10`),
+`test_player_project_frames` (gl, same project via `arcane_player
+--project`).
 
 ## Delegated decisions
 
-Full table and rationale in `docs/decisions.md`. Highlights:
+Full table in `docs/decisions.md` (Foundation C section). Highlights:
 
-- Fixed timestep: 60 Hz, 5-step catch-up cap, render decoupled from physics step.
-- Pixel/physics units: 32 px = 1 m, documented ahead of the Box2D↔renderer wiring that will need it.
-- Module ABI: a single versioned plain-C entry point (`arcane_get_game_api`), flat POD struct, no C++ ABI crossing the boundary.
-- Box2D v3.2.0 (available in the pinned cache tonight; newer than the doc's v3.1.1 mention).
-- Dependency policy: vendored + checksummed, committed trimmed sources, offline-buildable; `scripts/fetch-deps.sh` only reproduces/refreshes them.
-- Repo layout: V2 at the repo root per Franklin's 22:46 BRT scope update; V1 files removed in one commit, V1 preserved in history and its own repo.
+- Module reload strategy: rebuild + relaunch, no live hot-swap; Play always
+  rebuilds the runtime scene from authored JSON, Stop always discards it.
+- Asset ids: FNV-1a 64-bit hash of the path relative to `assets/`, no
+  database file — simplest option satisfying save/reopen stability.
+- Native module destruction-order hazard: `module` must be declared before
+  `registry`/`Scene`/`ProjectSession` in `main()` so `dlclose` happens last;
+  getting this backwards segfaults inside `std::function`'s destructor.
+  Documented so it doesn't get "simplified" back into a crash.
+- Shared source-tree module copy vs. multi-toolchain builds: fixed with an
+  explicit `--module` CLI override on both the editor and the player so
+  each CTest config loads *its own* build's module, never the shared
+  interactive-use copy in `samples/sample_project/`.
 
-## Known gaps
+## Known gaps / pitfalls
 
-- No scene graph, property registry, JSON schema, editor, or Play/Stop isolation yet — those are explicitly out of scope for Foundation A (see "Technical contracts still to settle" in `docs/decisions.md`, items left "open (not needed for Foundation A)").
-- Box2D/miniaudio/ImGui are build-verified but not yet wired into the renderer/game-loop beyond headless smoke tests.
-- No GitHub Actions or other CI config is included by design (per the job brief); `scripts/build-and-test.sh` is what a future CI step (or a human) should run.
-- **UNTESTED on native Windows/MSVC (mingw-w64 cross-compile only).**
+- Undo/redo, multi-select, grid snapping, multi-camera editing: deferred,
+  not Foundation C acceptance items.
+- **UNTESTED on native Windows/MSVC** — the editor and `--project` player
+  mode have only run on Linux (gcc, clang+ASan/UBSan); the mingw target is
+  cross-compiled and build-verified only, never executed on real Windows.
+- `samples/sample_project/sample_game.so` (the interactive-use copy next to
+  the committed sample) is gitignored and rebuilt/overwritten by whichever
+  toolchain builds last; don't rely on it matching a specific build — use
+  `--module $<TARGET_FILE:sample_game>` for anything that needs a guaranteed
+  match (as every CTest entry does).
