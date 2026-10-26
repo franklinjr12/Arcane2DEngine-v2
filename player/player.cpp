@@ -6,6 +6,7 @@
 
 #include "arcane/log.hpp"
 #include "arcane/module.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
@@ -98,6 +99,9 @@ int run_project(const Args& args) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
 
+  arcane::PhysicsWorld physics;
+  physics.rebuild(runtime->session().scene());
+
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
@@ -114,6 +118,7 @@ int run_project(const Args& args) {
     for (int i = 0; i < steps; ++i) {
       if (runtime->module_api()) runtime->module_api()->on_update(static_cast<float>(timestep.fixed_delta_seconds()));
       scene.update(static_cast<float>(timestep.fixed_delta_seconds()));
+      physics.step(scene, static_cast<float>(timestep.fixed_delta_seconds()));
     }
 
     int fb_width = 0, fb_height = 0;
