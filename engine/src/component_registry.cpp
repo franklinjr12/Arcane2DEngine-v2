@@ -27,4 +27,13 @@ const std::vector<PropertyDescriptor>* ComponentRegistry::properties_of(const st
   return &it->second.properties;
 }
 
+std::vector<std::string> ComponentRegistry::type_names() const {
+  std::vector<std::string> names;
+  names.reserve(entries_.size());
+  for (const auto& [name, entry] : entries_) {
+    names.push_back(name);
+  }
+  return names;
+}
+
 }  // namespace arcane

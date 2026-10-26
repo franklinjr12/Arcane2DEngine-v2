@@ -14,6 +14,9 @@ namespace arcane {
 struct ProjectFile {
   std::string name;
   std::string main_scene;  // path to a scene JSON file, relative to the project file
+  // Path to a prebuilt native game module (.so/.dll), relative to the
+  // project file; empty if the project has no custom component types.
+  std::string module;
 };
 
 ARCANE_API std::string save_project_to_json(const ProjectFile& project);

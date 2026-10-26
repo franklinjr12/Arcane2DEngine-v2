@@ -110,7 +110,8 @@ add_library(arcane_runtime SHARED
   engine/src/scene_io.cpp
   engine/src/component_registry.cpp
   engine/src/property.cpp
-  engine/src/project.cpp)
+  engine/src/project.cpp
+  engine/src/builtin_components.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
@@ -123,13 +124,18 @@ set_target_properties(arcane_runtime PROPERTIES
   VISIBILITY_INLINES_HIDDEN ON)
 
 # --- editor core (testable, no GUI deps) ------------------------------------
-add_library(arcane_editor_core INTERFACE)
-target_include_directories(arcane_editor_core INTERFACE editor/editor_core/include)
-target_link_libraries(arcane_editor_core INTERFACE arcane_runtime)
+add_library(arcane_editor_core STATIC
+  editor/editor_core/src/project_session.cpp
+  editor/editor_core/src/asset_catalog.cpp)
+target_include_directories(arcane_editor_core
+  PUBLIC editor/editor_core/include
+  PRIVATE ${TP}/json)
+target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
   add_subdirectory(player)
+  add_subdirectory(editor/app)
 endif()
 
 if(ARCANE_BUILD_TESTS)

@@ -1,0 +1,6 @@
+{
+  "format_version": 1,
+  "name": "sample_project",
+  "main_scene": "scenes/main.scene.json",
+  "module": "sample_game.so"
+}
