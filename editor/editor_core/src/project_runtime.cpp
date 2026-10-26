@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "arcane/builtin_components.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/project.hpp"
 
 namespace arcane::editor {
@@ -12,6 +13,7 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
                                                                   const std::string& module_override) {
   ProjectRuntime runtime;
   register_builtin_components(runtime.registry_);
+  register_physics_components(runtime.registry_);
 
   std::optional<std::filesystem::path> module_path;
   if (!module_override.empty()) {
