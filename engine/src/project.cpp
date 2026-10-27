@@ -15,6 +15,7 @@ std::string save_project_to_json(const ProjectFile& project) {
   root["name"] = project.name;
   root["main_scene"] = project.main_scene;
   root["module"] = project.module;
+  root["input_actions"] = nlohmann::json::parse(project.input_actions.save_to_json());
   return root.dump(2);
 }
 
@@ -43,6 +44,13 @@ std::expected<ProjectFile, std::string> load_project_from_json(const std::string
   project.name = root["name"].get<std::string>();
   project.main_scene = root["main_scene"].get<std::string>();
   project.module = root.value("module", std::string());
+  if (root.contains("input_actions")) {
+    auto input_actions = InputActionMap::load_from_json(root["input_actions"].dump());
+    if (!input_actions) {
+      return std::unexpected(input_actions.error());
+    }
+    project.input_actions = std::move(*input_actions);
+  }
   return project;
 }
 
