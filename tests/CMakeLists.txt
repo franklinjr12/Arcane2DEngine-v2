@@ -12,6 +12,12 @@ add_executable(test_editor_state test_editor_state.cpp)
 target_link_libraries(test_editor_state PRIVATE arcane_editor_core)
 add_test(NAME test_editor_state COMMAND test_editor_state)
 
+add_executable(test_editor_project test_editor_project.cpp)
+target_link_libraries(test_editor_project PRIVATE arcane_editor_core)
+target_compile_definitions(test_editor_project PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_editor_project COMMAND test_editor_project)
+
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
@@ -63,5 +69,17 @@ set_tests_properties(test_renderer_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 T
 if(ARCANE_BUILD_SAMPLES)
   add_test(NAME test_player_frames COMMAND arcane_player --frames 30 --hidden)
   set_tests_properties(test_player_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+  add_test(NAME test_editor_frames COMMAND arcane_editor
+    --project ${CMAKE_SOURCE_DIR}/samples/sample_project --module $<TARGET_FILE:sample_game>
+    --frames 30 --hidden --play-frames 10)
+  set_tests_properties(test_editor_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+  add_test(NAME test_player_project_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/sample_project --module $<TARGET_FILE:sample_game>
+    --frames 30 --hidden)
+  set_tests_properties(test_player_project_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()

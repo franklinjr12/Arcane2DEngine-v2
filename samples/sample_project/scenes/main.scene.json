@@ -1,0 +1,52 @@
+{
+  "format_version": 1,
+  "next_id": 6,
+  "nodes": [
+    {
+      "id": 1,
+      "name": "MainCamera",
+      "parent_id": 0,
+      "position": [0.0, 0.0],
+      "rotation_radians": 0.0,
+      "scale": [1.0, 1.0],
+      "components": [
+        {
+          "id": 2,
+          "type": "Camera",
+          "properties": {
+            "zoom": 1.0,
+            "primary": true
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Player",
+      "parent_id": 0,
+      "position": [0.0, 0.0],
+      "rotation_radians": 0.0,
+      "scale": [1.0, 1.0],
+      "components": [
+        {
+          "id": 4,
+          "type": "Sprite",
+          "properties": {
+            "texture": 13743565431654770875,
+            "width": 96.0,
+            "height": 96.0,
+            "tint": [1.0, 1.0, 1.0, 1.0]
+          }
+        },
+        {
+          "id": 5,
+          "type": "Spinner",
+          "properties": {
+            "speed_degrees_per_second": 45.0,
+            "label": "player-spinner"
+          }
+        }
+      ]
+    }
+  ]
+}

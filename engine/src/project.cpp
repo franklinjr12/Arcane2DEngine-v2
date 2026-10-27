@@ -14,6 +14,7 @@ std::string save_project_to_json(const ProjectFile& project) {
   root["format_version"] = kProjectFormatVersion;
   root["name"] = project.name;
   root["main_scene"] = project.main_scene;
+  root["module"] = project.module;
   return root.dump(2);
 }
 
@@ -41,6 +42,7 @@ std::expected<ProjectFile, std::string> load_project_from_json(const std::string
   ProjectFile project;
   project.name = root["name"].get<std::string>();
   project.main_scene = root["main_scene"].get<std::string>();
+  project.module = root.value("module", std::string());
   return project;
 }
 

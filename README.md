@@ -87,6 +87,43 @@ Run the player directly:
 xvfb-run -a build-gcc/bin/arcane_player --frames 60 --hidden
 ```
 
+## Editor
+
+`arcane_editor` (built alongside everything else, `build-gcc/bin/arcane_editor`)
+is a Dear ImGui docking app for authoring a project on disk:
+
+```sh
+xvfb-run -a build-gcc/bin/arcane_editor --project samples/sample_project
+```
+
+Panels: **Viewport** (renders the active scene into an offscreen
+framebuffer, pan/zoom), **Hierarchy** (scene tree — select, create,
+delete, drag-and-drop to reparent), **Inspector** (transform + a
+property-registry-driven editor for every component on the selected
+node, "Add Component"), **Assets** (project image files; click one to
+assign it to the selected node's `Sprite`). Toolbar **Play**/**Stop**
+run the scene in an isolated runtime copy — authored data is restored
+untouched on Stop, see `docs/decisions.md` Foundation C row 9. **File >
+Save** writes the project/scene JSON back to disk.
+
+Flags: `--project <dir>` (required), `--frames N` (exit after N frames,
+for smoke-testing), `--hidden` (no visible window), `--play-frames N`
+(auto-enter Play at startup, tick N frames, then Stop — headless Play/Stop
+coverage), `--module <path>` (override the project's module .so/.dll
+instead of resolving `project.json`'s `module` field — mainly for build
+scripts that need to point at a specific build's own module rather than
+the shared source-tree copy, see decisions.md row 23).
+
+`arcane_player --project <dir>` runs the same project standalone, no
+editor UI — the scene just ticks and renders every frame (no Play/Stop
+mode; the player always acts as if playing). Same `--frames`/`--hidden`/
+`--module` flags.
+
+**UNTESTED on native Windows/MSVC**: the editor and `--project` player
+mode have only been exercised on Linux (gcc, clang+ASan/UBSan) and
+build-only cross-compiled with mingw tonight — nobody has run either on
+real Windows yet.
+
 ## Build and test — Windows (untested on real hardware)
 
 Developer PowerShell / Visual Studio:

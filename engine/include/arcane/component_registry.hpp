@@ -28,6 +28,9 @@ class ARCANE_API ComponentRegistry {
   bool contains(const std::string& type_name) const noexcept;
   std::unique_ptr<Component> create(const std::string& type_name) const;
   const std::vector<PropertyDescriptor>* properties_of(const std::string& type_name) const noexcept;
+  // All registered type names, in no particular order (used by the
+  // Inspector's "Add Component" picker).
+  std::vector<std::string> type_names() const;
 
  private:
   struct Entry {
