@@ -113,13 +113,15 @@ add_library(arcane_runtime SHARED
   engine/src/project.cpp
   engine/src/builtin_components.cpp
   engine/src/physics.cpp
-  engine/src/input.cpp)
+  engine/src/input.cpp
+  engine/src/animation.cpp
+  engine/src/audio.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
 target_link_libraries(arcane_runtime
   PUBLIC glfw glad
-  PRIVATE ${CMAKE_DL_LIBS} box2d)
+  PRIVATE ${CMAKE_DL_LIBS} box2d miniaudio)
 target_compile_definitions(arcane_runtime PRIVATE ARCANE_BUILD_RUNTIME)
 set_target_properties(arcane_runtime PROPERTIES
   CXX_VISIBILITY_PRESET hidden

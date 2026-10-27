@@ -3,6 +3,8 @@
 #include <fstream>
 #include <sstream>
 
+#include "arcane/animation.hpp"
+#include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/physics.hpp"
 #include "arcane/project.hpp"
@@ -14,6 +16,8 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
   ProjectRuntime runtime;
   register_builtin_components(runtime.registry_);
   register_physics_components(runtime.registry_);
+  register_animation_components(runtime.registry_);
+  register_audio_components(runtime.registry_);
 
   std::optional<std::filesystem::path> module_path;
   if (!module_override.empty()) {
