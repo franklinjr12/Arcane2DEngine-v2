@@ -100,12 +100,15 @@ void test_project_round_trip() {
   arcane::ProjectFile project;
   project.name = "sample_project";
   project.main_scene = "scenes/main.scene.json";
+  project.input_actions.add_binding("jump", arcane::InputBinding{arcane::InputDevice::Keyboard, arcane::Keys::kSpace});
 
   const std::string json = arcane::save_project_to_json(project);
   auto loaded = arcane::load_project_from_json(json);
   ARCANE_ASSERT_TRUE(loaded.has_value());
   ARCANE_ASSERT_TRUE(loaded->name == "sample_project");
   ARCANE_ASSERT_TRUE(loaded->main_scene == "scenes/main.scene.json");
+  ARCANE_ASSERT_TRUE(loaded->input_actions.actions().size() == 1);
+  ARCANE_ASSERT_TRUE(loaded->input_actions.actions()[0].name == "jump");
 
   auto bad_version = arcane::load_project_from_json(R"({"format_version":2,"name":"x","main_scene":"y"})");
   ARCANE_ASSERT_TRUE(!bad_version.has_value());
