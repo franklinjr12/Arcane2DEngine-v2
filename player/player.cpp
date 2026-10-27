@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/module.hpp"
 #include "arcane/physics.hpp"
@@ -102,6 +103,10 @@ int run_project(const Args& args) {
   arcane::PhysicsWorld physics;
   physics.rebuild(runtime->session().scene());
 
+  arcane::InputActionMap input_map = runtime->session().project().input_actions;
+  arcane::GlfwInputBackend input_backend(*window);
+  arcane::set_active_input_map(&input_map);
+
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
@@ -112,6 +117,8 @@ int run_project(const Args& args) {
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
+
+    input_map.update(input_backend);
 
     const int steps = timestep.advance(delta_seconds);
     arcane::Scene& scene = runtime->session().scene();

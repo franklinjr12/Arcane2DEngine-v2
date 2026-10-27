@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "arcane/builtin_components.hpp"
+#include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/node.hpp"
 #include "arcane/renderer.hpp"
@@ -223,6 +224,13 @@ int main(int argc, char** argv) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(session.assets_dir()));
 
+  // Input is only "live" (affects active_input_map()) while Play is
+  // running -- the editor's Edit-mode UI handles its own keyboard/mouse
+  // input (ImGui) and must not have gameplay actions firing underneath
+  // it. See docs/decisions.md.
+  arcane::InputActionMap input_map = session.project().input_actions;
+  arcane::GlfwInputBackend input_backend(*window);
+
   ViewportTarget viewport;
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
@@ -243,12 +251,15 @@ int main(int argc, char** argv) {
     previous_time = now;
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
+      input_map.update(input_backend);
+      arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
         ++play_tick_count;
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
         play_stop.stop();
+        arcane::set_active_input_map(nullptr);
       }
     }
 
@@ -274,7 +285,10 @@ int main(int argc, char** argv) {
       if (!playing) {
         if (ImGui::Button("Play")) play_stop.play(session.scene(), registry);
       } else {
-        if (ImGui::Button("Stop")) play_stop.stop();
+        if (ImGui::Button("Stop")) {
+          play_stop.stop();
+          arcane::set_active_input_map(nullptr);
+        }
       }
       ImGui::SameLine();
       ImGui::TextUnformatted(playing ? "Mode: Play" : "Mode: Edit");

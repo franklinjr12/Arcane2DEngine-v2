@@ -112,7 +112,8 @@ add_library(arcane_runtime SHARED
   engine/src/property.cpp
   engine/src/project.cpp
   engine/src/builtin_components.cpp
-  engine/src/physics.cpp)
+  engine/src/physics.cpp
+  engine/src/input.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
