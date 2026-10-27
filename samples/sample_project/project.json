@@ -2,5 +2,30 @@
   "format_version": 1,
   "name": "sample_project",
   "main_scene": "scenes/main.scene.json",
-  "module": "sample_game.so"
+  "module": "sample_game.so",
+  "input_actions": {
+    "format_version": 1,
+    "actions": [
+      {
+        "name": "move_left",
+        "bindings": [
+          {"device": "keyboard", "code": 65},
+          {"device": "keyboard", "code": 263}
+        ]
+      },
+      {
+        "name": "move_right",
+        "bindings": [
+          {"device": "keyboard", "code": 68},
+          {"device": "keyboard", "code": 262}
+        ]
+      },
+      {
+        "name": "jump",
+        "bindings": [
+          {"device": "keyboard", "code": 32}
+        ]
+      }
+    ]
+  }
 }

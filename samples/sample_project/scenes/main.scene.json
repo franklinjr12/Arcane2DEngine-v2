@@ -1,6 +1,5 @@
 {
   "format_version": 1,
-  "next_id": 6,
   "nodes": [
     {
       "id": 1,
@@ -45,8 +44,42 @@
             "speed_degrees_per_second": 45.0,
             "label": "player-spinner"
           }
+        },
+        {
+          "id": 6,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 2,
+            "linear_velocity": [0.0, 0.0],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 7,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 96.0,
+            "height": 96.0,
+            "radius": 16.0,
+            "offset": [0.0, 0.0],
+            "density": 1.0,
+            "friction": 0.6,
+            "restitution": 0.0,
+            "is_sensor": false
+          }
+        },
+        {
+          "id": 8,
+          "type": "PlayerController",
+          "properties": {
+            "move_speed": 160.0,
+            "jump_speed": 320.0
+          }
         }
       ]
     }
-  ]
+  ],
+  "next_id": 9
 }
