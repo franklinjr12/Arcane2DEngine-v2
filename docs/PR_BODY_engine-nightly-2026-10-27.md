@@ -17,3 +17,10 @@
 - Tests: `test_particles` (rate/burst counts, expiry, cap, seed determinism, motion/gravity/space, atlas UV, JSON round trip) and `test_particles_gl` (offscreen FBO pixels; skips without GL).
 - Not done: texture-per-particle random frames, rotation/angular velocity, sub-emitters, color/size curves beyond 2 points, editor UI beyond the generic Inspector.
 - **UNTESTED on native Windows/MSVC** (`ParticleEmitter` has out-of-line ctor/dtor; no pimpl).
+
+## FE7 — Animation clip editor + hot-reload
+- Editor "Animation Clip" panel: pick a sheet, set grid (cols/rows/frame size/margin/spacing), add/reorder/remove frames, per-frame duration or fps, loop, live preview, save to `assets/*.json`. Logic lives in ImGui-free `clip_authoring.{hpp,cpp}`. Decisions 42-43.
+- Hot-reload: `TextureCache`/`AnimationClipCache`/`TilesetCache::refresh()` poll file mtimes; editor polls every 0.5 s (also rescans assets). Player does not poll.
+- Tests: `test_clip_authoring` (grid slicing, draft edit/build, save->load round trip, cache invalidation by mtime incl. broken/deleted file). Texture invalidation shares the code path but is not GL-tested.
+- Not done: reopening an existing clip into the grid editor (grid metadata is not stored), the ImGui panel itself is only compile-checked, not driven.
+- **UNTESTED on native Windows/MSVC** (no pimpl; `std::filesystem` mtime only).

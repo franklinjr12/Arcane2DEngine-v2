@@ -21,6 +21,8 @@
 #include <string>
 #include <vector>
 
+#include "arcane_editor/clip_authoring.hpp"
+
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/hud.hpp"
@@ -276,6 +278,99 @@ void draw_hud_editor(arcane::Hud& hud, const std::function<void()>& changed) {
   }
 }
 
+// State of the Animation Clip panel: the sheet being sliced and the clip being built.
+struct ClipPanelState {
+  arcane::editor::ClipDraft draft;
+  arcane::AssetId sheet = 0;
+  char file_name[96] = "new_clip.json";
+  char name[64] = "";
+  int range_first = 0, range_last = 0;
+  float preview_elapsed = 0.0f;
+  std::string status;
+};
+
+// Authors a clip from a sprite sheet grid: pick the sheet, set the grid, add/reorder
+// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it).
+// `saved` is called after a successful save so the caller can rescan assets.
+void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
+                     const std::vector<arcane::editor::AssetEntry>& images, const std::filesystem::path& assets_dir,
+                     float dt, const std::function<void()>& saved) {
+  auto& d = st.draft;
+  const arcane::editor::AssetEntry* sheet_entry = nullptr;
+  for (const auto& e : images) if (e.id == st.sheet) sheet_entry = &e;
+  if (ImGui::BeginCombo("Sheet", sheet_entry ? sheet_entry->relative_path.c_str() : "(choose)")) {
+    for (const auto& e : images) {
+      if (ImGui::Selectable(e.relative_path.c_str(), e.id == st.sheet)) st.sheet = e.id;
+    }
+    ImGui::EndCombo();
+  }
+  arcane::Texture* tex = textures.get(st.sheet);
+  if (!tex) {
+    ImGui::TextUnformatted("Select a sprite sheet image.");
+    return;
+  }
+  ImGui::Text("Sheet %dx%d px", tex->width(), tex->height());
+  ImGui::InputInt("Columns", &d.grid.columns);
+  ImGui::InputInt("Rows", &d.grid.rows);
+  ImGui::InputInt("Frame width (0=auto)", &d.grid.frame_width);
+  ImGui::InputInt("Frame height (0=auto)", &d.grid.frame_height);
+  ImGui::InputInt("Margin", &d.grid.margin);
+  ImGui::InputInt("Spacing", &d.grid.spacing);
+  d.grid.columns = std::max(1, d.grid.columns);
+  d.grid.rows = std::max(1, d.grid.rows);
+  const int cell_count = d.grid.columns * d.grid.rows;
+
+  ImGui::InputInt("From cell", &st.range_first);
+  ImGui::InputInt("To cell", &st.range_last);
+  st.range_first = std::clamp(st.range_first, 0, cell_count - 1);
+  st.range_last = std::clamp(st.range_last, 0, cell_count - 1);
+  if (ImGui::Button("Add frames")) d.add_range(st.range_first, st.range_last);
+  ImGui::SameLine();
+  if (ImGui::Button("Clear")) { d.cells.clear(); d.durations.clear(); }
+
+  ImGui::DragFloat("FPS", &d.fps, 0.1f, 0.5f, 120.0f);
+  ImGui::Checkbox("Loop", &d.loop);
+  d.durations.resize(d.cells.size(), 0.0f);
+  std::optional<std::size_t> remove, up;
+  for (std::size_t i = 0; i < d.cells.size(); ++i) {
+    ImGui::PushID(static_cast<int>(i));
+    ImGui::SetNextItemWidth(60);
+    ImGui::InputInt("##cell", &d.cells[i], 0);
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(80);
+    ImGui::DragFloat("##dur", &d.durations[i], 0.005f, 0.0f, 5.0f, d.durations[i] > 0.0f ? "%.3fs" : "default");
+    ImGui::SameLine();
+    if (ImGui::SmallButton("up") && i > 0) up = i;
+    ImGui::SameLine();
+    if (ImGui::SmallButton("x")) remove = i;
+    ImGui::PopID();
+  }
+  if (up) d.move_frame(*up, *up - 1);
+  if (remove) d.remove_frame(*remove);
+
+  const arcane::AnimationClip clip = arcane::editor::build_clip(d, tex->width(), tex->height());
+  if (!clip.frames.empty()) {
+    st.preview_elapsed += dt;
+    const auto& uv = clip.frames[arcane::select_frame_index(clip, st.preview_elapsed)].uv;
+    ImGui::Image(static_cast<ImTextureID>(tex->native_id()), ImVec2(96, 96), ImVec2(uv.u0, uv.v0), ImVec2(uv.u1, uv.v1));
+  }
+
+  ImGui::InputText("Clip name", st.name, sizeof(st.name));
+  ImGui::InputText("File", st.file_name, sizeof(st.file_name));
+  if (ImGui::Button("Save clip")) {
+    d.name = st.name;
+    const std::filesystem::path rel(st.file_name);
+    if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
+      st.status = "invalid file name";
+    } else {
+      auto result = arcane::editor::save_clip_file(assets_dir / rel, clip);
+      st.status = result ? "saved " + rel.string() : result.error();
+      if (result) saved();
+    }
+  }
+  if (!st.status.empty()) ImGui::TextUnformatted(st.status.c_str());
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -337,6 +432,8 @@ int main(int argc, char** argv) {
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
+  ClipPanelState clip_panel;
+  double asset_poll_accum = 0.0;
   bool preview_particles = false;
   bool paint_mode = false;
   bool paint_rect = false;  // drag a rectangle instead of a freehand brush
@@ -393,6 +490,19 @@ int main(int argc, char** argv) {
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
+
+    // Hot-reload: twice a second, rescan assets and drop cache entries whose files changed on disk.
+    asset_poll_accum += delta_seconds;
+    if (asset_poll_accum >= 0.5) {
+      asset_poll_accum = 0.0;
+      const auto clip_assets = arcane::editor::list_animation_clip_assets(session.assets_dir());
+      textures.set_assets(arcane::editor::list_image_assets(session.assets_dir()));
+      clips.set_assets(clip_assets);
+      tilesets.set_assets(clip_assets);
+      textures.refresh();
+      clips.refresh();
+      tilesets.refresh();
+    }
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
       // HUD first (hit-tested inside the Viewport image); consumed input is hidden from gameplay actions.
@@ -639,6 +749,16 @@ int main(int argc, char** argv) {
           }
         }
       }
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Animation Clip")) {
+      ImGui::BeginDisabled(!editable);
+      draw_clip_panel(clip_panel, textures, arcane::editor::list_image_assets(session.assets_dir()),
+                      session.assets_dir(), static_cast<float>(delta_seconds), [&] {
+                        clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+                      });
+      ImGui::EndDisabled();
     }
     ImGui::End();
 

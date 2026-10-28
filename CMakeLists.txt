@@ -140,7 +140,8 @@ add_library(arcane_editor_core STATIC
   editor/editor_core/src/project_runtime.cpp
   editor/editor_core/src/scene_render.cpp
   editor/editor_core/src/tile_paint.cpp
-  editor/editor_core/src/audio_wiring.cpp)
+  editor/editor_core/src/audio_wiring.cpp
+  editor/editor_core/src/clip_authoring.cpp)
 target_include_directories(arcane_editor_core
   PUBLIC editor/editor_core/include
   PRIVATE ${TP}/json)
