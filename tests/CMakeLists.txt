@@ -18,6 +18,10 @@ target_compile_definitions(test_editor_project PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_editor_project COMMAND test_editor_project)
 
+add_executable(test_editor_anim_audio test_editor_anim_audio.cpp)
+target_link_libraries(test_editor_anim_audio PRIVATE arcane_editor_core)
+add_test(NAME test_editor_anim_audio COMMAND test_editor_anim_audio)
+
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)

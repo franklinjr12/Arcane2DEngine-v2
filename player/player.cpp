@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "arcane/audio.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/module.hpp"
@@ -11,6 +12,7 @@
 #include "arcane/renderer.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
 
@@ -100,6 +102,19 @@ int run_project(const Args& args) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
 
+  arcane::editor::AnimationClipCache clips;
+  clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
+
+  // Null backend by default (no audio device is ever opened); see docs/decisions.md.
+  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  if (!audio) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
+    return 1;
+  }
+  arcane::set_active_audio_system(&*audio);
+  arcane::editor::start_play_on_start_sounds(runtime->session().scene(), *audio,
+                                              arcane::editor::list_audio_assets(runtime->session().assets_dir()));
+
   arcane::PhysicsWorld physics;
   physics.rebuild(runtime->session().scene());
 
@@ -130,7 +145,7 @@ int run_project(const Args& args) {
 
     int fb_width = 0, fb_height = 0;
     window->framebuffer_size(fb_width, fb_height);
-    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height);
+    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     window->swap_buffers();
@@ -138,6 +153,7 @@ int run_project(const Args& args) {
     ++frame_count;
   }
 
+  arcane::set_active_audio_system(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
   return 0;
 }

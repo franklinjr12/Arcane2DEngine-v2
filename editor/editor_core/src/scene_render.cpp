@@ -24,6 +24,14 @@ void visit_scene_preorder(Scene& scene, const std::function<void(Node*)>& visit)
 
 }  // namespace
 
+void preview_animations(Scene& scene, float dt) {
+  visit_scene_preorder(scene, [&](Node* node) {
+    if (auto* animated = static_cast<AnimatedSprite*>(node->find_component("AnimatedSprite"))) {
+      animated->on_update(dt);
+    }
+  });
+}
+
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips) {
   float cam_x = 0.0f, cam_y = 0.0f, cam_zoom = 1.0f;

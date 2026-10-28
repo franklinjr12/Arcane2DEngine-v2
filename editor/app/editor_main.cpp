@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
@@ -29,6 +30,7 @@
 #include "arcane/scene.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
@@ -231,6 +233,30 @@ int main(int argc, char** argv) {
   arcane::InputActionMap input_map = session.project().input_actions;
   arcane::GlfwInputBackend input_backend(*window);
 
+  arcane::editor::AnimationClipCache clips;
+  clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+  bool preview_animations = false;
+
+  // Null backend: the editor never opens an audio device, but play_on_start
+  // and one-shot calls are still recorded. See docs/decisions.md.
+  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  if (!audio) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
+    return 1;
+  }
+  auto begin_play = [&] {
+    play_stop.play(session.scene(), registry);
+    audio->clear_commands();
+    arcane::set_active_audio_system(&*audio);
+    arcane::editor::start_play_on_start_sounds(*play_stop.active_scene(session.scene()), *audio,
+                                                arcane::editor::list_audio_assets(session.assets_dir()));
+  };
+  auto end_play = [&] {
+    play_stop.stop();
+    arcane::set_active_input_map(nullptr);
+    arcane::set_active_audio_system(nullptr);
+  };
+
   ViewportTarget viewport;
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
@@ -242,9 +268,7 @@ int main(int argc, char** argv) {
 
     window->poll_events();
 
-    if (args.play_frames.has_value() && frame_count == 0) {
-      play_stop.play(session.scene(), registry);
-    }
+    if (args.play_frames.has_value() && frame_count == 0) begin_play();
 
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
@@ -258,9 +282,10 @@ int main(int argc, char** argv) {
         ++play_tick_count;
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
-        play_stop.stop();
-        arcane::set_active_input_map(nullptr);
+        end_play();
       }
+    } else if (preview_animations) {
+      arcane::editor::preview_animations(session.scene(), static_cast<float>(delta_seconds));
     }
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -283,13 +308,12 @@ int main(int argc, char** argv) {
     if (ImGui::Begin("Toolbar")) {
       const bool playing = play_stop.mode() == arcane::editor::EditorMode::Play;
       if (!playing) {
-        if (ImGui::Button("Play")) play_stop.play(session.scene(), registry);
+        if (ImGui::Button("Play")) begin_play();
       } else {
-        if (ImGui::Button("Stop")) {
-          play_stop.stop();
-          arcane::set_active_input_map(nullptr);
-        }
+        if (ImGui::Button("Stop")) end_play();
       }
+      ImGui::SameLine();
+      ImGui::Checkbox("Preview animations", &preview_animations);
       ImGui::SameLine();
       ImGui::TextUnformatted(playing ? "Mode: Play" : "Mode: Edit");
       ImGui::SameLine();
@@ -422,6 +446,30 @@ int main(int argc, char** argv) {
           }
         }
       }
+
+      // Clips and sounds: clicking one assigns it to the selected node's
+      // AnimatedSprite / AudioSource (the Inspector then shows the id, and
+      // "Preview animations" in the Toolbar plays it in the Viewport).
+      auto assign_asset = [&](const char* header, const std::vector<arcane::editor::AssetEntry>& list,
+                               const char* component_name, auto set_id) {
+        if (!ImGui::CollapsingHeader(header)) return;
+        for (const auto& asset : list) {
+          if (!ImGui::Selectable(asset.relative_path.c_str()) || !editable || !selection.has_selection()) continue;
+          arcane::Node* selected_node = active_scene->find_node(*selection.selected());
+          if (auto* component = selected_node ? selected_node->find_component(component_name) : nullptr) {
+            set_id(component, asset.id);
+            session.mark_dirty();
+          }
+        }
+      };
+      assign_asset("Animation clips", arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                   "AnimatedSprite", [](arcane::Component* c, arcane::AssetId id) {
+                     auto* animated = static_cast<arcane::AnimatedSprite*>(c);
+                     animated->clip = id;
+                     animated->reset();
+                   });
+      assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource",
+                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::AudioSource*>(c)->clip = id; });
     }
     ImGui::End();
 
@@ -433,7 +481,7 @@ int main(int argc, char** argv) {
       viewport.ensure_size(vw, vh);
 
       viewport.bind();
-      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height());
+      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),

@@ -72,6 +72,11 @@ class AnimationClipCache {
   std::map<AssetId, std::optional<AnimationClip>> clips_;
 };
 
+// Advances every AnimatedSprite in `scene` by `dt` seconds. Play mode does
+// this through Scene::update; the editor calls it in Edit mode to preview
+// clips on the (non-ticking) edit scene.
+void preview_animations(Scene& scene, float dt);
+
 // Finds the primary Camera in the scene (if any) and renders every Sprite
 // via `renderer`, using `textures` to resolve each Sprite::texture asset id
 // to a GPU texture (sprites whose texture doesn't resolve are skipped). A
