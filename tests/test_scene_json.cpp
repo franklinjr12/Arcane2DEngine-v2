@@ -100,6 +100,7 @@ void test_project_round_trip() {
   arcane::ProjectFile project;
   project.name = "sample_project";
   project.main_scene = "scenes/main.scene.json";
+  project.hud.add(arcane::HudButton{.id = "play", .label = "Play"});
   project.input_actions.add_binding("jump", arcane::InputBinding{arcane::InputDevice::Keyboard, arcane::Keys::kSpace});
 
   const std::string json = arcane::save_project_to_json(project);
@@ -108,6 +109,7 @@ void test_project_round_trip() {
   ARCANE_ASSERT_TRUE(loaded->name == "sample_project");
   ARCANE_ASSERT_TRUE(loaded->main_scene == "scenes/main.scene.json");
   ARCANE_ASSERT_TRUE(loaded->input_actions.actions().size() == 1);
+  ARCANE_ASSERT_TRUE(loaded->hud.elements().size() == 1);
   ARCANE_ASSERT_TRUE(loaded->input_actions.actions()[0].name == "jump");
 
   auto bad_version = arcane::load_project_from_json(R"({"format_version":2,"name":"x","main_scene":"y"})");

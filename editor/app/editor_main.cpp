@@ -179,6 +179,102 @@ bool draw_property_editor(const arcane::PropertyDescriptor& descriptor, arcane::
   return changed;
 }
 
+// Inspector-style editor for the project's authored HUD: add/remove elements and
+// edit their fields. `changed` is called after any edit.
+void draw_hud_editor(arcane::Hud& hud, const std::function<void()>& changed) {
+  static constexpr const char* kAnchors[] = {"TopLeft", "Top", "TopRight", "Left", "Center",
+                                             "Right", "BottomLeft", "Bottom", "BottomRight"};
+  auto text_field = [&](const char* label, std::string& value) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%s", value.c_str());
+    if (ImGui::InputText(label, buf, sizeof(buf))) {
+      value = buf;
+      changed();
+    }
+  };
+  auto layout = [&](arcane::HudAnchor& anchor, float& ox, float& oy) {
+    int a = static_cast<int>(anchor);
+    if (ImGui::Combo("Anchor", &a, kAnchors, 9)) {
+      anchor = static_cast<arcane::HudAnchor>(a);
+      changed();
+    }
+    float off[2] = {ox, oy};
+    if (ImGui::DragFloat2("Offset", off, 0.5f)) {
+      ox = off[0];
+      oy = off[1];
+      changed();
+    }
+  };
+  auto size_field = [&](float& w, float& h) {
+    float v[2] = {w, h};
+    if (ImGui::DragFloat2("Size", v, 0.5f, 1.0f, 4000.0f)) {
+      w = v[0];
+      h = v[1];
+      changed();
+    }
+  };
+  auto color_field = [&](const char* label, arcane::Color& c) {
+    if (ImGui::ColorEdit4(label, &c.r)) changed();
+  };
+
+  if (ImGui::Button("+ Button")) {
+    hud.add(arcane::HudButton{.id = "button", .label = "Button"});
+    changed();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("+ Text")) {
+    hud.add(arcane::HudText{.text = "Text", .color = {1, 1, 1, 1}});
+    changed();
+  }
+  ImGui::SameLine();
+  if (ImGui::Button("+ Bar")) {
+    hud.add(arcane::HudProgressBar{});
+    changed();
+  }
+
+  auto& elements = hud.elements();
+  int remove = -1;
+  for (int i = 0; i < static_cast<int>(elements.size()); ++i) {
+    ImGui::PushID(i);
+    ImGui::Separator();
+    if (auto* b = std::get_if<arcane::HudButton>(&elements[i])) {
+      ImGui::Text("Button");
+      text_field("Id", b->id);
+      text_field("Label", b->label);
+      layout(b->anchor, b->offset_x, b->offset_y);
+      size_field(b->width, b->height);
+      if (ImGui::DragFloat("Font scale", &b->font_scale, 0.1f, 0.5f, 16.0f)) changed();
+      if (ImGui::Checkbox("Enabled", &b->enabled)) changed();
+      color_field("Normal", b->normal);
+      color_field("Hover", b->hover);
+      color_field("Pressed", b->pressed);
+      color_field("Disabled", b->disabled);
+      color_field("Text color", b->text_color);
+    } else if (auto* t = std::get_if<arcane::HudText>(&elements[i])) {
+      ImGui::Text("Text");
+      text_field("Text", t->text);
+      layout(t->anchor, t->offset_x, t->offset_y);
+      if (ImGui::DragFloat("Font scale", &t->font_scale, 0.1f, 0.5f, 16.0f)) changed();
+      color_field("Color", t->color);
+    } else if (auto* bar = std::get_if<arcane::HudProgressBar>(&elements[i])) {
+      ImGui::Text("Progress bar");
+      layout(bar->anchor, bar->offset_x, bar->offset_y);
+      size_field(bar->width, bar->height);
+      if (ImGui::SliderFloat("Fraction", &bar->fraction, 0.0f, 1.0f)) changed();
+      color_field("Fill", bar->fill);
+      color_field("Background", bar->background);
+    } else {
+      ImGui::TextUnformatted("Image (runtime only)");
+    }
+    if (ImGui::Button("Remove")) remove = i;
+    ImGui::PopID();
+  }
+  if (remove >= 0) {
+    elements.erase(elements.begin() + remove);
+    changed();
+  }
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -248,7 +344,10 @@ int main(int argc, char** argv) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
     return 1;
   }
-  arcane::Hud hud;  // only live (and drawn) while Play is running
+  arcane::Hud hud;  // only live (and drawn) while Play is running; copied from the project HUD
+  arcane::HudInput hud_input;
+  arcane::Vec2 viewport_origin{};  // top-left of the Viewport image in window coords (previous frame)
+  int viewport_w = 1, viewport_h = 1;
 
   // Null backend: the editor never opens an audio device, but play_on_start
   // and one-shot calls are still recorded. See docs/decisions.md.
@@ -261,7 +360,8 @@ int main(int argc, char** argv) {
     play_stop.play(session.scene(), registry);
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
-    hud.clear();
+    hud = session.project().hud;
+    hud_input = arcane::HudInput{};
     arcane::set_active_hud(&hud);
     arcane::editor::start_play_on_start_sounds(*play_stop.active_scene(session.scene()), *audio,
                                                 arcane::editor::list_audio_assets(session.assets_dir()));
@@ -291,7 +391,9 @@ int main(int argc, char** argv) {
     previous_time = now;
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
-      input_map.update(input_backend);
+      // HUD first (hit-tested inside the Viewport image); consumed input is hidden from gameplay actions.
+      hud_input.update(hud, input_backend, viewport_w, viewport_h, viewport_origin);
+      input_map.update(hud_input.gameplay_backend());
       arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
@@ -520,6 +622,13 @@ int main(int argc, char** argv) {
     }
     ImGui::End();
 
+    if (ImGui::Begin("HUD")) {
+      ImGui::BeginDisabled(!editable);
+      draw_hud_editor(session.mutable_project().hud, [&] { session.mark_dirty(); });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
     ImGui::SetNextWindowSize(ImVec2(640, 480), ImGuiCond_FirstUseEver);
     if (ImGui::Begin("Viewport")) {
       ImVec2 size = ImGui::GetContentRegionAvail();
@@ -536,6 +645,10 @@ int main(int argc, char** argv) {
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),
                     ImVec2(static_cast<float>(viewport.width()), static_cast<float>(viewport.height())),
                     ImVec2(0, 1), ImVec2(1, 0));
+      const ImVec2 image_min = ImGui::GetItemRectMin();
+      viewport_origin = {image_min.x, image_min.y};
+      viewport_w = viewport.width();
+      viewport_h = viewport.height();
 
       if (paint_mode && paint_map && ImGui::IsItemHovered() &&
           (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {

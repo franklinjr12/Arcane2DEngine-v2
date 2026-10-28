@@ -113,8 +113,9 @@ int run_project(const Args& args) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
     return 1;
   }
-  arcane::Hud hud;
+  arcane::Hud hud = runtime->session().project().hud;  // authored layout; gameplay may add more
   arcane::set_active_hud(&hud);
+  arcane::HudInput hud_input;
 
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
@@ -150,7 +151,11 @@ int run_project(const Args& args) {
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
 
-    input_map.update(input_backend);
+    // HUD sees pointer/confirm input first; what it consumes is hidden from gameplay actions.
+    int fb_width = 0, fb_height = 0;
+    window->framebuffer_size(fb_width, fb_height);
+    hud_input.update(hud, input_backend, fb_width, fb_height);
+    input_map.update(hud_input.gameplay_backend());
 
     const int steps = timestep.advance(delta_seconds);
     arcane::Scene& scene = runtime->session().scene();
@@ -160,8 +165,6 @@ int run_project(const Args& args) {
       physics.step(scene, static_cast<float>(timestep.fixed_delta_seconds()));
     }
 
-    int fb_width = 0, fb_height = 0;
-    window->framebuffer_size(fb_width, fb_height);
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
                                 &tilesets);
     if (runtime->module_api()) runtime->module_api()->on_render();
