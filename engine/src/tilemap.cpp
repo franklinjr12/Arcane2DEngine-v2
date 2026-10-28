@@ -97,7 +97,8 @@ UvRect tile_uv(const Tileset& tileset, int tile_id) noexcept {
   const int row = index / tileset.columns;
   const float cw = 1.0f / static_cast<float>(tileset.columns);
   const float ch = 1.0f / static_cast<float>(rows);
-  return UvRect{col * cw, row * ch, (col + 1) * cw, (row + 1) * ch};
+  return UvRect{static_cast<float>(col) * cw, static_cast<float>(row) * ch, static_cast<float>(col + 1) * cw,
+                static_cast<float>(row + 1) * ch};
 }
 
 int Tilemap::tile_at(int layer, int cx, int cy) const noexcept {
@@ -156,7 +157,8 @@ std::vector<TileRect> Tilemap::solid_rects() const {
       }
       const int start = cx;
       while (cx < width && cell_solid(cx, cy)) ++cx;
-      rects.push_back(TileRect{start * tile_width, cy * tile_height, (cx - start) * tile_width, tile_height});
+      rects.push_back(TileRect{static_cast<float>(start) * tile_width, static_cast<float>(cy) * tile_height,
+                              static_cast<float>(cx - start) * tile_width, tile_height});
     }
   }
   return rects;

@@ -20,7 +20,8 @@ UvRect grid_cell_uv(const SheetGrid& grid, int sheet_width, int sheet_height, in
   const int y = grid.margin + row * (cell_h + grid.spacing);
   const float w = static_cast<float>(sheet_width);
   const float h = static_cast<float>(sheet_height);
-  return UvRect{x / w, y / h, (x + cell_w) / w, (y + cell_h) / h};
+  const auto f = [](int v) { return static_cast<float>(v); };
+  return UvRect{f(x) / w, f(y) / h, f(x + cell_w) / w, f(y + cell_h) / h};
 }
 
 void ClipDraft::add_range(int first, int last) {

@@ -77,7 +77,7 @@ class ARCANE_API Tilemap : public Component {
   // Same for a world position, given the owning node's world transform.
   bool world_to_cell(const WorldTransform2D& node_world, Vec2 world, int& cx, int& cy) const noexcept;
   // Top-left corner of a cell in local pixels.
-  Vec2 cell_to_local(int cx, int cy) const noexcept { return {cx * tile_width, cy * tile_height}; }
+  Vec2 cell_to_local(int cx, int cy) const noexcept { return {static_cast<float>(cx) * tile_width, static_cast<float>(cy) * tile_height}; }
 
   bool is_solid(int tile_id) const;
   // Static collision boxes: horizontal runs of solid cells (any layer) merged per row.

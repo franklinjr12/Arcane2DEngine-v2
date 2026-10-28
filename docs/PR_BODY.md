@@ -193,3 +193,7 @@ Input actions support four gamepads, player routing and analog axes with a resca
 **UNTESTED on native Windows/MSVC** — FE8 input, GLFW gamepad polling and editor Input Map panel; the mingw build is cross-compiled only.
 
 FE9 adds tileset authoring and four-neighbor terrain painting with undo. UNTESTED on native Windows/MSVC; editor interaction requires manual verification.
+
+## FE12 notes
+- mingw-built exes were NOT run (wine not installed). UNTESTED on native Windows/MSVC.
+- New `header_check` target compiles every public header standalone; int→float conversions fixed (MSVC C4244 at /W4). UNTESTED on native Windows/MSVC.
