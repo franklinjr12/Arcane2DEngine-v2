@@ -148,6 +148,15 @@ if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(editor/app)
 endif()
 
+# Export: `cmake --install <build> --prefix <dir> --component game` puts the
+# player and engine library side by side (rpath $ORIGIN on Linux, DLL next to
+# the exe on Windows). scripts/export-game.sh adds the project and module.
+if(ARCANE_BUILD_SAMPLES)
+  install(TARGETS arcane_player arcane_runtime
+    RUNTIME DESTINATION . COMPONENT game
+    LIBRARY DESTINATION . COMPONENT game)
+endif()
+
 if(ARCANE_BUILD_TESTS)
   add_subdirectory(tests)
 endif()

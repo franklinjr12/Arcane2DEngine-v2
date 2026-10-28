@@ -2,6 +2,7 @@
 /build/
 /build-*/
 /.build-and-test/
+/.build-export*/
 compile_commands.json
 
 # arcane_editor's docking layout, written next to whatever project is open

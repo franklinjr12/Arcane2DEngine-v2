@@ -91,3 +91,12 @@ if(ARCANE_BUILD_SAMPLES)
   set_tests_properties(test_player_project_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
+
+# Exports the sample game to a temp dir and runs the exported player there.
+if(ARCANE_BUILD_SAMPLES AND UNIX)
+  add_test(NAME test_export_game
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR})
+  set_tests_properties(test_export_game PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+endif()
