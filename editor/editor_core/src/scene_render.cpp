@@ -24,7 +24,8 @@ void visit_scene_preorder(Scene& scene, const std::function<void(Node*)>& visit)
 
 }  // namespace
 
-void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height) {
+void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
+                   AnimationClipCache* clips) {
   float cam_x = 0.0f, cam_y = 0.0f, cam_zoom = 1.0f;
   visit_scene_preorder(scene, [&](Node* node) {
     auto* camera = static_cast<Camera*>(node->find_component("Camera"));
@@ -44,6 +45,17 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     if (!sprite) return;
     Texture* texture = textures.get(sprite->texture);
     if (!texture) return;
+
+    UvRect uv{};
+    if (clips) {
+      auto* animated = static_cast<AnimatedSprite*>(node->find_component("AnimatedSprite"));
+      if (const AnimationClip* clip = animated ? clips->get(animated->clip) : nullptr) {
+        if (!clip->frames.empty()) {
+          uv = clip->frames[select_frame_index(*clip, animated->elapsed_seconds())].uv;
+        }
+      }
+    }
+
     const auto world = node->world_transform();
     renderer.draw(SpriteDraw{
         .texture = texture,
@@ -53,6 +65,7 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         .height = sprite->height * world.scale.y,
         .rotation_radians = world.rotation_radians,
         .tint = sprite->tint,
+        .uv = uv,
     });
   });
 
