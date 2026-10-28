@@ -45,6 +45,7 @@ std::expected<AudioSystem, std::string> AudioSystem::create(bool null_backend) {
   return system;
 }
 
+AudioSystem::AudioSystem() = default;
 AudioSystem::AudioSystem(AudioSystem&&) noexcept = default;
 AudioSystem& AudioSystem::operator=(AudioSystem&&) noexcept = default;
 AudioSystem::~AudioSystem() = default;

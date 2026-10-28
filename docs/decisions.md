@@ -62,3 +62,8 @@ input-action-map integration.
 - clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) — passes.
 - `x86_64-w64-mingw32-g++` cross-compile (`cmake/toolchains/mingw-w64-x86_64.cmake`), build-only, tests not run.
 - All three driven by `scripts/build-and-test.sh`, which also runs `ctest` under `xvfb-run -a` for the two configs that run tests.
+
+## MSVC: pimpl classes need out-of-line constructors (delegated)
+
+Private `Window()`/`AudioSystem()` ctors are defined in the .cpp (where `Impl` is complete), and `/wd4251 /wd4275` are
+added for MSVC: the engine DLL and its clients always share one toolchain/CRT, so those dll-interface warnings are noise.

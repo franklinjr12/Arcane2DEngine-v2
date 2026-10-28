@@ -93,3 +93,15 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 - **UNTESTED on native Windows/MSVC** — physics and input have only run on
   Linux (gcc, clang+ASan/UBSan); the mingw target is cross-compiled and
   build-verified only, never executed on real Windows.
+
+## Windows / MSVC build fix (PR #3 failed on Franklin's MSVC 14.51 build)
+
+- Cause: `Window() = default;` (window.hpp) and `AudioSystem() = default;` (audio.hpp) were
+  inline defaulted private constructors of dllexport classes holding `std::unique_ptr<Impl>`.
+  MSVC instantiates the `unique_ptr` destructor (for exception cleanup) in every TU that sees
+  the header, where `Impl` is incomplete (`C2027`/`C2338`, first hit in `input.cpp`). GCC/Clang/mingw
+  only define the ctor if it is odr-used.
+- Fix: both ctors are declared in the header and defined `= default` in window.cpp / audio.cpp
+  (same pattern as 56d605a). Also silenced noisy C4251/C4275 in CMake for MSVC.
+- Verified: gcc Debug, clang ASan/UBSan, mingw cross-build all green.
+- **UNTESTED on native Windows/MSVC** — Franklin please re-run on Windows.

@@ -68,7 +68,7 @@ class ARCANE_API AudioSystem {
   void clear_commands() noexcept;
 
  private:
-  AudioSystem() = default;
+  AudioSystem();
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

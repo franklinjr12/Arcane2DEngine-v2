@@ -37,7 +37,7 @@ option(ARCANE_BUILD_TESTS "Build CTest unit/integration tests" ON)
 option(ARCANE_BUILD_SAMPLES "Build sample_game and arcane_player" ON)
 
 if(MSVC)
-  add_compile_options(/W4)
+  add_compile_options(/W4 /wd4251 /wd4275)  # std members in exported classes: engine + clients share one CRT
   if(ARCANE_WARNINGS_AS_ERRORS)
     add_compile_options(/WX)
   endif()
