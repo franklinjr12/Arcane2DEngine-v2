@@ -129,6 +129,8 @@ class ARCANE_API MaskedInputBackend : public InputBackend {
   void mask(InputDevice device, int code);
   bool is_down(InputDevice device, int code) const override;
   Vec2 mouse_position() const override { return inner_ ? inner_->mouse_position() : Vec2{}; }
+  bool gamepad_button(int pad, int code) const override;
+  float gamepad_axis(int pad, int axis) const override;
 
  private:
   const InputBackend* inner_ = nullptr;

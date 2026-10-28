@@ -240,6 +240,16 @@ bool MaskedInputBackend::is_down(InputDevice device, int code) const {
   return inner_->is_down(device, code);
 }
 
+bool MaskedInputBackend::gamepad_button(int pad, int code) const {
+  if (!inner_ || masked_.contains(pack_binding({InputDevice::GamepadButton, code}))) return false;
+  return inner_->gamepad_button(pad, code);
+}
+
+float MaskedInputBackend::gamepad_axis(int pad, int axis) const {
+  if (!inner_ || masked_.contains(pack_binding({InputDevice::GamepadAxis, axis}))) return 0.0f;
+  return inner_->gamepad_axis(pad, axis);
+}
+
 bool HudInput::any_down(const InputBackend& backend, const std::vector<InputBinding>& bindings) {
   return std::any_of(bindings.begin(), bindings.end(),
                      [&](const InputBinding& b) { return backend.is_down(b.device, b.code); });
