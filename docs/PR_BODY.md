@@ -1,11 +1,23 @@
-# Foundation D — physics, input, animation, audio, HUD
+# PR #3 — Windows build fix, Foundation D (physics, input, animation, audio, HUD, export), Foundation E part 1 (tilemaps)
 
-## Summary
+## Summary (PR #3 now targets `master`)
 
-Stacked on `engine-nightly-2026-10-25` (Foundation C: editor + `--project`
-player, draft PR #2). Adds Box2D-backed 2D physics and a serializable
-input action map, both wired into Play mode (editor) and the standalone
-player.
+PR #3 was rebased onto `master` (e5591b2, which contains merged PR #2 /
+Foundation C). It now contains, in order:
+
+| Job | Scope | Status |
+| --- | ----- | ------ |
+| WINFIX | Fix for Franklin's MSVC 14.51 build failure (out-of-line `Window`/`AudioSystem` ctors). See "Windows / MSVC build fix" below. | Done (gcc, clang+san, mingw green; native MSVC UNTESTED by us) |
+| FD1 | Box2D physics (`RigidBody2D`, `Collider2D`, `PhysicsWorld`), serializable input action map, Play-mode and player wiring, sample `PlayerController`. | Done |
+| FD2 | Animation clips + render-time frame selection, null-backend audio (`AudioSource`, `play_on_start`), editor clip/sound assignment and animation preview, HUD (text, image, progress bar, anchor layout) + `HudRenderer`. Includes the previously uncommitted editor_core WIP (`7d1696f`), now verified and finished. | Done, with gaps listed under "Known gaps" |
+| FD3 | `scripts/export-game.sh` standalone export; `arcane_player` finds `<exe dir>/game`. | Done (Linux run-tested; mingw export built, not run) |
+| FE1 | Tilemaps: `Tileset` asset, `Tilemap` component, culled batched rendering, solid-tile static colliders, editor Tilemap panel + paint/erase. | Done (GL tile drawing and editor paint UI compile-checked only) |
+
+Physics, input, animation, audio, HUD and tilemaps are all engine
+features that are wired into both the editor (Play mode) and the
+standalone player. Foundation D/E details follow.
+
+### Foundation D — physics, input, animation, audio, HUD (FD1/FD2)
 
 - **Physics** (`engine/include/arcane/physics.hpp`, `engine/src/physics.cpp`):
   `RigidBody2D` (body type, linear velocity, gravity scale, fixed rotation)
@@ -71,13 +83,14 @@ xvfb-run -a scripts/build-and-test.sh /tmp/a2d-check
 xvfb-run -a build-gcc/bin/arcane_player --project samples/sample_project
 ```
 
-## Test results (this PR, run under `xvfb-run -a`)
+## Test results (this PR, run under `xvfb-run -a`, via `scripts/build-and-test.sh`)
 
 | Config | Result |
 | ------ | ------ |
-| gcc 14 Debug | **PASS** — 18/18 tests (4 `gl`-labeled, run for real via Xvfb/Mesa llvmpipe) |
-| clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) | **PASS** — 18/18 tests |
+| gcc 14 Debug | **PASS** — 25/25 tests (4+ `gl`-labeled, run for real via Xvfb/Mesa llvmpipe) |
+| clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) | **PASS** — 25/25 tests |
 | mingw-w64 cross-compile | **PASS** (build only) — not run on real Windows |
+| native MSVC 14.51 | **UNTESTED by us** (no MSVC on the build box); Franklin's last log predates the WINFIX commit |
 
 New tests this PR: `test_physics_headless` (bare Box2D v3 C API sanity,
 no engine code), `test_physics_components` (falling body lands on a
@@ -133,3 +146,42 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 - `Tileset` JSON asset + `Tilemap` component (layers, grid, `tile_at`/`set_tile`, cell<->world coords, JSON via a `layers` string property), batched culled rendering through `render_scene` (`TilesetCache`), optional static Box2D colliders from `solid_tiles` (merged runs), editor Tilemap panel + viewport paint/erase. Decision 31.
 - Tests: `test_tilemap` (tileset JSON/UV, coords, scene round-trip, rect merging, collider stops a falling body), `test_editor_tilemap` (viewport->world, paint/erase, TilesetCache).
 - Not covered by an automated test: the actual GL drawing of tiles and the editor paint UI (compile-checked only). UNTESTED on native Windows/MSVC.
+
+## Known issues and gaps (as of this PR's head)
+
+- HUD: no buttons, focus or input routing; text is ASCII only (`stb_easy_font`).
+- Audio: null backend only in editor and player (decision 27); no real device has been opened.
+- Animation: clip cache does not hot-reload; the Assets panel image list re-scans per frame, clips/sounds only at startup (decision 28).
+- Input: digital bindings only (no analog axes), single gamepad (`GLFW_JOYSTICK_1`), no rebinding UI.
+- Tilemaps: no tileset editor, auto-tiling, or GL test for tile drawing; the editor paint UI is compile-checked only.
+- Export: no installer/packaging; mingw output is built but never run (not under Wine or Windows).
+- Physics: decision 3 says the screen/Box2D y-flip is confined to `PhysicsWorld`, but the code does not apply one (positions pass through unchanged, and row 31 says so). Gravity direction on screen is therefore unverified. Needs a decision and a test before anyone relies on it. Not fixed in this wrap-up.
+
+## Next steps
+
+- Franklin: re-run the Windows MSVC build on this PR's head and send the log; that is the only way to close the UNTESTED items below.
+- Add a GL test for tile drawing and a headless test for the editor paint tool.
+- Rebinding UI for the input action map; HUD buttons and input routing.
+- Consider the mingw export under Wine as an optional smoke test (not in CI; no CI files are allowed in this repo).
+
+## UNTESTED on native Windows/MSVC
+
+Everything below has been built or cross-compiled (mingw) and, where it
+has tests, run only on Linux (gcc and clang+ASan/UBSan under Xvfb):
+
+- Windows/MSVC build fix (WINFIX) — compile only verified on the Linux toolchains and mingw.
+- Physics (Box2D world, contacts, Play/Stop isolation with physics).
+- Input action map with the GLFW backend (real device input).
+- Animation clips and render-time frame selection.
+- Audio null backend (the null backend itself is headless, but the MSVC build of `miniaudio` is not checked).
+- HUD text, image, progress bar and layout rendering.
+- Standalone export (`scripts/export-game.sh`), exe-relative project discovery via `GetModuleFileNameW`, and the mingw export folder (never run).
+- Tilemaps: the component, colliders, culled rendering, and the editor Tilemap panel and paint tool.
+
+## Delegated decisions (PR #3 as a whole)
+
+Decisions with no explicit instruction, all logged in `docs/decisions.md`:
+rows 3, 24–31 (physics scope and units, input action map storage and
+live binding, input backend abstraction, null audio backend, editor
+animation preview, HUD text and layout, export layout, tilemap format),
+plus the MSVC pimpl out-of-line constructor pattern (WINFIX section below).
