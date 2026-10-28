@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_tilemap)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -18,9 +18,17 @@ target_compile_definitions(test_editor_project PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_editor_project COMMAND test_editor_project)
 
+add_executable(test_editor_anim_audio test_editor_anim_audio.cpp)
+target_link_libraries(test_editor_anim_audio PRIVATE arcane_editor_core)
+add_test(NAME test_editor_anim_audio COMMAND test_editor_anim_audio)
+
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
+
+add_executable(test_physics_components test_physics_components.cpp)
+target_link_libraries(test_physics_components PRIVATE arcane_runtime)
+add_test(NAME test_physics_components COMMAND test_physics_components)
 
 add_executable(test_audio_null test_audio_null.cpp)
 target_link_libraries(test_audio_null PRIVATE miniaudio)
@@ -83,3 +91,16 @@ if(ARCANE_BUILD_SAMPLES)
   set_tests_properties(test_player_project_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
+
+# Exports the sample game to a temp dir and runs the exported player there.
+if(ARCANE_BUILD_SAMPLES AND UNIX)
+  add_test(NAME test_export_game
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR})
+  set_tests_properties(test_export_game PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+endif()
+
+add_executable(test_editor_tilemap test_editor_tilemap.cpp)
+target_link_libraries(test_editor_tilemap PRIVATE arcane_editor_core)
+add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)

@@ -64,6 +64,8 @@ std::expected<Window, std::string> Window::create(const WindowConfig& config) {
   return window;
 }
 
+Window::Window() = default;
+
 Window::Window(Window&& other) noexcept : impl_(std::move(other.impl_)) {}
 
 Window& Window::operator=(Window&& other) noexcept {

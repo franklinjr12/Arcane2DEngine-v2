@@ -1,16 +1,26 @@
 #include <chrono>
+#include <filesystem>
 #include <cstdlib>
 #include <optional>
 #include <string>
 #include <vector>
 
+#include "arcane/audio.hpp"
+#include "arcane/hud.hpp"
+#include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/module.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
+
+#if defined(_WIN32)
+#include <windows.h>
+#endif
 
 namespace {
 constexpr std::string_view kLogCategory = "player";
@@ -98,6 +108,37 @@ int run_project(const Args& args) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
 
+  auto hud_renderer = arcane::HudRenderer::create();
+  if (!hud_renderer) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
+    return 1;
+  }
+  arcane::Hud hud;
+  arcane::set_active_hud(&hud);
+
+  arcane::editor::AnimationClipCache clips;
+  clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
+
+  arcane::editor::TilesetCache tilesets;
+  tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
+
+  // Null backend by default (no audio device is ever opened); see docs/decisions.md.
+  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  if (!audio) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
+    return 1;
+  }
+  arcane::set_active_audio_system(&*audio);
+  arcane::editor::start_play_on_start_sounds(runtime->session().scene(), *audio,
+                                              arcane::editor::list_audio_assets(runtime->session().assets_dir()));
+
+  arcane::PhysicsWorld physics;
+  physics.rebuild(runtime->session().scene());
+
+  arcane::InputActionMap input_map = runtime->session().project().input_actions;
+  arcane::GlfwInputBackend input_backend(*window);
+  arcane::set_active_input_map(&input_map);
+
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
@@ -109,16 +150,20 @@ int run_project(const Args& args) {
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
 
+    input_map.update(input_backend);
+
     const int steps = timestep.advance(delta_seconds);
     arcane::Scene& scene = runtime->session().scene();
     for (int i = 0; i < steps; ++i) {
       if (runtime->module_api()) runtime->module_api()->on_update(static_cast<float>(timestep.fixed_delta_seconds()));
       scene.update(static_cast<float>(timestep.fixed_delta_seconds()));
+      physics.step(scene, static_cast<float>(timestep.fixed_delta_seconds()));
     }
 
     int fb_width = 0, fb_height = 0;
     window->framebuffer_size(fb_width, fb_height);
-    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height);
+    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
+                                &tilesets);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     window->swap_buffers();
@@ -126,14 +171,36 @@ int run_project(const Args& args) {
     ++frame_count;
   }
 
+  arcane::set_active_audio_system(nullptr);
+  arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
   return 0;
+}
+
+// Directory holding the running executable, so an exported game finds its
+// project without depending on the current working directory.
+std::filesystem::path executable_dir() {
+#if defined(_WIN32)
+  wchar_t buffer[MAX_PATH];
+  const DWORD n = GetModuleFileNameW(nullptr, buffer, MAX_PATH);
+  if (n == 0 || n >= MAX_PATH) return {};
+  return std::filesystem::path(buffer).parent_path();
+#else
+  std::error_code ec;
+  const auto exe = std::filesystem::read_symlink("/proc/self/exe", ec);
+  return ec ? std::filesystem::path{} : exe.parent_path();
+#endif
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  const Args args = parse_args(argc, argv);
+  Args args = parse_args(argc, argv);
+  // Exported layout: <exe dir>/game/project.json is run when no --project is given.
+  if (args.project_dir.empty()) {
+    const auto exported = executable_dir() / "game";
+    if (std::filesystem::exists(exported / "project.json")) args.project_dir = exported.string();
+  }
   if (!args.project_dir.empty()) {
     return run_project(args);
   }

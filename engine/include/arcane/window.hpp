@@ -42,7 +42,7 @@ class ARCANE_API Window {
   void* native_handle() const noexcept;
 
  private:
-  Window() = default;
+  Window();
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

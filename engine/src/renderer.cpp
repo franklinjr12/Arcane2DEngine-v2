@@ -331,6 +331,8 @@ void SpriteRenderer::draw(const SpriteDraw& sprite) {
   }
 }
 
+void SpriteRenderer::flush() { impl_->flush(); }
+
 void SpriteRenderer::end_frame() { impl_->flush(); }
 
 Color SpriteRenderer::read_pixel(int x, int y) const {

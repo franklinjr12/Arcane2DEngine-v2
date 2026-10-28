@@ -28,4 +28,13 @@ struct AssetEntry {
 // Returns an empty vector if assets_dir doesn't exist.
 std::vector<AssetEntry> list_image_assets(const std::filesystem::path& assets_dir);
 
+// Same as list_image_assets, but for animation clip assets: any .json file
+// under assets_dir (clips are authored as their own JSON files, see
+// arcane/animation.hpp's save_clip_to_json/load_clip_from_json).
+std::vector<AssetEntry> list_animation_clip_assets(const std::filesystem::path& assets_dir);
+
+// Same as list_image_assets, but for sound files (.wav/.ogg/.mp3/.flac)
+// backing AudioSource::clip / AudioSystem::play.
+std::vector<AssetEntry> list_audio_assets(const std::filesystem::path& assets_dir);
+
 }  // namespace arcane::editor

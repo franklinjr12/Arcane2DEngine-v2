@@ -6,6 +6,13 @@
 #include <glad/gl.h>
 
 #include <GLFW/glfw3.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX  // glfw3native.h pulls <windows.h>; keep std::min/max usable
+#endif
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#endif
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
@@ -21,13 +28,18 @@
 #include <string>
 #include <vector>
 
+#include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/hud.hpp"
+#include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/node.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/tilemap.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
@@ -194,6 +206,17 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  if (!glad_glGenFramebuffers) {
+    ARCANE_LOG_ERROR(kLogCategory, "OpenGL loader state is unavailable in the editor");
+    return 1;
+  }
+#ifdef _WIN32
+  if (!glfwGetWin32Window(static_cast<GLFWwindow*>(window->native_handle()))) {
+    ARCANE_LOG_ERROR(kLogCategory, "GLFW instance mismatch: window created by a different GLFW copy");
+    return 1;
+  }
+#endif
+
   auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.module_override);
   if (!runtime) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
@@ -223,6 +246,51 @@ int main(int argc, char** argv) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(session.assets_dir()));
 
+  // Input is only "live" (affects active_input_map()) while Play is
+  // running -- the editor's Edit-mode UI handles its own keyboard/mouse
+  // input (ImGui) and must not have gameplay actions firing underneath
+  // it. See docs/decisions.md.
+  arcane::InputActionMap input_map = session.project().input_actions;
+  arcane::GlfwInputBackend input_backend(*window);
+
+  arcane::editor::AnimationClipCache clips;
+  clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+  arcane::editor::TilesetCache tilesets;
+  tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+  bool preview_animations = false;
+  bool paint_mode = false;
+  int paint_layer = 0;
+  int paint_tile = 1;  // 0 erases
+  auto hud_renderer = arcane::HudRenderer::create();
+  if (!hud_renderer) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
+    return 1;
+  }
+  arcane::Hud hud;  // only live (and drawn) while Play is running
+
+  // Null backend: the editor never opens an audio device, but play_on_start
+  // and one-shot calls are still recorded. See docs/decisions.md.
+  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  if (!audio) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
+    return 1;
+  }
+  auto begin_play = [&] {
+    play_stop.play(session.scene(), registry);
+    audio->clear_commands();
+    arcane::set_active_audio_system(&*audio);
+    hud.clear();
+    arcane::set_active_hud(&hud);
+    arcane::editor::start_play_on_start_sounds(*play_stop.active_scene(session.scene()), *audio,
+                                                arcane::editor::list_audio_assets(session.assets_dir()));
+  };
+  auto end_play = [&] {
+    play_stop.stop();
+    arcane::set_active_input_map(nullptr);
+    arcane::set_active_audio_system(nullptr);
+    arcane::set_active_hud(nullptr);
+  };
+
   ViewportTarget viewport;
   arcane::FixedTimestep timestep(60.0);
   auto previous_time = std::chrono::steady_clock::now();
@@ -234,22 +302,24 @@ int main(int argc, char** argv) {
 
     window->poll_events();
 
-    if (args.play_frames.has_value() && frame_count == 0) {
-      play_stop.play(session.scene(), registry);
-    }
+    if (args.play_frames.has_value() && frame_count == 0) begin_play();
 
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
+      input_map.update(input_backend);
+      arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
         ++play_tick_count;
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
-        play_stop.stop();
+        end_play();
       }
+    } else if (preview_animations) {
+      arcane::editor::preview_animations(session.scene(), static_cast<float>(delta_seconds));
     }
 
     ImGui_ImplOpenGL3_NewFrame();
@@ -272,10 +342,12 @@ int main(int argc, char** argv) {
     if (ImGui::Begin("Toolbar")) {
       const bool playing = play_stop.mode() == arcane::editor::EditorMode::Play;
       if (!playing) {
-        if (ImGui::Button("Play")) play_stop.play(session.scene(), registry);
+        if (ImGui::Button("Play")) begin_play();
       } else {
-        if (ImGui::Button("Stop")) play_stop.stop();
+        if (ImGui::Button("Stop")) end_play();
       }
+      ImGui::SameLine();
+      ImGui::Checkbox("Preview animations", &preview_animations);
       ImGui::SameLine();
       ImGui::TextUnformatted(playing ? "Mode: Play" : "Mode: Edit");
       ImGui::SameLine();
@@ -408,6 +480,61 @@ int main(int argc, char** argv) {
           }
         }
       }
+
+      // Clips and sounds: clicking one assigns it to the selected node's
+      // AnimatedSprite / AudioSource (the Inspector then shows the id, and
+      // "Preview animations" in the Toolbar plays it in the Viewport).
+      auto assign_asset = [&](const char* header, const std::vector<arcane::editor::AssetEntry>& list,
+                               const char* component_name, auto set_id) {
+        if (!ImGui::CollapsingHeader(header)) return;
+        for (const auto& asset : list) {
+          if (!ImGui::Selectable(asset.relative_path.c_str()) || !editable || !selection.has_selection()) continue;
+          arcane::Node* selected_node = active_scene->find_node(*selection.selected());
+          if (auto* component = selected_node ? selected_node->find_component(component_name) : nullptr) {
+            set_id(component, asset.id);
+            session.mark_dirty();
+          }
+        }
+      };
+      assign_asset("Animation clips", arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                   "AnimatedSprite", [](arcane::Component* c, arcane::AssetId id) {
+                     auto* animated = static_cast<arcane::AnimatedSprite*>(c);
+                     animated->clip = id;
+                     animated->reset();
+                   });
+      assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap",
+                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::Tilemap*>(c)->tileset = id; });
+      assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource",
+                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::AudioSource*>(c)->clip = id; });
+    }
+    ImGui::End();
+
+    arcane::Node* paint_node = (editable && selection.has_selection()) ? active_scene->find_node(*selection.selected())
+                                                                         : nullptr;
+    auto* paint_map = paint_node ? static_cast<arcane::Tilemap*>(paint_node->find_component("Tilemap")) : nullptr;
+    if (ImGui::Begin("Tilemap")) {
+      if (!paint_map) {
+        ImGui::TextUnformatted("Select a node with a Tilemap component (Edit mode).");
+      } else {
+        ImGui::Checkbox("Paint in viewport (left = paint, right = erase)", &paint_mode);
+        if (paint_map->layer_count() == 0 || ImGui::Button("Add layer")) {
+          paint_map->add_layer();
+          session.mark_dirty();
+        }
+        ImGui::InputInt("Layer", &paint_layer);
+        paint_layer = std::clamp(paint_layer, 0, std::max(0, paint_map->layer_count() - 1));
+        const arcane::Tileset* tileset = tilesets.get(paint_map->tileset);
+        if (!tileset) {
+          ImGui::TextUnformatted("Assign a tileset from Assets > Tilesets.");
+        } else {
+          if (ImGui::Selectable("0: erase", paint_tile == 0)) paint_tile = 0;
+          for (int id = 1; id <= tileset->tile_count; ++id) {
+            const std::string label = std::to_string(id);
+            if (ImGui::Selectable(label.c_str(), paint_tile == id, 0, ImVec2(28, 0))) paint_tile = id;
+            if (id % 8 != 0 && id < tileset->tile_count) ImGui::SameLine();
+          }
+        }
+      }
     }
     ImGui::End();
 
@@ -419,12 +546,27 @@ int main(int argc, char** argv) {
       viewport.ensure_size(vw, vh);
 
       viewport.bind();
-      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height());
+      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
+                                  editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud,
+                                  &tilesets);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),
                     ImVec2(static_cast<float>(viewport.width()), static_cast<float>(viewport.height())),
                     ImVec2(0, 1), ImVec2(1, 0));
+
+      if (paint_mode && paint_map && ImGui::IsItemHovered() &&
+          (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
+        const ImVec2 origin = ImGui::GetItemRectMin();
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const arcane::Vec2 world =
+            arcane::editor::viewport_to_world(*active_scene, mouse.x - origin.x, mouse.y - origin.y, viewport.width(),
+                                              viewport.height());
+        const int id = ImGui::IsMouseDown(ImGuiMouseButton_Right) ? 0 : paint_tile;
+        if (arcane::editor::paint_tile_at_world(*paint_map, paint_node->world_transform(), world, paint_layer, id)) {
+          session.mark_dirty();
+        }
+      }
     }
     ImGui::End();
 

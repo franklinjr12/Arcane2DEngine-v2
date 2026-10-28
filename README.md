@@ -124,6 +124,29 @@ mode have only been exercised on Linux (gcc, clang+ASan/UBSan) and
 build-only cross-compiled with mingw tonight — nobody has run either on
 real Windows yet.
 
+## Physics and input
+
+Add a `RigidBody2D`(+ optional `Collider2D`) component pair to a node (via
+the Inspector's "Add Component", or directly in scene JSON) to give it
+Box2D-backed simulation while Play is running: `PhysicsWorld` steps the
+world every fixed tick, syncs the node's `Transform2D` back, and calls
+`Component::on_contact_begin`/`on_contact_end` on shapes that start/stop
+touching. All fields stay in pixels (32 px = 1 m internally, see
+`docs/decisions.md`); the editor's authored scene in Edit mode is never
+simulated.
+
+An `InputActionMap` (named actions bound to keyboard/mouse/gamepad codes,
+`held`/`pressed`/`released` queries) is configured per-project as the
+`input_actions` object in `project.json` — see
+`samples/sample_project/project.json` and `sample_game`'s
+`PlayerController` for a worked example. Gameplay code reaches the live
+map via `arcane::active_input_map()`, which is non-null only while Play is
+actually running.
+
+**UNTESTED on native Windows/MSVC**: physics and input have only been
+exercised on Linux (gcc, clang+ASan/UBSan) and build-only cross-compiled
+with mingw tonight.
+
 ## Build and test — Windows (untested on real hardware)
 
 Developer PowerShell / Visual Studio:

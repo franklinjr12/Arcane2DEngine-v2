@@ -3,8 +3,12 @@
 #include <fstream>
 #include <sstream>
 
+#include "arcane/animation.hpp"
+#include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/project.hpp"
+#include "arcane/tilemap.hpp"
 
 namespace arcane::editor {
 
@@ -12,6 +16,10 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
                                                                   const std::string& module_override) {
   ProjectRuntime runtime;
   register_builtin_components(runtime.registry_);
+  register_physics_components(runtime.registry_);
+  register_animation_components(runtime.registry_);
+  register_audio_components(runtime.registry_);
+  register_tilemap_components(runtime.registry_);
 
   std::optional<std::filesystem::path> module_path;
   if (!module_override.empty()) {

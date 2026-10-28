@@ -37,7 +37,7 @@ option(ARCANE_BUILD_TESTS "Build CTest unit/integration tests" ON)
 option(ARCANE_BUILD_SAMPLES "Build sample_game and arcane_player" ON)
 
 if(MSVC)
-  add_compile_options(/W4)
+  add_compile_options(/W4 /wd4251 /wd4275)  # std members in exported classes: engine + clients share one CRT
   if(ARCANE_WARNINGS_AS_ERRORS)
     add_compile_options(/WX)
   endif()
@@ -64,6 +64,7 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+set(GLFW_LIBRARY_TYPE SHARED CACHE STRING "" FORCE)
 add_subdirectory(${TP}/glfw EXCLUDE_FROM_ALL)
 
 set(BUILD_SHARED_LIBS OFF)
@@ -73,7 +74,8 @@ set(BOX2D_DOCS OFF CACHE BOOL "" FORCE)
 set(BOX2D_BENCHMARKS OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TP}/box2d EXCLUDE_FROM_ALL)
 
-add_library(glad STATIC ${TP}/glad/src/gl.c)
+add_library(glad SHARED ${TP}/glad/src/gl.c)
+target_compile_definitions(glad PUBLIC GLAD_API_CALL_EXPORT PRIVATE GLAD_API_CALL_EXPORT_BUILD)
 target_include_directories(glad PUBLIC ${TP}/glad/include)
 
 add_library(imgui STATIC
@@ -111,13 +113,21 @@ add_library(arcane_runtime SHARED
   engine/src/component_registry.cpp
   engine/src/property.cpp
   engine/src/project.cpp
-  engine/src/builtin_components.cpp)
+  engine/src/builtin_components.cpp
+  engine/src/physics.cpp
+  engine/src/input.cpp
+  engine/src/animation.cpp
+  engine/src/audio.cpp
+  engine/src/hud.cpp
+  engine/src/tilemap.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
+# stb headers define unused static helpers; keep their warnings out of our build.
+target_include_directories(arcane_runtime SYSTEM PRIVATE ${TP}/stb)
 target_link_libraries(arcane_runtime
   PUBLIC glfw glad
-  PRIVATE ${CMAKE_DL_LIBS})
+  PRIVATE ${CMAKE_DL_LIBS} box2d miniaudio)
 target_compile_definitions(arcane_runtime PRIVATE ARCANE_BUILD_RUNTIME)
 set_target_properties(arcane_runtime PROPERTIES
   CXX_VISIBILITY_PRESET hidden
@@ -128,7 +138,8 @@ add_library(arcane_editor_core STATIC
   editor/editor_core/src/project_session.cpp
   editor/editor_core/src/asset_catalog.cpp
   editor/editor_core/src/project_runtime.cpp
-  editor/editor_core/src/scene_render.cpp)
+  editor/editor_core/src/scene_render.cpp
+  editor/editor_core/src/audio_wiring.cpp)
 target_include_directories(arcane_editor_core
   PUBLIC editor/editor_core/include
   PRIVATE ${TP}/json)
@@ -138,6 +149,15 @@ if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
   add_subdirectory(player)
   add_subdirectory(editor/app)
+endif()
+
+# Export: `cmake --install <build> --prefix <dir> --component game` puts the
+# player and engine library side by side (rpath $ORIGIN on Linux, DLL next to
+# the exe on Windows). scripts/export-game.sh adds the project and module.
+if(ARCANE_BUILD_SAMPLES)
+  install(TARGETS arcane_player arcane_runtime glfw glad
+    RUNTIME DESTINATION . COMPONENT game
+    LIBRARY DESTINATION . COMPONENT game)
 endif()
 
 if(ARCANE_BUILD_TESTS)
