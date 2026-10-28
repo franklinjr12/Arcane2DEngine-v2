@@ -11,7 +11,7 @@
 #   --project    project dir to export (default: samples/sample_project)
 #   --module     game module file (default: the sample_game build output)
 # Result: OUTDIR/arcane_player[.exe], OUTDIR/libarcane_runtime.so|arcane_runtime.dll,
-#         OUTDIR/game/{project.json,scenes,assets,<module>}
+#         shared GLFW and glad libraries, OUTDIR/game/{project.json,scenes,assets,<module>}
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

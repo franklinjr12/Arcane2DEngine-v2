@@ -137,6 +137,8 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 
 ## Standalone export (Foundation D part 3)
 
+The build and game export place the shared GLFW and glad libraries beside the executables and runtime, so all modules use the same window and OpenGL loader state.
+
 - `scripts/export-game.sh [--mingw] [--project DIR] [--module FILE] OUT` produces a self-contained folder (player + engine lib + module + project). Run `OUT/arcane_player` (add `--frames 30 --hidden` for a smoke run); it finds `OUT/game` relative to the executable.
 - `test_export_game` (Linux, gl label) exports the sample from the build tree and runs the exported player from another cwd. The mingw export builds and collects DLLs but is not run.
 - UNTESTED on native Windows/MSVC: the export (MSVC would need `scripts/export-game.sh` under bash and the `GetModuleFileNameW` path discovery), and the mingw-exported folder has not been run under Wine/Windows.

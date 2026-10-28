@@ -64,6 +64,7 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_INSTALL OFF CACHE BOOL "" FORCE)
+set(GLFW_LIBRARY_TYPE SHARED CACHE STRING "" FORCE)
 add_subdirectory(${TP}/glfw EXCLUDE_FROM_ALL)
 
 set(BUILD_SHARED_LIBS OFF)
@@ -73,7 +74,8 @@ set(BOX2D_DOCS OFF CACHE BOOL "" FORCE)
 set(BOX2D_BENCHMARKS OFF CACHE BOOL "" FORCE)
 add_subdirectory(${TP}/box2d EXCLUDE_FROM_ALL)
 
-add_library(glad STATIC ${TP}/glad/src/gl.c)
+add_library(glad SHARED ${TP}/glad/src/gl.c)
+target_compile_definitions(glad PUBLIC GLAD_API_CALL_EXPORT PRIVATE GLAD_API_CALL_EXPORT_BUILD)
 target_include_directories(glad PUBLIC ${TP}/glad/include)
 
 add_library(imgui STATIC
@@ -153,7 +155,7 @@ endif()
 # player and engine library side by side (rpath $ORIGIN on Linux, DLL next to
 # the exe on Windows). scripts/export-game.sh adds the project and module.
 if(ARCANE_BUILD_SAMPLES)
-  install(TARGETS arcane_player arcane_runtime
+  install(TARGETS arcane_player arcane_runtime glfw glad
     RUNTIME DESTINATION . COMPONENT game
     LIBRARY DESTINATION . COMPONENT game)
 endif()
