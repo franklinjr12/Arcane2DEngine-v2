@@ -111,3 +111,9 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 |---|---|---|
 | 44 | Analog and player routing | An action selects gamepad 0–3 or any (-1); bindings can override that selection. Axis bindings expose a signed direction, rescaled per-axis deadzone and independent button threshold; `value` remains continuous below the threshold. GLFW triggers are normalized to 0 at rest and 1 at full press. Version 1 JSON gains optional fields, so old maps retain their behavior. |
 | 45 | Rebinding and authoring | `InputRebinder` ignores inputs held on its first update, detects overlapping physical bindings, and offers replace, allow or cancel. The editor Input Map panel edits raw codes and settings in the project, disabled during Play; Play copies the authored map at startup. HUD masks apply to all pads for consumed gamepad buttons. |
+
+## FE9 — Tileset editing and terrain painting (delegated)
+
+| # | Topic | Decision |
+|---|---|---|
+| 46 | Terrain rules | Tileset version 1 gains optional per-tile solid/terrain metadata and 16 tile IDs per terrain, indexed by cardinal neighbors (north 1, east 2, south 4, west 8). Tile IDs identify terrain, avoiding a second map grid; incomplete rules leave existing neighbors unchanged and prevent painting a cell whose mask has no valid tile. Terrain edits and neighbor changes share a paint undo stroke. The existing Tilemap solid_tiles collision setting remains independent. |

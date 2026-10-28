@@ -37,6 +37,10 @@ std::string save_tileset_to_json(const Tileset& tileset) {
   j["tile_height"] = tileset.tile_height;
   j["columns"] = tileset.columns;
   j["tile_count"] = tileset.tile_count;
+  j["tiles"] = nlohmann::json::array();
+  for (const auto& tile : tileset.tiles) j["tiles"].push_back({{"solid", tile.solid}, {"terrain", tile.terrain}});
+  j["terrains"] = nlohmann::json::array();
+  for (const auto& rule : tileset.terrains) j["terrains"].push_back({{"terrain", rule.terrain}, {"tiles", rule.tiles}});
   return j.dump(2);
 }
 
@@ -55,10 +59,34 @@ std::expected<Tileset, std::string> load_tileset_from_json(const std::string& te
     if (t.tile_width <= 0 || t.tile_height <= 0 || t.columns <= 0 || t.tile_count <= 0) {
       return std::unexpected("tileset: tile size, columns and tile_count must be positive");
     }
+    if (j.contains("tiles")) {
+      for (const auto& item : j.at("tiles")) t.tiles.push_back({item.value("solid", false), item.value("terrain", 0)});
+    }
+    if (j.contains("terrains")) {
+      for (const auto& item : j.at("terrains")) {
+        TerrainRule rule; rule.terrain = item.at("terrain").get<int>();
+        rule.tiles = item.at("tiles").get<std::array<int, 16>>();
+        t.terrains.push_back(rule);
+      }
+    }
     return t;
   } catch (const nlohmann::json::exception& ex) {
     return std::unexpected(std::format("tileset: {}", ex.what()));
   }
+}
+
+int Tileset::terrain_of(int tile_id) const noexcept {
+  if (tile_id <= 0 || tile_id > tile_count || static_cast<std::size_t>(tile_id) > tiles.size()) return 0;
+  return tiles[static_cast<std::size_t>(tile_id - 1)].terrain;
+}
+
+int Tileset::tile_for_mask(int terrain, int mask) const noexcept {
+  if (terrain <= 0 || mask < 0 || mask >= 16) return 0;
+  for (const auto& rule : terrains) if (rule.terrain == terrain) {
+    const int id = rule.tiles[static_cast<std::size_t>(mask)];
+    return id > 0 && id <= tile_count && terrain_of(id) == terrain ? id : 0;
+  }
+  return 0;
 }
 
 UvRect tile_uv(const Tileset& tileset, int tile_id) noexcept {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <expected>
 #include <string>
 #include <vector>
@@ -18,12 +19,19 @@ class ComponentRegistry;
 // regular grid of equally sized tiles. Tile ids are 1-based (id 0 = empty
 // cell), counted left-to-right, top-to-bottom. UVs come from the grid
 // (columns x rows) alone, so no texture size is needed to compute them.
+struct TileInfo { bool solid = false; int terrain = 0; };
+struct TerrainRule { int terrain = 0; std::array<int, 16> tiles{}; };
+
 struct Tileset {
   AssetId texture = 0;
   int tile_width = 32;   // size of one tile in the texture, in texels
   int tile_height = 32;
   int columns = 1;
   int tile_count = 1;
+  std::vector<TileInfo> tiles;  // index = tile id - 1; missing entries use defaults
+  std::vector<TerrainRule> terrains;
+  ARCANE_API int terrain_of(int tile_id) const noexcept;
+  ARCANE_API int tile_for_mask(int terrain, int mask) const noexcept;
 };
 
 ARCANE_API std::string save_tileset_to_json(const Tileset& tileset);

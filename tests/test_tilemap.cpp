@@ -16,9 +16,15 @@ void test_tileset_json_round_trip_and_uv() {
   t.tile_height = 16;
   t.columns = 4;
   t.tile_count = 8;
+  t.tiles.resize(8); t.tiles[1] = {true, 3};
+  arcane::TerrainRule rule; rule.terrain = 3; rule.tiles[5] = 2; t.terrains.push_back(rule);
   auto loaded = arcane::load_tileset_from_json(arcane::save_tileset_to_json(t));
   ARCANE_ASSERT_TRUE(loaded.has_value());
   ARCANE_ASSERT_TRUE(loaded->texture == 77 && loaded->columns == 4 && loaded->tile_count == 8);
+
+  ARCANE_ASSERT_TRUE(loaded->tiles[1].solid && loaded->terrain_of(2) == 3 && loaded->tile_for_mask(3, 5) == 2);
+  auto old = arcane::load_tileset_from_json(R"({"format_version":1,"texture":1,"tile_width":16,"tile_height":16,"columns":2,"tile_count":4})");
+  ARCANE_ASSERT_TRUE(old && old->tiles.empty() && old->terrains.empty());
 
   const auto uv = arcane::tile_uv(*loaded, 6);  // index 5 -> col 1, row 1 of a 4x2 grid
   ARCANE_ASSERT_TRUE(uv.u0 == 0.25f && uv.u1 == 0.5f && uv.v0 == 0.5f && uv.v1 == 1.0f);

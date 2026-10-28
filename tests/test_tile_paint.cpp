@@ -144,9 +144,30 @@ void test_dirty_flag_follows_changes() {
   std::filesystem::remove_all(dir);
 }
 
+void test_terrain_paint() {
+  arcane::Tileset set; set.tile_count = 16; set.tiles.resize(16);
+  arcane::TerrainRule rule; rule.terrain = 1;
+  for (int i = 0; i < 16; ++i) { set.tiles[i].terrain = 1; rule.tiles[i] = i + 1; }
+  set.terrains.push_back(rule);
+  arcane::Tilemap map; map.width = 3; map.height = 3; map.add_layer();
+  arcane::WorldTransform2D w; TilePaintTool tool;
+  ARCANE_ASSERT_TRUE(tool.terrain_brush(map, set, w, {33, 33}, 1, false));
+  ARCANE_ASSERT_TRUE(map.tile_at(0, 1, 1) == 1);
+  ARCANE_ASSERT_TRUE(tool.terrain_brush(map, set, w, {65, 33}, 1, false));
+  ARCANE_ASSERT_TRUE(map.tile_at(0, 1, 1) == 3 && map.tile_at(0, 2, 1) == 9);
+  ARCANE_ASSERT_TRUE(TilePaintTool::terrain_mask(map, set, 0, 1, 1, 1) == 2);
+  ARCANE_ASSERT_TRUE(tool.terrain_brush(map, set, w, {65, 33}, 1, true));
+  ARCANE_ASSERT_TRUE(map.tile_at(0, 1, 1) == 1 && map.tile_at(0, 2, 1) == 0);
+  ARCANE_ASSERT_TRUE(tool.undo(map));
+  ARCANE_ASSERT_TRUE(map.tile_at(0, 1, 1) == 3 && map.tile_at(0, 2, 1) == 9);
+  ARCANE_ASSERT_TRUE(tool.redo(map));
+  ARCANE_ASSERT_TRUE(map.tile_at(0, 1, 1) == 1 && map.tile_at(0, 2, 1) == 0);
+}
+
 }  // namespace
 
 int main() {
+  test_terrain_paint();
   test_screen_to_tile_under_pan_and_zoom();
   test_brush_erase_and_bounds();
   test_fill_rect();

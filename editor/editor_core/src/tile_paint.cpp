@@ -40,6 +40,36 @@ bool TilePaintTool::set_cell(Tilemap& map, int cx, int cy, int id) {
   return true;
 }
 
+int TilePaintTool::terrain_mask(const Tilemap& map, const Tileset& tileset, int layer, int cx, int cy, int terrain) {
+  if (terrain <= 0) return 0;
+  int mask = 0;
+  const int dx[] = {0, 1, 0, -1}, dy[] = {-1, 0, 1, 0};
+  for (int i = 0; i < 4; ++i)
+    if (tileset.terrain_of(map.tile_at(layer, cx + dx[i], cy + dy[i])) == terrain) mask |= 1 << i;
+  return mask;
+}
+
+bool TilePaintTool::terrain_brush(Tilemap& map, const Tileset& tileset, const WorldTransform2D& world_transform,
+                                  Vec2 world, int terrain, bool erase) {
+  int cx = 0, cy = 0;
+  if (!map.world_to_cell(world_transform, world, cx, cy) || layer < 0 || layer >= map.layer_count()) return false;
+  const int replacement = erase ? 0 : tileset.tile_for_mask(terrain, terrain_mask(map, tileset, layer, cx, cy, terrain));
+  if (!erase && !replacement) return false;
+  const bool own = !stroke_open_;
+  if (own) begin_stroke();
+  bool changed = set_cell(map, cx, cy, replacement);
+  const int dx[] = {0, 1, 0, -1}, dy[] = {-1, 0, 1, 0};
+  for (int i = 0; i < 4; ++i) {
+    int x = cx + dx[i], y = cy + dy[i];
+    int adjacent = tileset.terrain_of(map.tile_at(layer, x, y));
+    if (!adjacent) continue;
+    int id = tileset.tile_for_mask(adjacent, terrain_mask(map, tileset, layer, x, y, adjacent));
+    if (id) changed |= set_cell(map, x, y, id);
+  }
+  if (own) end_stroke();
+  return changed;
+}
+
 bool TilePaintTool::brush(Tilemap& map, const WorldTransform2D& node_world, Vec2 world, bool erase) {
   int cx = 0, cy = 0;
   if (!map.world_to_cell(node_world, world, cx, cy)) return false;

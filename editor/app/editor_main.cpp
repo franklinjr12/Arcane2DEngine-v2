@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
+#include <fstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -436,6 +437,14 @@ int main(int argc, char** argv) {
   double asset_poll_accum = 0.0;
   bool preview_particles = false;
   bool paint_mode = false;
+  bool terrain_mode = false;
+  int paint_terrain = 1;
+  arcane::Tileset tileset_draft;
+  std::filesystem::path tileset_path;
+  std::string tileset_message;
+  char tileset_name[128] = "tileset.json";
+  int selected_tile = 1;
+  int rule_terrain = 1;
   bool paint_rect = false;  // drag a rectangle instead of a freehand brush
   arcane::editor::TilePaintTool paint_tool;
   std::optional<arcane::Vec2> rect_start;  // world position where the rectangle drag began
@@ -728,7 +737,9 @@ int main(int argc, char** argv) {
         ImGui::TextUnformatted("Select a node with a Tilemap component (Edit mode).");
       } else {
         ImGui::Checkbox("Paint in viewport (left = paint, right = erase)", &paint_mode);
-        ImGui::Checkbox("Fill rectangle (drag)", &paint_rect);
+        ImGui::Checkbox("Terrain brush", &terrain_mode);
+        if (terrain_mode) { ImGui::InputInt("Terrain id", &paint_terrain); paint_terrain = std::max(1, paint_terrain); }
+        else ImGui::Checkbox("Fill rectangle (drag)", &paint_rect);
         if (ImGui::Button("Undo") && paint_tool.undo(*paint_map)) session.mark_dirty();
         ImGui::SameLine();
         if (ImGui::Button("Redo") && paint_tool.redo(*paint_map)) session.mark_dirty();
@@ -750,6 +761,75 @@ int main(int argc, char** argv) {
           }
         }
       }
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Tileset")) {
+      ImGui::BeginDisabled(!editable);
+      ImGui::InputText("New filename", tileset_name, sizeof(tileset_name));
+      if (ImGui::Button("New tileset")) {
+        const std::filesystem::path name(tileset_name);
+        if (!name.empty() && name == name.filename() && name.extension() == ".json") {
+          tileset_path = session.assets_dir() / name; tileset_draft = {}; selected_tile = 1;
+          tileset_message = "New tileset; save to create it.";
+        } else tileset_message = "Use a simple .json filename.";
+      }
+      if (ImGui::TreeNode("Open tileset")) {
+        for (const auto& asset : arcane::editor::list_animation_clip_assets(session.assets_dir())) {
+          if (ImGui::Selectable(asset.relative_path.c_str())) {
+            std::ifstream in(asset.absolute_path);
+            std::string content((std::istreambuf_iterator<char>(in)), {});
+            auto loaded = arcane::load_tileset_from_json(content);
+            if (loaded) { tileset_draft = *loaded; tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear(); }
+            else tileset_message = loaded.error();
+          }
+        }
+        ImGui::TreePop();
+      }
+      if (!tileset_path.empty()) {
+        ImGui::Text("File: %s", tileset_path.filename().string().c_str());
+        if (ImGui::BeginCombo("Texture", std::to_string(tileset_draft.texture).c_str())) {
+          for (const auto& asset : arcane::editor::list_image_assets(session.assets_dir()))
+            if (ImGui::Selectable(asset.relative_path.c_str(), asset.id == tileset_draft.texture)) tileset_draft.texture = asset.id;
+          ImGui::EndCombo();
+        }
+        ImGui::InputInt("Tile width (pixels)", &tileset_draft.tile_width);
+        ImGui::InputInt("Tile height (pixels)", &tileset_draft.tile_height);
+        ImGui::InputInt("Columns", &tileset_draft.columns);
+        ImGui::InputInt("Tile count", &tileset_draft.tile_count);
+        tileset_draft.tile_width = std::max(1, tileset_draft.tile_width);
+        tileset_draft.tile_height = std::max(1, tileset_draft.tile_height);
+        tileset_draft.columns = std::max(1, tileset_draft.columns);
+        tileset_draft.tile_count = std::clamp(tileset_draft.tile_count, 1, 4096);
+        ImGui::InputInt("Tile id", &selected_tile);
+        selected_tile = std::clamp(selected_tile, 1, tileset_draft.tile_count);
+        tileset_draft.tiles.resize(static_cast<std::size_t>(tileset_draft.tile_count));
+        auto& info = tileset_draft.tiles[static_cast<std::size_t>(selected_tile - 1)];
+        ImGui::Checkbox("Solid", &info.solid);
+        ImGui::InputInt("Tile terrain (0 = none)", &info.terrain);
+        info.terrain = std::max(0, info.terrain);
+        ImGui::InputInt("Rule terrain", &rule_terrain); rule_terrain = std::max(1, rule_terrain);
+        auto rule = std::find_if(tileset_draft.terrains.begin(), tileset_draft.terrains.end(), [&](const auto& r) { return r.terrain == rule_terrain; });
+        if (rule == tileset_draft.terrains.end() && ImGui::Button("Add terrain rule")) {
+          tileset_draft.terrains.push_back({}); tileset_draft.terrains.back().terrain = rule_terrain;
+          rule = std::prev(tileset_draft.terrains.end());
+        }
+        if (rule != tileset_draft.terrains.end() && ImGui::TreeNode("Mask rules (N=1 E=2 S=4 W=8)")) {
+          for (int mask = 0; mask < 16; ++mask) {
+            ImGui::PushID(mask); ImGui::InputInt(std::to_string(mask).c_str(), &rule->tiles[static_cast<std::size_t>(mask)]); ImGui::PopID();
+          }
+          ImGui::TreePop();
+        }
+        if (ImGui::Button("Save tileset")) {
+          std::ofstream out(tileset_path, std::ios::binary | std::ios::trunc);
+          out << arcane::save_tileset_to_json(tileset_draft); out.close();
+          tileset_message = out ? "Saved." : "Could not save tileset.";
+          tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+          tilesets.refresh();
+        }
+      }
+      ImGui::TextWrapped("%s", tileset_message.c_str());
+      ImGui::EndDisabled();
     }
     ImGui::End();
 
@@ -855,14 +935,16 @@ int main(int argc, char** argv) {
                                               viewport.height());
         const auto node_world = paint_node->world_transform();
         if (ImGui::IsItemHovered() && (left || right)) {
-          if (paint_rect) {
+          if (paint_rect && !terrain_mode) {
             if (!rect_start) {
               rect_start = world;
               rect_erase = right;
             }
           } else {
             paint_tool.begin_stroke();
-            if (paint_tool.brush(*paint_map, node_world, world, right)) session.mark_dirty();
+            const auto* brush_set = terrain_mode ? tilesets.get(paint_map->tileset) : nullptr;
+            if (terrain_mode ? (brush_set && paint_tool.terrain_brush(*paint_map, *brush_set, node_world, world, paint_terrain, right))
+                             : paint_tool.brush(*paint_map, node_world, world, right)) session.mark_dirty();
           }
         } else if (!left && !right) {
           if (rect_start) {

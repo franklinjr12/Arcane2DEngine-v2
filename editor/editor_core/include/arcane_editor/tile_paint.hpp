@@ -27,6 +27,8 @@ class TilePaintTool {
   void end_stroke();
 
   // Paints (or erases) the cell under `world`.
+  bool terrain_brush(Tilemap& map, const Tileset& tileset, const WorldTransform2D& node_world, Vec2 world, int terrain, bool erase);
+  static int terrain_mask(const Tilemap& map, const Tileset& tileset, int layer, int cx, int cy, int terrain);
   bool brush(Tilemap& map, const WorldTransform2D& node_world, Vec2 world, bool erase);
   // Fills the rectangle of cells spanned by two world points (inclusive,
   // clamped to the grid; nothing if it lies entirely outside).

@@ -191,3 +191,5 @@ plus the MSVC pimpl out-of-line constructor pattern (WINFIX section below).
 Input actions support four gamepads, player routing and analog axes with a rescaled deadzone and button threshold. Runtime rebinding listens for new input and detects conflicts; the editor Input Map panel edits the project map. Existing version 1 project input maps remain readable. Headless tests cover axis math, player routing, rebinding and project serialization. The panel edits numeric device codes; its widgets and physical devices have not been manually exercised.
 
 **UNTESTED on native Windows/MSVC** — FE8 input, GLFW gamepad polling and editor Input Map panel; the mingw build is cross-compiled only.
+
+FE9 adds tileset authoring and four-neighbor terrain painting with undo. UNTESTED on native Windows/MSVC; editor interaction requires manual verification.
