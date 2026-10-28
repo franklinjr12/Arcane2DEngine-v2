@@ -135,7 +135,63 @@
           }
         }
       ]
+    },
+    {
+      "id": 11,
+      "name": "Sparks",
+      "parent_id": 0,
+      "position": [
+        200.0,
+        180.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 12,
+          "type": "ParticleEmitter",
+          "properties": {
+            "emitting": true,
+            "rate": 30.0,
+            "burst_count": 0,
+            "lifetime_min": 0.6,
+            "lifetime_max": 1.0,
+            "speed_min": 30.0,
+            "speed_max": 70.0,
+            "angle_min": 250.0,
+            "angle_max": 290.0,
+            "gravity": [
+              0.0,
+              120.0
+            ],
+            "start_color": [
+              1.0,
+              0.8,
+              0.2,
+              1.0
+            ],
+            "end_color": [
+              1.0,
+              0.2,
+              0.0,
+              0.0
+            ],
+            "start_size": 6.0,
+            "end_size": 1.0,
+            "texture": 0,
+            "atlas_columns": 1,
+            "atlas_rows": 1,
+            "frame": 0,
+            "world_space": true,
+            "max_particles": 128,
+            "seed": 7
+          }
+        }
+      ]
     }
   ],
-  "next_id": 11
+  "next_id": 13
 }

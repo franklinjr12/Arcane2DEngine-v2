@@ -54,6 +54,34 @@ void draw_tilemap(const Tilemap& map, const WorldTransform2D& world, const Tiles
   }
 }
 
+void draw_particles(const ParticleEmitter& emitter, const WorldTransform2D& world, TextureCache& textures,
+                    SpriteRenderer& renderer) {
+  if (emitter.particles().empty()) return;
+  Texture* texture = emitter.texture != 0 ? textures.get(emitter.texture) : nullptr;
+  UvRect uv{};
+  if (texture) {
+    uv = emitter.frame_uv();
+  } else {
+    texture = textures.white();
+  }
+  if (!texture) return;
+  for (const Particle& p : emitter.particles()) {
+    const float t = std::clamp(p.age / p.lifetime, 0.0f, 1.0f);
+    const float size = emitter.start_size + (emitter.end_size - emitter.start_size) * t;
+    const Color& a = emitter.start_color;
+    const Color& b = emitter.end_color;
+    renderer.draw(SpriteDraw{
+        .texture = texture,
+        .x = p.position.x + (emitter.world_space ? 0.0f : world.position.x),
+        .y = p.position.y + (emitter.world_space ? 0.0f : world.position.y),
+        .width = size,
+        .height = size,
+        .tint = Color{a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t},
+        .uv = uv,
+    });
+  }
+}
+
 }  // namespace
 
 CameraView find_primary_camera(Scene& scene) {
@@ -90,6 +118,22 @@ void preview_animations(Scene& scene, float dt) {
   });
 }
 
+void preview_particles(Scene& scene, float dt) {
+  visit_scene_preorder(scene, [&](Node* node) {
+    if (auto* emitter = static_cast<ParticleEmitter*>(node->find_component("ParticleEmitter"))) {
+      emitter->on_update(dt);
+    }
+  });
+}
+
+void restart_particles(Scene& scene) {
+  visit_scene_preorder(scene, [&](Node* node) {
+    if (auto* emitter = static_cast<ParticleEmitter*>(node->find_component("ParticleEmitter"))) {
+      emitter->restart();
+    }
+  });
+}
+
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets) {
   const CameraView cam = find_primary_camera(scene);
@@ -107,6 +151,9 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         draw_tilemap(*map, node->world_transform(), *tileset, *tile_texture, renderer, cam_x, cam_y,
                      static_cast<float>(width) / cam_zoom, static_cast<float>(height) / cam_zoom);
       }
+    }
+    if (auto* emitter = static_cast<ParticleEmitter*>(node->find_component("ParticleEmitter"))) {
+      draw_particles(*emitter, node->world_transform(), textures, renderer);
     }
     auto* sprite = static_cast<Sprite*>(node->find_component("Sprite"));
     if (!sprite) return;

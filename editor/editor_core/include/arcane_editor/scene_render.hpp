@@ -8,6 +8,7 @@
 
 #include "arcane/animation.hpp"
 #include "arcane/hud.hpp"
+#include "arcane/particles.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
@@ -25,6 +26,16 @@ class TextureCache {
 
   // Registers an already-created texture under `id` (tests, generated textures).
   void put(AssetId id, Texture texture) { textures_.insert_or_assign(id, std::move(texture)); }
+
+  // 1x1 white texture for untextured particles; created on first use (needs a GL context).
+  Texture* white() {
+    if (!white_) {
+      const unsigned char pixel[4] = {255, 255, 255, 255};
+      auto texture = Texture::load_from_pixels(pixel, 1, 1, TextureFilter::Nearest);
+      if (texture) white_ = std::move(*texture);
+    }
+    return white_ ? &*white_ : nullptr;
+  }
 
   Texture* get(AssetId id) {
     if (id == 0) return nullptr;
@@ -44,6 +55,7 @@ class TextureCache {
  private:
   std::vector<AssetEntry> assets_;
   std::map<AssetId, Texture> textures_;
+  std::optional<Texture> white_;
 };
 
 // Resolves and caches the AnimationClip assets backing AnimatedSprite::clip
@@ -125,6 +137,12 @@ bool paint_tile_at_world(Tilemap& map, const WorldTransform2D& node_world, Vec2 
 // clips on the (non-ticking) edit scene.
 void preview_animations(Scene& scene, float dt);
 
+// Same for every ParticleEmitter (Edit-mode preview; particle state is runtime-only, so this never dirties the scene).
+// Play mode simulates them through Scene::update.
+void preview_particles(Scene& scene, float dt);
+// Clears and restarts every emitter, e.g. when the preview is toggled on or Play ends.
+void restart_particles(Scene& scene);
+
 // Finds the primary Camera in the scene (if any) and renders every Sprite
 // via `renderer`, using `textures` to resolve each Sprite::texture asset id
 // to a GPU texture (sprites whose texture doesn't resolve are skipped). A
@@ -136,6 +154,9 @@ void preview_animations(Scene& scene, float dt);
 // Every Tilemap node is drawn layer by layer (only the cells inside the
 // camera view) using the tileset from `tilesets`; skipped if `tilesets` is
 // null or the tileset or its texture doesn't resolve.
+//
+// Every ParticleEmitter is drawn (before the node's own Sprite, so the sprite covers them) as one sprite-batch quad per particle (texture or
+// white square, color/size lerped over life).
 //
 // If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
 // space after the world, in the same frame.

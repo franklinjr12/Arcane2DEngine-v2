@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_hud_input test_tilemap)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_hud_input test_tilemap test_particles)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -82,6 +82,12 @@ add_executable(test_tilemap_gl test_tilemap_gl.cpp)
 target_link_libraries(test_tilemap_gl PRIVATE arcane_editor_core)
 add_test(NAME test_tilemap_gl COMMAND test_tilemap_gl)
 set_tests_properties(test_tilemap_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_particles_gl test_particles_gl.cpp)
+target_link_libraries(test_particles_gl PRIVATE arcane_editor_core)
+add_test(NAME test_particles_gl COMMAND test_particles_gl)
+set_tests_properties(test_particles_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
 if(ARCANE_BUILD_SAMPLES)

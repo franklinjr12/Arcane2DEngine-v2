@@ -337,6 +337,7 @@ int main(int argc, char** argv) {
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
+  bool preview_particles = false;
   bool paint_mode = false;
   bool paint_rect = false;  // drag a rectangle instead of a freehand brush
   arcane::editor::TilePaintTool paint_tool;
@@ -408,6 +409,9 @@ int main(int argc, char** argv) {
     } else if (preview_animations) {
       arcane::editor::preview_animations(session.scene(), static_cast<float>(delta_seconds));
     }
+    if (preview_particles && play_stop.mode() != arcane::editor::EditorMode::Play) {
+      arcane::editor::preview_particles(session.scene(), static_cast<float>(delta_seconds));
+    }
 
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -435,6 +439,10 @@ int main(int argc, char** argv) {
       }
       ImGui::SameLine();
       ImGui::Checkbox("Preview animations", &preview_animations);
+      ImGui::SameLine();
+      if (ImGui::Checkbox("Preview particles", &preview_particles)) {
+        arcane::editor::restart_particles(session.scene());  // clears stale particles on off, fresh start on on
+      }
       ImGui::SameLine();
       ImGui::TextUnformatted(playing ? "Mode: Play" : "Mode: Edit");
       ImGui::SameLine();
@@ -561,8 +569,13 @@ int main(int argc, char** argv) {
           arcane::Node* selected_node = active_scene->find_node(*selection.selected());
           auto* sprite = selected_node ? static_cast<arcane::Sprite*>(selected_node->find_component("Sprite"))
                                         : nullptr;
+          auto* emitter = selected_node ? static_cast<arcane::ParticleEmitter*>(selected_node->find_component("ParticleEmitter"))
+                                        : nullptr;
           if (sprite) {
             sprite->texture = asset.id;
+            session.mark_dirty();
+          } else if (emitter) {
+            emitter->texture = asset.id;
             session.mark_dirty();
           }
         }
