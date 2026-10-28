@@ -107,7 +107,7 @@ void test_tilemap_collider_stops_falling_body() {
   arcane::Scene scene;
 
   arcane::Node* node = scene.create_node("ground");
-  node->local_transform().position = {0.0f, -32.0f};
+  node->local_transform().position = {0.0f, 200.0f};
   auto* map = static_cast<arcane::Tilemap*>(scene.add_component(node, "Tilemap", registry));
   map->width = 10;
   map->height = 1;
@@ -117,7 +117,7 @@ void test_tilemap_collider_stops_falling_body() {
   for (int x = 0; x < 10; ++x) map->set_tile(0, x, 0, 1);
 
   arcane::Node* ball = scene.create_node("ball");
-  ball->local_transform().position = {100.0f, 200.0f};
+  ball->local_transform().position = {100.0f, 0.0f};
   scene.add_component(ball, "RigidBody2D", registry);
   auto* collider = static_cast<arcane::Collider2D*>(scene.add_component(ball, "Collider2D", registry));
   collider->width = 16.0f;
@@ -127,10 +127,10 @@ void test_tilemap_collider_stops_falling_body() {
   world.rebuild(scene);
   for (int i = 0; i < 240; ++i) world.step(scene, 1.0f / 60.0f);
 
-  // Physics is passed through as-is (y-up, see decisions.md row 3): the tile box spans y in [-32, 0] around the
-  // node origin at y=-32, so a 16 px ball comes to rest with its center near y=8 instead of free-falling.
+  // Screen space is y-down: the tile row spans y in [200, 232], so a 16 px ball comes to rest on top of it with
+  // its center near y=192 instead of falling through.
   const float y = ball->local_transform().position.y;
-  ARCANE_ASSERT_TRUE(y > 0.0f && y < 20.0f);
+  ARCANE_ASSERT_TRUE(y > 180.0f && y < 200.0f);
 }
 
 }  // namespace

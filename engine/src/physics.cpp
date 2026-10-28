@@ -19,8 +19,10 @@ constexpr float kPxPerM = PhysicsWorld::kPixelsPerMeter;
 
 float px_to_m(float px) { return px / kPxPerM; }
 float m_to_px(float m) { return m * kPxPerM; }
-b2Vec2 px_to_m(const Vec2& v) { return b2Vec2{px_to_m(v.x), px_to_m(v.y)}; }
-Vec2 m_to_px(const b2Vec2& v) { return Vec2{m_to_px(v.x), m_to_px(v.y)}; }
+// Engine space is y-down (screen); Box2D is y-up. The flip lives only here: every position, offset, velocity and
+// angle crossing the boundary has y (or the rotation sign) negated.
+b2Vec2 px_to_m(const Vec2& v) { return b2Vec2{px_to_m(v.x), -px_to_m(v.y)}; }
+Vec2 m_to_px(const b2Vec2& v) { return Vec2{m_to_px(v.x), -m_to_px(v.y)}; }
 
 void* node_id_to_user_data(NodeId id) { return reinterpret_cast<void*>(static_cast<std::uintptr_t>(id)); }
 NodeId user_data_to_node_id(void* ptr) { return static_cast<NodeId>(reinterpret_cast<std::uintptr_t>(ptr)); }
@@ -127,7 +129,7 @@ void PhysicsWorld::rebuild(Scene& scene) {
     b2BodyDef body_def = b2DefaultBodyDef();
     body_def.type = static_cast<b2BodyType>(rigid->body_type);
     body_def.position = px_to_m(world_transform.position);
-    body_def.rotation = b2MakeRot(world_transform.rotation_radians);
+    body_def.rotation = b2MakeRot(-world_transform.rotation_radians);
     body_def.linearVelocity = px_to_m(rigid->linear_velocity);
     body_def.gravityScale = rigid->gravity_scale;
     body_def.motionLocks.angularZ = rigid->fixed_rotation;
@@ -181,7 +183,7 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
     if (!node) continue;
 
     node->local_transform().position = m_to_px(b2Body_GetPosition(body));
-    node->local_transform().rotation_radians = b2Rot_GetAngle(b2Body_GetRotation(body));
+    node->local_transform().rotation_radians = -b2Rot_GetAngle(b2Body_GetRotation(body));
 
     auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
     if (rigid) rigid->linear_velocity = m_to_px(b2Body_GetLinearVelocity(body));

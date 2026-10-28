@@ -31,7 +31,7 @@ standalone player. Foundation D/E details follow.
   `on_contact_end` for shapes that started/stopped touching. All pixel
   values stay in pixels everywhere outside `PhysicsWorld`; the px<->m
   conversion (32 px = 1 m, `docs/decisions.md` row 3) and the y-flip
-  between screen space and Box2D's y-up world are both confined to that
+  between screen space (y-down) and Box2D's y-up world are both confined to that
   one boundary. Physics only ever runs against a runtime scene — the
   editor's authored scene in Edit mode is never handed to a `PhysicsWorld`,
   so Play/Stop's existing snapshot isolation (Foundation C) also isolates
