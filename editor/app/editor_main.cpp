@@ -458,6 +458,7 @@ int main(int argc, char** argv) {
     return 1;
   }
   auto begin_play = [&] {
+    input_map = session.project().input_actions;
     play_stop.play(session.scene(), registry);
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
@@ -758,6 +759,60 @@ int main(int argc, char** argv) {
                       session.assets_dir(), static_cast<float>(delta_seconds), [&] {
                         clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
                       });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Input Map")) {
+      ImGui::BeginDisabled(!editable);
+      auto& map = session.mutable_project().input_actions;
+      static char action_name[128] = {};
+      ImGui::InputText("New action", action_name, sizeof(action_name));
+      ImGui::SameLine();
+      if (ImGui::Button("Add action") && action_name[0] != '\0') {
+        bool exists = false;
+        for (const auto& action : map.actions()) exists |= action.name == action_name;
+        if (!exists) { map.set_action({action_name, {}}); session.mark_dirty(); }
+        action_name[0] = '\0';
+      }
+      // Work on copies because set_action and removal may invalidate the map's storage.
+      const auto actions = map.actions();
+      for (auto action : actions) {
+        ImGui::PushID(action.name.c_str());
+        if (ImGui::TreeNode(action.name.c_str())) {
+          bool changed = false;
+          changed |= ImGui::SliderInt("Player (-1 = any)", &action.player, -1, arcane::kMaxGamepads - 1);
+          for (std::size_t i = 0; i < action.bindings.size(); ++i) {
+            ImGui::PushID(static_cast<int>(i));
+            auto& binding = action.bindings[i];
+            int device = static_cast<int>(binding.device);
+            const char* devices[] = {"Keyboard", "Mouse button", "Gamepad button", "Gamepad axis"};
+            if (ImGui::Combo("Device", &device, devices, 4)) {
+              binding.device = static_cast<arcane::InputDevice>(device); changed = true;
+            }
+            changed |= ImGui::InputInt("Code", &binding.code);
+            if (device >= 2) changed |= ImGui::SliderInt("Pad (-1 = player)", &binding.pad, -1, arcane::kMaxGamepads - 1);
+            if (device == 3) {
+              changed |= ImGui::SliderInt("Direction (-1 / 0 / 1)", &binding.axis_sign, -1, 1);
+              changed |= ImGui::SliderFloat("Deadzone", &binding.deadzone, 0.0f, 0.99f);
+              changed |= ImGui::SliderFloat("Button threshold", &binding.threshold, 0.0f, 1.0f);
+            }
+            if (ImGui::Button("Remove binding")) {
+              action.bindings.erase(action.bindings.begin() + static_cast<std::ptrdiff_t>(i));
+              changed = true; ImGui::PopID(); break;
+            }
+            ImGui::Separator();
+            ImGui::PopID();
+          }
+          if (ImGui::Button("Add binding")) { action.bindings.push_back({}); changed = true; }
+          ImGui::SameLine();
+          const bool remove = ImGui::Button("Remove action");
+          if (remove) { map.remove_action(action.name); session.mark_dirty(); }
+          else if (changed) { map.set_action(std::move(action)); session.mark_dirty(); }
+          ImGui::TreePop();
+        }
+        ImGui::PopID();
+      }
       ImGui::EndDisabled();
     }
     ImGui::End();

@@ -103,6 +103,10 @@ void test_project_round_trip() {
   project.hud.add(arcane::HudButton{.id = "play", .label = "Play"});
   project.input_actions.add_binding("jump", arcane::InputBinding{arcane::InputDevice::Keyboard, arcane::Keys::kSpace});
 
+  arcane::InputBinding axis{arcane::InputDevice::GamepadAxis, arcane::GamepadAxes::kLeftX};
+  axis.axis_sign = -1; axis.deadzone = 0.3f; axis.threshold = 0.7f;
+  project.input_actions.add_binding("jump", axis);
+  project.input_actions.set_player("jump", 3);
   const std::string json = arcane::save_project_to_json(project);
   auto loaded = arcane::load_project_from_json(json);
   ARCANE_ASSERT_TRUE(loaded.has_value());
@@ -111,6 +115,8 @@ void test_project_round_trip() {
   ARCANE_ASSERT_TRUE(loaded->input_actions.actions().size() == 1);
   ARCANE_ASSERT_TRUE(loaded->hud.elements().size() == 1);
   ARCANE_ASSERT_TRUE(loaded->input_actions.actions()[0].name == "jump");
+  ARCANE_ASSERT_TRUE(loaded->input_actions.actions()[0].player == 3);
+  ARCANE_ASSERT_TRUE(loaded->input_actions.actions()[0].bindings[1] == axis);
 
   auto bad_version = arcane::load_project_from_json(R"({"format_version":2,"name":"x","main_scene":"y"})");
   ARCANE_ASSERT_TRUE(!bad_version.has_value());

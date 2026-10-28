@@ -185,3 +185,9 @@ rows 3, 24–31 (physics scope and units, input action map storage and
 live binding, input backend abstraction, null audio backend, editor
 animation preview, HUD text and layout, export layout, tilemap format),
 plus the MSVC pimpl out-of-line constructor pattern (WINFIX section below).
+
+## FE8 — input maps
+
+Input actions support four gamepads, player routing and analog axes with a rescaled deadzone and button threshold. Runtime rebinding listens for new input and detects conflicts; the editor Input Map panel edits the project map. Existing version 1 project input maps remain readable. Headless tests cover axis math, player routing, rebinding and project serialization. The panel edits numeric device codes; its widgets and physical devices have not been manually exercised.
+
+**UNTESTED on native Windows/MSVC** — FE8 input, GLFW gamepad polling and editor Input Map panel; the mingw build is cross-compiled only.

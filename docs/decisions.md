@@ -104,3 +104,10 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 |---|---|---|
 | 42 | Clip authoring model | `arcane_editor/clip_authoring.hpp` holds the ImGui-free logic: `SheetGrid` (columns/rows, optional frame size, margin, spacing; cells row-major from top-left), `grid_cell_uv`, `ClipDraft` (cell order, fps default, optional per-frame duration where 0 = 1/fps, loop) and `build_clip`, plus `save_clip_file`/`load_clip_file`. The saved JSON is the existing clip format (UV rects, no grid metadata), so the runtime format is unchanged; the grid is an authoring aid and is not restored when reopening a clip. Invalid cell indices are skipped when building. |
 | 43 | Hot-reload | `TextureCache`/`AnimationClipCache`/`TilesetCache::refresh()` compare each loaded entry's file mtime (`std::filesystem::last_write_time`, no new dependency) to the stamp taken at load and drop changed or vanished entries; the next `get()` reloads (an unparsable file reloads as absent, fixing it recovers). The editor polls every 0.5 s and rescans the asset lists at the same time, so new files appear too. Textures put via `put()` have no stamp and are never dropped. Editor only; the player does not poll. |
+
+## FE8 — Input maps (delegated)
+
+| # | Topic | Decision |
+|---|---|---|
+| 44 | Analog and player routing | An action selects gamepad 0–3 or any (-1); bindings can override that selection. Axis bindings expose a signed direction, rescaled per-axis deadzone and independent button threshold; `value` remains continuous below the threshold. GLFW triggers are normalized to 0 at rest and 1 at full press. Version 1 JSON gains optional fields, so old maps retain their behavior. |
+| 45 | Rebinding and authoring | `InputRebinder` ignores inputs held on its first update, detects overlapping physical bindings, and offers replace, allow or cancel. The editor Input Map panel edits raw codes and settings in the project, disabled during Play; Play copies the authored map at startup. HUD masks apply to all pads for consumed gamepad buttons. |
