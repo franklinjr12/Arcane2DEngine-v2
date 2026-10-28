@@ -23,6 +23,7 @@
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/node.hpp"
@@ -236,6 +237,12 @@ int main(int argc, char** argv) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
+  auto hud_renderer = arcane::HudRenderer::create();
+  if (!hud_renderer) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
+    return 1;
+  }
+  arcane::Hud hud;  // only live (and drawn) while Play is running
 
   // Null backend: the editor never opens an audio device, but play_on_start
   // and one-shot calls are still recorded. See docs/decisions.md.
@@ -248,6 +255,8 @@ int main(int argc, char** argv) {
     play_stop.play(session.scene(), registry);
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
+    hud.clear();
+    arcane::set_active_hud(&hud);
     arcane::editor::start_play_on_start_sounds(*play_stop.active_scene(session.scene()), *audio,
                                                 arcane::editor::list_audio_assets(session.assets_dir()));
   };
@@ -255,6 +264,7 @@ int main(int argc, char** argv) {
     play_stop.stop();
     arcane::set_active_input_map(nullptr);
     arcane::set_active_audio_system(nullptr);
+    arcane::set_active_hud(nullptr);
   };
 
   ViewportTarget viewport;
@@ -481,7 +491,8 @@ int main(int argc, char** argv) {
       viewport.ensure_size(vw, vh);
 
       viewport.bind();
-      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips);
+      arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
+                                  editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),

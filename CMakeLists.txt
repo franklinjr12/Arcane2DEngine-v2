@@ -115,10 +115,13 @@ add_library(arcane_runtime SHARED
   engine/src/physics.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
-  engine/src/audio.cpp)
+  engine/src/audio.cpp
+  engine/src/hud.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
+# stb headers define unused static helpers; keep their warnings out of our build.
+target_include_directories(arcane_runtime SYSTEM PRIVATE ${TP}/stb)
 target_link_libraries(arcane_runtime
   PUBLIC glfw glad
   PRIVATE ${CMAKE_DL_LIBS} box2d miniaudio)

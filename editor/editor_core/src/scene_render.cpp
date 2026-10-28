@@ -33,7 +33,7 @@ void preview_animations(Scene& scene, float dt) {
 }
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
-                   AnimationClipCache* clips) {
+                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud) {
   float cam_x = 0.0f, cam_y = 0.0f, cam_zoom = 1.0f;
   visit_scene_preorder(scene, [&](Node* node) {
     auto* camera = static_cast<Camera*>(node->find_component("Camera"));
@@ -76,6 +76,8 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         .uv = uv,
     });
   });
+
+  if (hud_renderer && hud) hud_renderer->draw(*hud, renderer, width, height);
 
   renderer.end_frame();
 }

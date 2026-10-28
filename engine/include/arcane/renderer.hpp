@@ -81,6 +81,9 @@ class ARCANE_API SpriteRenderer {
 
   void begin_frame(int framebuffer_width, int framebuffer_height, const Color& clear_color);
   void draw(const SpriteDraw& sprite);
+  // Draws everything batched so far (using the current camera). Lets callers
+  // change the camera mid-frame, e.g. world pass then screen-space HUD pass.
+  void flush();
   void end_frame();
 
   // Test helper: reads back a single pixel from the currently bound

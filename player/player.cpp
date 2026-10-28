@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "arcane/audio.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
 #include "arcane/module.hpp"
@@ -102,6 +103,14 @@ int run_project(const Args& args) {
   arcane::editor::TextureCache textures;
   textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
 
+  auto hud_renderer = arcane::HudRenderer::create();
+  if (!hud_renderer) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
+    return 1;
+  }
+  arcane::Hud hud;
+  arcane::set_active_hud(&hud);
+
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
@@ -145,7 +154,7 @@ int run_project(const Args& args) {
 
     int fb_width = 0, fb_height = 0;
     window->framebuffer_size(fb_width, fb_height);
-    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips);
+    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     window->swap_buffers();
@@ -154,6 +163,7 @@ int run_project(const Args& args) {
   }
 
   arcane::set_active_audio_system(nullptr);
+  arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
   return 0;
 }

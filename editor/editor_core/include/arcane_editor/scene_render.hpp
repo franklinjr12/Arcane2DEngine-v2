@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "arcane/animation.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane_editor/asset_catalog.hpp"
@@ -84,7 +85,11 @@ void preview_animations(Scene& scene, float dt);
 // (if `clips` is null, animation is skipped and the Sprite's default UV is
 // used) and draws the UV rect of whichever frame select_frame_index picks
 // for that AnimatedSprite's current elapsed_seconds().
+//
+// If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
+// space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
-                   AnimationClipCache* clips = nullptr);
+                   AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
+                   const Hud* hud = nullptr);
 
 }  // namespace arcane::editor

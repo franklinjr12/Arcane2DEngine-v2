@@ -1,4 +1,4 @@
-# Foundation D — physics and input
+# Foundation D — physics, input, animation, audio, HUD
 
 ## Summary
 
@@ -41,6 +41,22 @@ player.
   sibling `RigidBody2D`; `samples/sample_project` wires those three actions
   to WASD/arrow keys/space and gives the `Player` node a
   `RigidBody2D`+`Collider2D`+`PlayerController`.
+- **Animation** (`arcane/animation.hpp`): `AnimationClip` JSON assets and an
+  `AnimatedSprite` component; `render_scene` resolves the clip through
+  `AnimationClipCache` and draws the selected frame's UV for nodes with
+  `Sprite`+`AnimatedSprite`. The editor's Assets panel lists clips/sounds
+  (click to assign to the selected node) and the Toolbar's "Preview
+  animations" checkbox plays them in Edit mode.
+- **Audio** (`arcane/audio.hpp`): miniaudio-backed `AudioSystem` + `AudioSource`
+  component. Editor and player use the **null backend** (decisions row 27);
+  `play_on_start` sources fire when Play begins / the player starts, and
+  gameplay can fire one-shots through `active_audio_system()`. Tests never
+  open a device.
+- **HUD** (`arcane/hud.hpp`): `Hud` list of text (stb_easy_font, ASCII),
+  image and progress-bar elements, anchor + offset layout scaled by screen
+  height, drawn after the world by `HudRenderer` (via new
+  `SpriteRenderer::flush()`); gameplay reaches it through `active_hud()`.
+  Not yet: buttons, focus/input routing, Unicode text (doc 7.7 later work).
 - Fixed-update wiring (`Component::on_update(float fixed_dt)` driven once
   per fixed step by `FixedTimestep`, in both `editor_main.cpp` and
   `player.cpp`) already existed before this branch (Foundation B/C) and
@@ -90,7 +106,7 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 - Multi-gamepad support, analog stick axes (only digital button bindings
   exist), and action-map rebinding UI (the API supports it; no Inspector
   panel for it yet): deferred, not Foundation D acceptance items.
-- **UNTESTED on native Windows/MSVC** — physics and input have only run on
+- **UNTESTED on native Windows/MSVC** — physics, input, animation, audio and the HUD have only run on
   Linux (gcc, clang+ASan/UBSan); the mingw target is cross-compiled and
   build-verified only, never executed on real Windows.
 
