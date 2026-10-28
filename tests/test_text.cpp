@@ -12,7 +12,7 @@ using arcane::kReplacementChar;
 
 void test_decode_valid() {
   const auto cps = decode_utf8("a\xC3\xA7\xC3\xA3o \xE2\x82\xAC \xF0\x9F\x98\x80");  // aço-ish, euro, emoji
-  const std::u32string expected = U"ação € \U0001F600";
+  const std::u32string expected = U"a\u00E7\u00E3o \u20AC \U0001F600";  // escaped: MSVC reads sources in the system codepage
   ARCANE_ASSERT_TRUE(std::u32string(cps.begin(), cps.end()) == expected);
   ARCANE_ASSERT_TRUE(decode_utf8("").empty());
 }
@@ -32,7 +32,7 @@ void test_decode_invalid() {
 }
 
 void test_font_coverage() {
-  for (const char32_t cp : std::u32string(U"AZaz09 Àçãõü©Łž")) {
+  for (const char32_t cp : std::u32string(U"AZaz09 \u00C0\u00E7\u00E3\u00F5\u00FC\u00A9\u0141\u017E")) {
     ARCANE_ASSERT_TRUE(arcane::font_has_glyph(cp));
   }
   ARCANE_ASSERT_TRUE(!arcane::font_has_glyph(0x4E2D));    // CJK: not in the subset
@@ -77,7 +77,7 @@ void test_hud_text_size_uses_utf8() {
 void test_atlas() {
   const arcane::FontAtlas atlas = arcane::build_font_atlas();
   ARCANE_ASSERT_TRUE(!atlas.rgba.empty() && atlas.glyphs.size() > 300);
-  ARCANE_ASSERT_TRUE(atlas.glyphs.contains(U'ç') && atlas.glyphs.contains(U'A'));
+  ARCANE_ASSERT_TRUE(atlas.glyphs.contains(U'\u00E7') && atlas.glyphs.contains(U'A'));
   ARCANE_ASSERT_TRUE(!atlas.glyphs.contains(0x4E2D));
   const auto& a = atlas.glyphs.at(U'A');
   ARCANE_ASSERT_TRUE(a.width > 0 && a.height > 0 && a.u1 > a.u0 && a.v1 > a.v0);
