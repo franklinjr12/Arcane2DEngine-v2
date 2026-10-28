@@ -74,6 +74,12 @@ add_test(NAME test_renderer_gl COMMAND test_renderer_gl)
 set_tests_properties(test_renderer_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
+add_executable(test_tilemap_gl test_tilemap_gl.cpp)
+target_link_libraries(test_tilemap_gl PRIVATE arcane_editor_core)
+add_test(NAME test_tilemap_gl COMMAND test_tilemap_gl)
+set_tests_properties(test_tilemap_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
 if(ARCANE_BUILD_SAMPLES)
   add_test(NAME test_player_frames COMMAND arcane_player --frames 30 --hidden)
   set_tests_properties(test_player_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
@@ -104,3 +110,7 @@ endif()
 add_executable(test_editor_tilemap test_editor_tilemap.cpp)
 target_link_libraries(test_editor_tilemap PRIVATE arcane_editor_core)
 add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)
+
+add_executable(test_tile_paint test_tile_paint.cpp)
+target_link_libraries(test_tile_paint PRIVATE arcane_editor_core)
+add_test(NAME test_tile_paint COMMAND test_tile_paint)

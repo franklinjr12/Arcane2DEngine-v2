@@ -145,7 +145,7 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 
 - `Tileset` JSON asset + `Tilemap` component (layers, grid, `tile_at`/`set_tile`, cell<->world coords, JSON via a `layers` string property), batched culled rendering through `render_scene` (`TilesetCache`), optional static Box2D colliders from `solid_tiles` (merged runs), editor Tilemap panel + viewport paint/erase. Decision 31.
 - Tests: `test_tilemap` (tileset JSON/UV, coords, scene round-trip, rect merging, collider stops a falling body), `test_editor_tilemap` (viewport->world, paint/erase, TilesetCache).
-- Not covered by an automated test: the actual GL drawing of tiles and the editor paint UI (compile-checked only). UNTESTED on native Windows/MSVC.
+- FE4 added `test_tilemap_gl` (offscreen FBO pixel checks: placement, layer order, camera-edge culling, zoom) and `test_tile_paint` (`TilePaintTool`: pan/zoom coords, brush/erase, fill-rect, undo/redo, dirty flag). The ImGui widgets around the tool remain compile-checked only. UNTESTED on native Windows/MSVC.
 
 ## Known issues and gaps (as of this PR's head)
 

@@ -23,6 +23,9 @@ class TextureCache {
  public:
   void set_assets(std::vector<AssetEntry> assets) { assets_ = std::move(assets); }
 
+  // Registers an already-created texture under `id` (tests, generated textures).
+  void put(AssetId id, Texture texture) { textures_.insert_or_assign(id, std::move(texture)); }
+
   Texture* get(AssetId id) {
     if (id == 0) return nullptr;
     auto it = textures_.find(id);

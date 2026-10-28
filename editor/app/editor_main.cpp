@@ -36,6 +36,7 @@
 #include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
+#include "arcane_editor/tile_paint.hpp"
 
 namespace {
 
@@ -337,8 +338,10 @@ int main(int argc, char** argv) {
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
   bool paint_mode = false;
-  int paint_layer = 0;
-  int paint_tile = 1;  // 0 erases
+  bool paint_rect = false;  // drag a rectangle instead of a freehand brush
+  arcane::editor::TilePaintTool paint_tool;
+  std::optional<arcane::Vec2> rect_start;  // world position where the rectangle drag began
+  bool rect_erase = false;
   auto hud_renderer = arcane::HudRenderer::create();
   if (!hud_renderer) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
@@ -601,20 +604,24 @@ int main(int argc, char** argv) {
         ImGui::TextUnformatted("Select a node with a Tilemap component (Edit mode).");
       } else {
         ImGui::Checkbox("Paint in viewport (left = paint, right = erase)", &paint_mode);
+        ImGui::Checkbox("Fill rectangle (drag)", &paint_rect);
+        if (ImGui::Button("Undo") && paint_tool.undo(*paint_map)) session.mark_dirty();
+        ImGui::SameLine();
+        if (ImGui::Button("Redo") && paint_tool.redo(*paint_map)) session.mark_dirty();
         if (paint_map->layer_count() == 0 || ImGui::Button("Add layer")) {
           paint_map->add_layer();
           session.mark_dirty();
         }
-        ImGui::InputInt("Layer", &paint_layer);
-        paint_layer = std::clamp(paint_layer, 0, std::max(0, paint_map->layer_count() - 1));
+        ImGui::InputInt("Layer", &paint_tool.layer);
+        paint_tool.layer = std::clamp(paint_tool.layer, 0, std::max(0, paint_map->layer_count() - 1));
         const arcane::Tileset* tileset = tilesets.get(paint_map->tileset);
         if (!tileset) {
           ImGui::TextUnformatted("Assign a tileset from Assets > Tilesets.");
         } else {
-          if (ImGui::Selectable("0: erase", paint_tile == 0)) paint_tile = 0;
+          if (ImGui::Selectable("0: erase", paint_tool.tile == 0)) paint_tool.tile = 0;
           for (int id = 1; id <= tileset->tile_count; ++id) {
             const std::string label = std::to_string(id);
-            if (ImGui::Selectable(label.c_str(), paint_tile == id, 0, ImVec2(28, 0))) paint_tile = id;
+            if (ImGui::Selectable(label.c_str(), paint_tool.tile == id, 0, ImVec2(28, 0))) paint_tool.tile = id;
             if (id % 8 != 0 && id < tileset->tile_count) ImGui::SameLine();
           }
         }
@@ -650,16 +657,38 @@ int main(int argc, char** argv) {
       viewport_w = viewport.width();
       viewport_h = viewport.height();
 
-      if (paint_mode && paint_map && ImGui::IsItemHovered() &&
-          (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
+      if (paint_mode && paint_map) {
+        const bool left = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        const bool right = ImGui::IsMouseDown(ImGuiMouseButton_Right);
         const ImVec2 origin = ImGui::GetItemRectMin();
         const ImVec2 mouse = ImGui::GetMousePos();
         const arcane::Vec2 world =
             arcane::editor::viewport_to_world(*active_scene, mouse.x - origin.x, mouse.y - origin.y, viewport.width(),
                                               viewport.height());
-        const int id = ImGui::IsMouseDown(ImGuiMouseButton_Right) ? 0 : paint_tile;
-        if (arcane::editor::paint_tile_at_world(*paint_map, paint_node->world_transform(), world, paint_layer, id)) {
-          session.mark_dirty();
+        const auto node_world = paint_node->world_transform();
+        if (ImGui::IsItemHovered() && (left || right)) {
+          if (paint_rect) {
+            if (!rect_start) {
+              rect_start = world;
+              rect_erase = right;
+            }
+          } else {
+            paint_tool.begin_stroke();
+            if (paint_tool.brush(*paint_map, node_world, world, right)) session.mark_dirty();
+          }
+        } else if (!left && !right) {
+          if (rect_start) {
+            paint_tool.begin_stroke();
+            if (paint_tool.fill_rect(*paint_map, node_world, *rect_start, world, rect_erase)) session.mark_dirty();
+            rect_start.reset();
+          }
+          paint_tool.end_stroke();
+        }
+        const ImGuiIO& io = ImGui::GetIO();
+        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift) {
+          if (paint_tool.undo(*paint_map)) session.mark_dirty();
+        } else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z)))) {
+          if (paint_tool.redo(*paint_map)) session.mark_dirty();
         }
       }
     }
