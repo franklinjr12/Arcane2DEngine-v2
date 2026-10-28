@@ -127,3 +127,9 @@ Full table in `docs/decisions.md` (Foundation D section). Highlights:
 - `scripts/export-game.sh [--mingw] [--project DIR] [--module FILE] OUT` produces a self-contained folder (player + engine lib + module + project). Run `OUT/arcane_player` (add `--frames 30 --hidden` for a smoke run); it finds `OUT/game` relative to the executable.
 - `test_export_game` (Linux, gl label) exports the sample from the build tree and runs the exported player from another cwd. The mingw export builds and collects DLLs but is not run.
 - UNTESTED on native Windows/MSVC: the export (MSVC would need `scripts/export-game.sh` under bash and the `GetModuleFileNameW` path discovery), and the mingw-exported folder has not been run under Wine/Windows.
+
+## Tilemaps (Foundation E part 1)
+
+- `Tileset` JSON asset + `Tilemap` component (layers, grid, `tile_at`/`set_tile`, cell<->world coords, JSON via a `layers` string property), batched culled rendering through `render_scene` (`TilesetCache`), optional static Box2D colliders from `solid_tiles` (merged runs), editor Tilemap panel + viewport paint/erase. Decision 31.
+- Tests: `test_tilemap` (tileset JSON/UV, coords, scene round-trip, rect merging, collider stops a falling body), `test_editor_tilemap` (viewport->world, paint/erase, TilesetCache).
+- Not covered by an automated test: the actual GL drawing of tiles and the editor paint UI (compile-checked only). UNTESTED on native Windows/MSVC.

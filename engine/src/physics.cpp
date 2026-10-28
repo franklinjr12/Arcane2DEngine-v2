@@ -9,6 +9,7 @@
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/tilemap.hpp"
 
 namespace arcane {
 
@@ -101,9 +102,27 @@ void PhysicsWorld::rebuild(Scene& scene) {
 
   for (Node* node : nodes) {
     auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
-    if (!rigid) continue;
-
     const WorldTransform2D world_transform = node->world_transform();
+    if (!rigid) {
+      // A tilemap without its own body gets one static body holding a box per merged run of solid tiles.
+      auto* tilemap = dynamic_cast<Tilemap*>(node->find_component("Tilemap"));
+      if (!tilemap || !tilemap->collide) continue;
+      b2BodyDef body_def = b2DefaultBodyDef();
+      body_def.type = b2_staticBody;
+      body_def.position = px_to_m(world_transform.position);
+      body_def.userData = node_id_to_user_data(node->id());
+      b2BodyId body = b2CreateBody(impl_->world, &body_def);
+      impl_->bodies[node->id()] = body;
+      b2ShapeDef shape_def = b2DefaultShapeDef();
+      shape_def.enableContactEvents = true;
+      for (const TileRect& r : tilemap->solid_rects()) {
+        const Vec2 half{r.width * world_transform.scale.x * 0.5f, r.height * world_transform.scale.y * 0.5f};
+        const Vec2 center{r.x * world_transform.scale.x + half.x, r.y * world_transform.scale.y + half.y};
+        b2Polygon box = b2MakeOffsetBox(px_to_m(half.x), px_to_m(half.y), px_to_m(center), b2Rot_identity);
+        b2CreatePolygonShape(body, &shape_def, &box);
+      }
+      continue;
+    }
 
     b2BodyDef body_def = b2DefaultBodyDef();
     body_def.type = static_cast<b2BodyType>(rigid->body_type);

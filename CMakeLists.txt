@@ -116,7 +116,8 @@ add_library(arcane_runtime SHARED
   engine/src/input.cpp
   engine/src/animation.cpp
   engine/src/audio.cpp
-  engine/src/hud.cpp)
+  engine/src/hud.cpp
+  engine/src/tilemap.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)

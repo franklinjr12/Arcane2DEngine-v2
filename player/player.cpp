@@ -119,6 +119,9 @@ int run_project(const Args& args) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
+  arcane::editor::TilesetCache tilesets;
+  tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
+
   // Null backend by default (no audio device is ever opened); see docs/decisions.md.
   auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
   if (!audio) {
@@ -159,7 +162,8 @@ int run_project(const Args& args) {
 
     int fb_width = 0, fb_height = 0;
     window->framebuffer_size(fb_width, fb_height);
-    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud);
+    arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
+                                &tilesets);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     window->swap_buffers();

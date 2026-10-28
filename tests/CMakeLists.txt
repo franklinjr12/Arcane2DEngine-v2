@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_tilemap)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -100,3 +100,7 @@ if(ARCANE_BUILD_SAMPLES AND UNIX)
   set_tests_properties(test_export_game PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
+
+add_executable(test_editor_tilemap test_editor_tilemap.cpp)
+target_link_libraries(test_editor_tilemap PRIVATE arcane_editor_core)
+add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)

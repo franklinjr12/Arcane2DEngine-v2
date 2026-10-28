@@ -10,6 +10,7 @@
 #include "arcane/hud.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/tilemap.hpp"
 #include "arcane_editor/asset_catalog.hpp"
 
 namespace arcane::editor {
@@ -73,6 +74,49 @@ class AnimationClipCache {
   std::map<AssetId, std::optional<AnimationClip>> clips_;
 };
 
+// Same shape as AnimationClipCache, for Tileset assets (.json files).
+class TilesetCache {
+ public:
+  void set_assets(std::vector<AssetEntry> assets) { assets_ = std::move(assets); }
+
+  const Tileset* get(AssetId id) {
+    if (id == 0) return nullptr;
+    auto it = tilesets_.find(id);
+    if (it != tilesets_.end()) return it->second ? &*it->second : nullptr;
+
+    for (const auto& entry : assets_) {
+      if (entry.id != id) continue;
+      std::ifstream in(entry.absolute_path);
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      auto loaded = load_tileset_from_json(ss.str());
+      auto [inserted, _] = tilesets_.emplace(id, loaded ? std::optional(*loaded) : std::nullopt);
+      return inserted->second ? &*inserted->second : nullptr;
+    }
+    tilesets_.emplace(id, std::nullopt);
+    return nullptr;
+  }
+
+ private:
+  std::vector<AssetEntry> assets_;
+  std::map<AssetId, std::optional<Tileset>> tilesets_;
+};
+
+// World-space center and zoom of the scene's primary Camera (origin, zoom 1 if none).
+struct CameraView {
+  float x = 0.0f, y = 0.0f, zoom = 1.0f;
+};
+CameraView find_primary_camera(Scene& scene);
+
+// Maps a pixel inside a viewport of `width` x `height` (origin top-left, as
+// render_scene draws it) to world coordinates through the primary camera.
+Vec2 viewport_to_world(Scene& scene, float px, float py, int width, int height);
+
+// Editor paint tool core: sets the cell under `world` on `layer` to
+// `tile_id` (0 erases). Returns true only if a cell actually changed, so
+// callers know whether to mark the session dirty.
+bool paint_tile_at_world(Tilemap& map, const WorldTransform2D& node_world, Vec2 world, int layer, int tile_id);
+
 // Advances every AnimatedSprite in `scene` by `dt` seconds. Play mode does
 // this through Scene::update; the editor calls it in Edit mode to preview
 // clips on the (non-ticking) edit scene.
@@ -86,10 +130,14 @@ void preview_animations(Scene& scene, float dt);
 // used) and draws the UV rect of whichever frame select_frame_index picks
 // for that AnimatedSprite's current elapsed_seconds().
 //
+// Every Tilemap node is drawn layer by layer (only the cells inside the
+// camera view) using the tileset from `tilesets`; skipped if `tilesets` is
+// null or the tileset or its texture doesn't resolve.
+//
 // If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
 // space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
-                   const Hud* hud = nullptr);
+                   const Hud* hud = nullptr, TilesetCache* tilesets = nullptr);
 
 }  // namespace arcane::editor

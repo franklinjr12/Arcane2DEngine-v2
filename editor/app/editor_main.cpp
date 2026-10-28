@@ -29,6 +29,7 @@
 #include "arcane/node.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/tilemap.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
 #include "arcane_editor/audio_wiring.hpp"
@@ -236,7 +237,12 @@ int main(int argc, char** argv) {
 
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
+  arcane::editor::TilesetCache tilesets;
+  tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
+  bool paint_mode = false;
+  int paint_layer = 0;
+  int paint_tile = 1;  // 0 erases
   auto hud_renderer = arcane::HudRenderer::create();
   if (!hud_renderer) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create HUD renderer: {}", hud_renderer.error());
@@ -478,8 +484,39 @@ int main(int argc, char** argv) {
                      animated->clip = id;
                      animated->reset();
                    });
+      assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap",
+                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::Tilemap*>(c)->tileset = id; });
       assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource",
                    [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::AudioSource*>(c)->clip = id; });
+    }
+    ImGui::End();
+
+    arcane::Node* paint_node = (editable && selection.has_selection()) ? active_scene->find_node(*selection.selected())
+                                                                         : nullptr;
+    auto* paint_map = paint_node ? static_cast<arcane::Tilemap*>(paint_node->find_component("Tilemap")) : nullptr;
+    if (ImGui::Begin("Tilemap")) {
+      if (!paint_map) {
+        ImGui::TextUnformatted("Select a node with a Tilemap component (Edit mode).");
+      } else {
+        ImGui::Checkbox("Paint in viewport (left = paint, right = erase)", &paint_mode);
+        if (paint_map->layer_count() == 0 || ImGui::Button("Add layer")) {
+          paint_map->add_layer();
+          session.mark_dirty();
+        }
+        ImGui::InputInt("Layer", &paint_layer);
+        paint_layer = std::clamp(paint_layer, 0, std::max(0, paint_map->layer_count() - 1));
+        const arcane::Tileset* tileset = tilesets.get(paint_map->tileset);
+        if (!tileset) {
+          ImGui::TextUnformatted("Assign a tileset from Assets > Tilesets.");
+        } else {
+          if (ImGui::Selectable("0: erase", paint_tile == 0)) paint_tile = 0;
+          for (int id = 1; id <= tileset->tile_count; ++id) {
+            const std::string label = std::to_string(id);
+            if (ImGui::Selectable(label.c_str(), paint_tile == id, 0, ImVec2(28, 0))) paint_tile = id;
+            if (id % 8 != 0 && id < tileset->tile_count) ImGui::SameLine();
+          }
+        }
+      }
     }
     ImGui::End();
 
@@ -492,12 +529,26 @@ int main(int argc, char** argv) {
 
       viewport.bind();
       arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
-                                  editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud);
+                                  editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud,
+                                  &tilesets);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),
                     ImVec2(static_cast<float>(viewport.width()), static_cast<float>(viewport.height())),
                     ImVec2(0, 1), ImVec2(1, 0));
+
+      if (paint_mode && paint_map && ImGui::IsItemHovered() &&
+          (ImGui::IsMouseDown(ImGuiMouseButton_Left) || ImGui::IsMouseDown(ImGuiMouseButton_Right))) {
+        const ImVec2 origin = ImGui::GetItemRectMin();
+        const ImVec2 mouse = ImGui::GetMousePos();
+        const arcane::Vec2 world =
+            arcane::editor::viewport_to_world(*active_scene, mouse.x - origin.x, mouse.y - origin.y, viewport.width(),
+                                              viewport.height());
+        const int id = ImGui::IsMouseDown(ImGuiMouseButton_Right) ? 0 : paint_tile;
+        if (arcane::editor::paint_tile_at_world(*paint_map, paint_node->world_transform(), world, paint_layer, id)) {
+          session.mark_dirty();
+        }
+      }
     }
     ImGui::End();
 
