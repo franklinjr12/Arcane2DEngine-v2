@@ -6,6 +6,13 @@
 #include <glad/gl.h>
 
 #include <GLFW/glfw3.h>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX  // glfw3native.h pulls <windows.h>; keep std::min/max usable
+#endif
+#define GLFW_EXPOSE_NATIVE_WIN32
+#include <GLFW/glfw3native.h>
+#endif
 #include <imgui.h>
 #include <backends/imgui_impl_glfw.h>
 #include <backends/imgui_impl_opengl3.h>
@@ -391,6 +398,17 @@ int main(int argc, char** argv) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to load OpenGL functions");
     return 1;
   }
+
+  if (!glad_glGenFramebuffers) {
+    ARCANE_LOG_ERROR(kLogCategory, "OpenGL loader state is unavailable in the editor");
+    return 1;
+  }
+#ifdef _WIN32
+  if (!glfwGetWin32Window(static_cast<GLFWwindow*>(window->native_handle()))) {
+    ARCANE_LOG_ERROR(kLogCategory, "GLFW instance mismatch: window created by a different GLFW copy");
+    return 1;
+  }
+#endif
 
   auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.module_override);
   if (!runtime) {
