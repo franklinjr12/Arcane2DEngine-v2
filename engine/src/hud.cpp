@@ -6,8 +6,6 @@
 #include <format>
 #include <json.hpp>
 
-#include <stb_easy_font.h>
-
 namespace arcane {
 
 namespace {
@@ -25,23 +23,40 @@ void draw_quad(SpriteRenderer& renderer, const Texture* white, float x, float y,
                            .origin_x = 0.0f, .origin_y = 0.0f, .tint = color});
 }
 
-// Draws `text` with its top-left at (x, y) pixels.
-void draw_text(SpriteRenderer& renderer, const Texture* white, const std::string& text, float x, float y, float k,
-               const Color& color) {
-  // stb_easy_font emits 4 vertices (16 bytes each) per glyph stroke quad.
-  static thread_local std::array<char, 99999> buffer;
-  const int quads = stb_easy_font_print(0.0f, 0.0f, const_cast<char*>(text.c_str()), nullptr, buffer.data(),
-                                        static_cast<int>(buffer.size()));
-  for (int q = 0; q < quads; ++q) {
-    float min_x = 1e30f, min_y = 1e30f, max_x = -1e30f, max_y = -1e30f;
-    for (int v = 0; v < 4; ++v) {
-      const float* position = reinterpret_cast<const float*>(buffer.data() + (q * 4 + v) * 16);
-      min_x = std::min(min_x, position[0]);
-      max_x = std::max(max_x, position[0]);
-      min_y = std::min(min_y, position[1]);
-      max_y = std::max(max_y, position[1]);
+// Draws `text` with its top-left at (x, y) pixels; `pixel_size` is the em
+// height in pixels. Glyphs missing from the font get a hollow box.
+void draw_text(SpriteRenderer& renderer, const Texture* white, const Texture* atlas_texture, const FontAtlas& atlas,
+               const std::string& text, float x, float y, float pixel_size, const Color& color) {
+  const float k = pixel_size / atlas.pixel_size;
+  const float line_height = font_line_height(pixel_size);
+  float pen_x = x, line_top = y;
+  for (const char32_t cp : decode_utf8(text)) {
+    if (cp == U'\n') {
+      pen_x = x;
+      line_top += line_height;
+      continue;
     }
-    draw_quad(renderer, white, x + min_x * k, y + min_y * k, (max_x - min_x) * k, (max_y - min_y) * k, color);
+    const auto it = atlas.glyphs.find(cp);
+    if (it == atlas.glyphs.end()) {
+      const float w = glyph_advance(cp, pixel_size);
+      const float t = std::max(1.0f, pixel_size * 0.06f);
+      const float bx = pen_x + w * 0.12f, bw = w * 0.76f;
+      const float by = line_top + atlas.ascent * k - pixel_size * 0.7f, bh = pixel_size * 0.7f;
+      draw_quad(renderer, white, bx, by, bw, t, color);
+      draw_quad(renderer, white, bx, by + bh - t, bw, t, color);
+      draw_quad(renderer, white, bx, by, t, bh, color);
+      draw_quad(renderer, white, bx + bw - t, by, t, bh, color);
+      pen_x += w;
+      continue;
+    }
+    const AtlasGlyph& g = it->second;
+    if (g.width > 0.0f && g.height > 0.0f) {
+      renderer.draw(SpriteDraw{.texture = atlas_texture, .x = pen_x + g.x_offset * k,
+                               .y = line_top + (atlas.ascent + g.y_offset) * k, .width = g.width * k,
+                               .height = g.height * k, .origin_x = 0.0f, .origin_y = 0.0f, .tint = color,
+                               .uv = UvRect{g.u0, g.v0, g.u1, g.v1}});
+    }
+    pen_x += g.advance * k;
   }
 }
 
@@ -80,8 +95,7 @@ HudRect hud_layout(HudAnchor anchor, float offset_x, float offset_y, float w, fl
 }
 
 void hud_text_size(const std::string& text, float font_scale, float& out_w, float& out_h) noexcept {
-  out_w = static_cast<float>(stb_easy_font_width(const_cast<char*>(text.c_str()))) * font_scale;
-  out_h = static_cast<float>(stb_easy_font_height(const_cast<char*>(text.c_str()))) * font_scale;
+  measure_text(text, hud_font_em * font_scale, out_w, out_h);
 }
 
 bool Hud::clicked(std::string_view id) const {
@@ -368,7 +382,12 @@ std::expected<HudRenderer, std::string> HudRenderer::create() {
   const std::array<unsigned char, 4> white_pixel = {255, 255, 255, 255};
   auto texture = Texture::load_from_pixels(white_pixel, 1, 1, TextureFilter::Nearest);
   if (!texture) return std::unexpected(texture.error());
-  return HudRenderer(std::move(*texture));
+  FontAtlas atlas_data = build_font_atlas();
+  if (atlas_data.rgba.empty()) return std::unexpected("failed to build the HUD font atlas");
+  auto atlas = Texture::load_from_pixels(atlas_data.rgba, atlas_data.width, atlas_data.height, TextureFilter::Linear);
+  if (!atlas) return std::unexpected(atlas.error());
+  atlas_data.rgba = {};  // pixels live on the GPU now
+  return HudRenderer(std::move(*texture), std::move(*atlas), std::move(atlas_data));
 }
 
 void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_width, int screen_height) {
@@ -393,7 +412,7 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
       float w = 0.0f, h = 0.0f;
       hud_text_size(text->text, text->font_scale, w, h);
       const HudRect r = hud_layout(text->anchor, text->offset_x, text->offset_y, w, h, screen_width, screen_height);
-      draw_text(renderer, &white_, text->text, r.x, r.y, text->font_scale * scale, text->color);
+      draw_text(renderer, &white_, &atlas_, atlas_data_, text->text, r.x, r.y, hud_font_em * text->font_scale * scale, text->color);
     } else if (const auto* button = std::get_if<HudButton>(&element)) {
       const HudRect r = hud_layout(button->anchor, button->offset_x, button->offset_y, button->width, button->height,
                                    screen_width, screen_height);
@@ -410,8 +429,8 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
       hud_text_size(button->label, button->font_scale, tw, th);
       Color label_color = button->text_color;
       if (button->state == HudButtonState::Disabled) label_color.a *= 0.5f;
-      draw_text(renderer, &white_, button->label, r.x + (r.w - tw * scale) * 0.5f, r.y + (r.h - th * scale) * 0.5f,
-                button->font_scale * scale, label_color);
+      draw_text(renderer, &white_, &atlas_, atlas_data_, button->label, r.x + (r.w - tw * scale) * 0.5f, r.y + (r.h - th * scale) * 0.5f,
+                hud_font_em * button->font_scale * scale, label_color);
     }
   }
 }

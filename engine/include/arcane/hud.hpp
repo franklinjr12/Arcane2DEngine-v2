@@ -12,6 +12,7 @@
 #include "arcane/export.hpp"
 #include "arcane/input.hpp"
 #include "arcane/renderer.hpp"
+#include "arcane/text.hpp"
 
 namespace arcane {
 
@@ -38,8 +39,11 @@ ARCANE_API float hud_scale(int screen_height) noexcept;
 ARCANE_API HudRect hud_layout(HudAnchor anchor, float offset_x, float offset_y, float w, float h, int screen_width,
                               int screen_height) noexcept;
 
-// Size of `text` in layout units when drawn at `font_scale` (1 = the
-// built-in 7px-tall bitmap font; ASCII only).
+// Text is UTF-8 (Latin-1 + Latin Extended-A glyphs, '\n' for new lines; see
+// text.hpp). font_scale 1 = an em of `hud_font_em` layout units.
+inline constexpr float hud_font_em = 8.0f;
+
+// Size of `text` in layout units when drawn at `font_scale`.
 ARCANE_API void hud_text_size(const std::string& text, float font_scale, float& out_w, float& out_h) noexcept;
 
 struct HudText {
@@ -197,8 +201,11 @@ class ARCANE_API HudRenderer {
   void draw(const Hud& hud, SpriteRenderer& renderer, int screen_width, int screen_height);
 
  private:
-  explicit HudRenderer(Texture white) : white_(std::move(white)) {}
+  HudRenderer(Texture white, Texture atlas, FontAtlas atlas_data)
+      : white_(std::move(white)), atlas_(std::move(atlas)), atlas_data_(std::move(atlas_data)) {}
   Texture white_;
+  Texture atlas_;
+  FontAtlas atlas_data_;
 };
 
 }  // namespace arcane

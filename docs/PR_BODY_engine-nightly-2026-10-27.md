@@ -24,3 +24,9 @@
 - Tests: `test_clip_authoring` (grid slicing, draft edit/build, save->load round trip, cache invalidation by mtime incl. broken/deleted file). Texture invalidation shares the code path but is not GL-tested.
 - Not done: reopening an existing clip into the grid editor (grid metadata is not stored), the ImGui panel itself is only compile-checked, not driven.
 - **UNTESTED on native Windows/MSVC** (no pimpl; `std::filesystem` mtime only).
+
+## FE10 — HUD Unicode text
+- `arcane/text.hpp`: `decode_utf8` (U+FFFD for malformed input), glyph coverage, `measure_text` (multi-line), `build_font_atlas`. HUD text/button labels now render Latin-1 + Latin Extended-A (Portuguese) with embedded Go Regular subset via stb_truetype; unsupported characters draw a box. See decision 47.
+- Tests: `test_text` (valid/invalid UTF-8, coverage, measurement, fallback, atlas) and a UTF-8 case in `test_renderer_gl`.
+- Not done: kerning, non-Latin scripts, editor-side HUD text preview uses same path (not separately checked).
+- **UNTESTED on native Windows/MSVC** (`HudRenderer` gained non-pimpl members of complete types only; `font_data.cpp` is a ~30 KB array, well under MSVC literal limits since it is an initializer list).

@@ -117,3 +117,9 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | # | Topic | Decision |
 |---|---|---|
 | 46 | Terrain rules | Tileset version 1 gains optional per-tile solid/terrain metadata and 16 tile IDs per terrain, indexed by cardinal neighbors (north 1, east 2, south 4, west 8). Tile IDs identify terrain, avoiding a second map grid; incomplete rules leave existing neighbors unchanged and prevent painting a cell whose mask has no valid tile. Terrain edits and neighbor changes share a paint undo stroke. The existing Tilemap solid_tiles collision setting remains independent. |
+
+## FE10 — HUD Unicode text (delegated)
+
+| # | Topic | Decision |
+|---|---|---|
+| 47 | UTF-8 HUD font | Replaces the ASCII-only `stb_easy_font` (decision 29) with `stb_truetype` (already in the pinned stb) and the Go Regular font (Bigelow & Holmes, BSD-3-Clause, already on the box; license in `docs/licenses/GoFont-LICENSE.txt`) subset with fontTools to ASCII + Latin-1 + Latin Extended-A + bullet + euro (~30 KB, embedded as a byte array so exported games need no font file). Glyphs are rasterised once at 40 px into a 1024x512 atlas and drawn as textured quads. Text outside the subset (and malformed UTF-8, as U+FFFD) draws a hollow box fallback glyph and measures with a fixed 0.6 em advance. `font_scale` 1 now means an 8-unit em (`hud_font_em`); old default 2 gives a 16-unit em. Kerning and non-Latin scripts are not supported. |

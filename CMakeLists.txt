@@ -118,6 +118,8 @@ add_library(arcane_runtime SHARED
   engine/src/animation.cpp
   engine/src/audio.cpp
   engine/src/hud.cpp
+  engine/src/text.cpp
+  engine/src/font_data.cpp
   engine/src/tilemap.cpp
   engine/src/particles.cpp)
 target_include_directories(arcane_runtime

@@ -81,7 +81,7 @@ int main() {
   ARCANE_ASSERT_TRUE(filled.g > 0.9f && filled.r < 0.1f);
   ARCANE_ASSERT_TRUE(empty.b > 0.9f && empty.g < 0.1f);
 
-  // Text: stb_easy_font strokes must put at least one white pixel on screen.
+  // Text: glyph pixels must put at least one white pixel on screen.
   hud.clear();
   hud.add(arcane::HudText{.text = "HHH", .anchor = arcane::HudAnchor::Center, .font_scale = 20.0f});
   renderer->begin_frame(fb_width, fb_height, arcane::Color{0.0f, 0.0f, 0.0f, 1.0f});
@@ -97,6 +97,21 @@ int main() {
     }
   }
   ARCANE_ASSERT_TRUE(text_pixel_found);
+
+  // UTF-8 text: accented and unsupported characters must draw without trouble.
+  hud.clear();
+  hud.add(arcane::HudText{.text = "A\xC3\xA7\xC3\xA3o \xE4\xB8\xAD \xFF", .anchor = arcane::HudAnchor::Center,
+                          .font_scale = 12.0f});
+  renderer->begin_frame(fb_width, fb_height, arcane::Color{0.0f, 0.0f, 0.0f, 1.0f});
+  hud_renderer->draw(hud, *renderer, fb_width, fb_height);
+  renderer->end_frame();
+  int utf8_pixels = 0;
+  for (int y = 0; y < fb_height; ++y) {
+    for (int x = 0; x < fb_width; ++x) {
+      if (renderer->read_pixel(x, y).r > 0.5f) ++utf8_pixels;
+    }
+  }
+  ARCANE_ASSERT_TRUE(utf8_pixels > 50);
 
   return 0;
 }
