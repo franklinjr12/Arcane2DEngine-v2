@@ -30,3 +30,11 @@
 - Tests: `test_text` (valid/invalid UTF-8, coverage, measurement, fallback, atlas) and a UTF-8 case in `test_renderer_gl`.
 - Not done: kerning, non-Latin scripts, editor-side HUD text preview uses same path (not separately checked).
 - **UNTESTED on native Windows/MSVC** (`HudRenderer` gained non-pimpl members of complete types only; `font_data.cpp` is a ~30 KB array, well under MSVC literal limits since it is an initializer list).
+
+## FE11 — Platformer validation slice
+- `samples/platformer_slice` + `samples/platformer_slice_game`: tilemap level with pit, platformer controller, idle/run clips, HUD (score, health bar, banner, restart button), null-backend audio cues, pickup particle burst, exportable via `scripts/export-game.sh`.
+- Tests: `test_platformer_slice` (headless, 600 fixed steps, scripted input, determinism, spikes/pit outcomes), `test_player_slice_frames`, `test_export_platformer_slice`.
+- Main value: `docs/slice_platformer_gaps.md` (engine gap list: no teleport, no scene access from components, no trigger events, HUD ids, asset path resolution, ...).
+- Not done: visual check, restart does not reset player/coins (gaps 1, 2, 6).
+- **UNTESTED on native Windows/MSVC** (new module follows the existing sample_game pattern; no pimpl members).
+

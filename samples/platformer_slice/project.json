@@ -1,0 +1,122 @@
+{
+  "format_version": 1,
+  "name": "platformer_slice",
+  "main_scene": "scenes/main.scene.json",
+  "module": "platformer_slice_game.so",
+  "input_actions": {
+    "format_version": 1,
+    "actions": [
+      {
+        "name": "move_left",
+        "bindings": [
+          {
+            "device": "keyboard",
+            "code": 65
+          },
+          {
+            "device": "keyboard",
+            "code": 263
+          }
+        ]
+      },
+      {
+        "name": "move_right",
+        "bindings": [
+          {
+            "device": "keyboard",
+            "code": 68
+          },
+          {
+            "device": "keyboard",
+            "code": 262
+          }
+        ]
+      },
+      {
+        "name": "jump",
+        "bindings": [
+          {
+            "device": "keyboard",
+            "code": 32
+          }
+        ]
+      }
+    ]
+  },
+  "hud": {
+    "format_version": 1,
+    "elements": [
+      {
+        "type": "text",
+        "text": "SCORE 0",
+        "anchor": "top_left",
+        "offset": [
+          16,
+          16
+        ],
+        "font_scale": 3.0,
+        "color": [
+          1,
+          1,
+          1,
+          1
+        ]
+      },
+      {
+        "type": "progress_bar",
+        "anchor": "top_right",
+        "offset": [
+          -16,
+          16
+        ],
+        "size": [
+          220,
+          20
+        ],
+        "fraction": 1.0,
+        "fill": [
+          0.85,
+          0.2,
+          0.2,
+          1
+        ],
+        "background": [
+          0,
+          0,
+          0,
+          0.6
+        ]
+      },
+      {
+        "type": "text",
+        "text": "",
+        "anchor": "center",
+        "offset": [
+          0,
+          -60
+        ],
+        "font_scale": 5.0,
+        "color": [
+          1,
+          0.9,
+          0.3,
+          1
+        ]
+      },
+      {
+        "type": "button",
+        "id": "restart",
+        "label": "RESTART",
+        "anchor": "bottom_right",
+        "offset": [
+          -16,
+          -16
+        ],
+        "size": [
+          160,
+          40
+        ]
+      }
+    ]
+  }
+}

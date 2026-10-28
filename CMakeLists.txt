@@ -151,6 +151,7 @@ target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
+  add_subdirectory(samples/platformer_slice_game)
   add_subdirectory(player)
   add_subdirectory(editor/app)
 endif()

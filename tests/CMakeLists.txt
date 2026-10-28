@@ -119,6 +119,18 @@ if(ARCANE_BUILD_SAMPLES AND UNIX)
       ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR})
   set_tests_properties(test_export_game PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_export_platformer_slice
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR}
+      ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>)
+  set_tests_properties(test_export_platformer_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+  add_test(NAME test_player_slice_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/platformer_slice --module $<TARGET_FILE:platformer_slice_game>
+    --frames 120 --hidden)
+  set_tests_properties(test_player_slice_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
 
 add_executable(test_editor_tilemap test_editor_tilemap.cpp)
@@ -128,3 +140,13 @@ add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)
 add_executable(test_tile_paint test_tile_paint.cpp)
 target_link_libraries(test_tile_paint PRIVATE arcane_editor_core)
 add_test(NAME test_tile_paint COMMAND test_tile_paint)
+
+# Platformer validation slice: headless Play simulation of samples/platformer_slice.
+if(ARCANE_BUILD_SAMPLES)
+  add_executable(test_platformer_slice test_platformer_slice.cpp)
+  target_link_libraries(test_platformer_slice PRIVATE arcane_editor_core)
+  target_compile_definitions(test_platformer_slice PRIVATE
+    ARCANE_SLICE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/platformer_slice"
+    ARCANE_SLICE_MODULE_PATH="$<TARGET_FILE:platformer_slice_game>")
+  add_test(NAME test_platformer_slice COMMAND test_platformer_slice)
+endif()
