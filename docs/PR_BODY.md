@@ -1,199 +1,75 @@
-# PR #3 — Windows build fix, Foundation D (physics, input, animation, audio, HUD, export), Foundation E part 1 (tilemaps)
+# Engine nightly 2026-10-27 run 2 — FE2..FE12 (draft, stacked on PR #3)
 
-## Summary (PR #3 now targets `master`)
+**Base:** `engine-nightly-2026-10-26` (PR #3, frozen for the native Windows test). **Head:** `engine-nightly-2026-10-27`. Draft.
 
-PR #3 was rebased onto `master` (e5591b2, which contains merged PR #2 /
-Foundation C). It now contains, in order:
+## Summary
 
-| Job | Scope | Status |
-| --- | ----- | ------ |
-| WINFIX | Fix for Franklin's MSVC 14.51 build failure (out-of-line `Window`/`AudioSystem` ctors). See "Windows / MSVC build fix" below. | Done (gcc, clang+san, mingw green; native MSVC UNTESTED by us) |
-| FD1 | Box2D physics (`RigidBody2D`, `Collider2D`, `PhysicsWorld`), serializable input action map, Play-mode and player wiring, sample `PlayerController`. | Done |
-| FD2 | Animation clips + render-time frame selection, null-backend audio (`AudioSource`, `play_on_start`), editor clip/sound assignment and animation preview, HUD (text, image, progress bar, anchor layout) + `HudRenderer`. Includes the previously uncommitted editor_core WIP (`7d1696f`), now verified and finished. | Done, with gaps listed under "Known gaps" |
-| FD3 | `scripts/export-game.sh` standalone export; `arcane_player` finds `<exe dir>/game`. | Done (Linux run-tested; mingw export built, not run) |
-| FE1 | Tilemaps: `Tileset` asset, `Tilemap` component, culled batched rendering, solid-tile static colliders, editor Tilemap panel + paint/erase. | Done (GL tile drawing and editor paint UI compile-checked only) |
+Run 2 of the overnight engine work, on top of PR #3 (WINFIX, FD1–FD3, FE1). Commits: `ff2cdf2` … `53759b9`.
 
-Physics, input, animation, audio, HUD and tilemaps are all engine
-features that are wired into both the editor (Play mode) and the
-standalone player. Foundation D/E details follow.
+- **FE2 — physics y-flip.** Screen space is y-down; `PhysicsWorld` now flips y for positions, collider offsets, velocities and rotation sign (tilemap bodies included). Sample jump sign updated. Decisions 31–32.
+- **FE3 — HUD buttons and input routing.** `HudButton` joins the HUD variant; `HudInput` hit-tests, handles focus navigation, click callbacks and input consumption (`MaskedInputBackend`). HUD lives in `project.json` under `"hud"`; editor HUD panel. Decisions 33–37.
+- **FE4 — tile paint tool.** ImGui-free `TilePaintTool` (brush, erase, clamped fill-rect, stroke-based undo/redo). Editor uses it. Decision 39.
+- **FE5 — PlatformerController2D.** Coyote time, jump buffer, jump cut, fall gravity; `RigidBody2D::grounded` from contact normals. One-way platforms not done. Decision 40.
+- **FE6 — ParticleEmitter.** CPU fixed-step simulation, deterministic seed, batched draw, editor preview toggle. Decision 41.
+- **FE7 — animation clip authoring.** Grid slicing and clip model in `arcane_editor/clip_authoring`, editor "Animation Clip" panel, mtime hot-reload for texture, clip and tileset caches. Decisions 42–43.
+- **FE8 — analog input and rebinding.** Deadzones, button thresholds, four-pad routing, runtime rebinding with conflict detection, Input Map editor panel. Decisions 44–45.
+- **FE9 — tileset terrain.** Optional per-tile solid/terrain metadata; 4-bit cardinal-neighbour auto-tiling brush with neighbour updates and single undo stroke. Decision 46 (8-bit blob not implemented).
+- **FE10 — UTF-8 HUD text.** `stb_truetype` with the embedded Go Regular subset (BSD-3); glyph atlas, UTF-8 decode, measurement, fallback glyph. Decision 47.
+- **FE11 — platformer validation slice.** `samples/platformer_slice` project and `samples/platformer_slice_game` module, headless sim and export tests, gap list in `docs/slice_platformer_gaps.md`. Decisions 48–49.
+- **FE12 — partial.** `header_check` target compiles every public engine header standalone; int→float conversions made explicit (MSVC C4244 review proxy, gcc `-Wconversion`). Decision 50. The mingw exe run is **not** done (no wine on the box).
 
-### Foundation D — physics, input, animation, audio, HUD (FD1/FD2)
+## Test results
 
-- **Physics** (`engine/include/arcane/physics.hpp`, `engine/src/physics.cpp`):
-  `RigidBody2D` (body type, linear velocity, gravity scale, fixed rotation)
-  and `Collider2D` (box/circle, offset, density/friction/restitution,
-  sensor flag) components, both with registered properties so they appear
-  in the Inspector and round-trip through scene JSON like any other
-  component. `PhysicsWorld` owns one Box2D world per *runtime* scene:
-  `rebuild()` creates bodies/shapes from every `RigidBody2D`(+`Collider2D`)
-  node, `step()` advances the simulation and syncs `Transform2D`/
-  `linear_velocity` back, and dispatches `Component::on_contact_begin`/
-  `on_contact_end` for shapes that started/stopped touching. All pixel
-  values stay in pixels everywhere outside `PhysicsWorld`; the px<->m
-  conversion (32 px = 1 m, `docs/decisions.md` row 3) and the y-flip
-  between screen space (y-down) and Box2D's y-up world are both confined to that
-  one boundary. Physics only ever runs against a runtime scene — the
-  editor's authored scene in Edit mode is never handed to a `PhysicsWorld`,
-  so Play/Stop's existing snapshot isolation (Foundation C) also isolates
-  physics.
-- **Input** (`engine/include/arcane/input.hpp`, `engine/src/input.cpp`):
-  `InputActionMap` — named actions bound to zero or more physical inputs
-  (keyboard/mouse button/gamepad button), `held()`/`pressed()`/`released()`
-  edge-detected queries, `add_binding`/`clear_bindings`/`set_action` for
-  rebinding, JSON (de)serialization embedded in `ProjectFile`/project.json.
-  `GlfwInputBackend` polls a real `Window`; `FakeInputBackend` lets tests
-  drive state directly with no window/platform input, so the whole action
-  map is unit-testable headlessly. A single global `active_input_map()` is
-  set by the editor/player main loops only while Play is actually running
-  (null in Edit mode and after Stop), so gameplay code can query actions
-  from `Component::on_update` without threading a reference through every
-  call site, while the editor's own ImGui input in Edit mode is unaffected.
-- **Sample**: `sample_game`'s `PlayerController` component reads
-  `move_left`/`move_right`/`jump` from the active input map and drives a
-  sibling `RigidBody2D`; `samples/sample_project` wires those three actions
-  to WASD/arrow keys/space and gives the `Player` node a
-  `RigidBody2D`+`Collider2D`+`PlayerController`.
-- **Animation** (`arcane/animation.hpp`): `AnimationClip` JSON assets and an
-  `AnimatedSprite` component; `render_scene` resolves the clip through
-  `AnimationClipCache` and draws the selected frame's UV for nodes with
-  `Sprite`+`AnimatedSprite`. The editor's Assets panel lists clips/sounds
-  (click to assign to the selected node) and the Toolbar's "Preview
-  animations" checkbox plays them in Edit mode.
-- **Audio** (`arcane/audio.hpp`): miniaudio-backed `AudioSystem` + `AudioSource`
-  component. Editor and player use the **null backend** (decisions row 27);
-  `play_on_start` sources fire when Play begins / the player starts, and
-  gameplay can fire one-shots through `active_audio_system()`. Tests never
-  open a device.
-- **HUD** (`arcane/hud.hpp`): `Hud` list of text (stb_easy_font, ASCII),
-  image and progress-bar elements, anchor + offset layout scaled by screen
-  height, drawn after the world by `HudRenderer` (via new
-  `SpriteRenderer::flush()`); gameplay reaches it through `active_hud()`.
-  Not yet: buttons, focus/input routing, Unicode text (doc 7.7 later work).
-- Fixed-update wiring (`Component::on_update(float fixed_dt)` driven once
-  per fixed step by `FixedTimestep`, in both `editor_main.cpp` and
-  `player.cpp`) already existed before this branch (Foundation B/C) and
-  needed no changes — physics and input both hook into it as-is.
-
-## How to build/test
-
-```sh
-xvfb-run -a scripts/build-and-test.sh /tmp/a2d-check
-
-# run the sample project standalone; WASD/arrows move, space jumps
-xvfb-run -a build-gcc/bin/arcane_player --project samples/sample_project
-```
-
-## Test results (this PR, run under `xvfb-run -a`, via `scripts/build-and-test.sh`)
+Run with `scripts/build-and-test.sh` under `xvfb-run -a` for CTest (headless GL tests use Mesa llvmpipe).
 
 | Config | Result |
-| ------ | ------ |
-| gcc 14 Debug | **PASS** — 25/25 tests (4+ `gl`-labeled, run for real via Xvfb/Mesa llvmpipe) |
-| clang 19 + `ARCANE_SANITIZE=ON` (ASan+UBSan) | **PASS** — 25/25 tests |
-| mingw-w64 cross-compile | **PASS** (build only) — not run on real Windows |
-| native MSVC 14.51 | **UNTESTED by us** (no MSVC on the build box); Franklin's last log predates the WINFIX commit |
+|---|---|
+| gcc Debug (required) | PASS — 36/36 |
+| clang + ASan/UBSan | PASS — 36/36 |
+| mingw-w64 cross-compile | PASS — build only, **exes not run** |
 
-New tests this PR: `test_physics_headless` (bare Box2D v3 C API sanity,
-no engine code), `test_physics_components` (falling body lands on a
-static box and both sides see exactly one `on_contact_begin`; serialization
-round-trip of `RigidBody2D`/`Collider2D` properties; `rebuild()` alone
-never mutates the scene), `test_editor_state`'s
-`test_play_stop_isolation_with_physics` (Play actually steps physics,
-Stop restores the authored position untouched), `test_input` (edge
-detection, OR'd bindings across devices, `clear_bindings`, JSON round-trip,
-`active_input_map()` defaults to null), `test_scene_json`'s
-`test_project_round_trip` extended to cover `input_actions`.
+The last commit (`53759b9`) was built and tested with all three configs before it was committed.
 
 ## Delegated decisions
 
-Full table in `docs/decisions.md` (Foundation D section). Highlights:
+Logged in `docs/decisions.md` rows 31–50 (run 2 items): y-flip placement, HUD model and persistence, focus/click model, paint-tool undo granularity, platformer parameters, particle determinism, clip authoring model, hot-reload approach, analog and rebinding rules, 4-bit terrain (not 8-bit blob), UTF-8 font choice, slice layout, export test reuse, header-check and MSVC review scope. Row 38 records the branch/PR layout itself.
 
-- Input action map config is a nested object inside `project.json`, not a
-  separate file — one project has exactly one map today.
-- Gameplay reaches the live action map via a global `active_input_map()`
-  pointer (non-null only during Play), not a parameter threaded through
-  every lifecycle call.
-- Gamepad input reads `GLFW_JOYSTICK_1` only; no multi-gamepad support yet.
+## Known issues and gaps
 
-## Known gaps / pitfalls
-
-- Multi-gamepad support, analog stick axes (only digital button bindings
-  exist), and action-map rebinding UI (the API supports it; no Inspector
-  panel for it yet): deferred, not Foundation D acceptance items.
-- **UNTESTED on native Windows/MSVC** — physics, input, animation, audio and the HUD have only run on
-  Linux (gcc, clang+ASan/UBSan); the mingw target is cross-compiled and
-  build-verified only, never executed on real Windows.
-
-## Windows / MSVC build fix (PR #3 failed on Franklin's MSVC 14.51 build)
-
-- Cause: `Window() = default;` (window.hpp) and `AudioSystem() = default;` (audio.hpp) were
-  inline defaulted private constructors of dllexport classes holding `std::unique_ptr<Impl>`.
-  MSVC instantiates the `unique_ptr` destructor (for exception cleanup) in every TU that sees
-  the header, where `Impl` is incomplete (`C2027`/`C2338`, first hit in `input.cpp`). GCC/Clang/mingw
-  only define the ctor if it is odr-used.
-- Fix: both ctors are declared in the header and defined `= default` in window.cpp / audio.cpp
-  (same pattern as 56d605a). Also silenced noisy C4251/C4275 in CMake for MSVC.
-- Verified: gcc Debug, clang ASan/UBSan, mingw cross-build all green.
-- **UNTESTED on native Windows/MSVC** — Franklin please re-run on Windows.
-
-## Standalone export (Foundation D part 3)
-
-- `scripts/export-game.sh [--mingw] [--project DIR] [--module FILE] OUT` produces a self-contained folder (player + engine lib + module + project). Run `OUT/arcane_player` (add `--frames 30 --hidden` for a smoke run); it finds `OUT/game` relative to the executable.
-- `test_export_game` (Linux, gl label) exports the sample from the build tree and runs the exported player from another cwd. The mingw export builds and collects DLLs but is not run.
-- UNTESTED on native Windows/MSVC: the export (MSVC would need `scripts/export-game.sh` under bash and the `GetModuleFileNameW` path discovery), and the mingw-exported folder has not been run under Wine/Windows.
-
-## Tilemaps (Foundation E part 1)
-
-- `Tileset` JSON asset + `Tilemap` component (layers, grid, `tile_at`/`set_tile`, cell<->world coords, JSON via a `layers` string property), batched culled rendering through `render_scene` (`TilesetCache`), optional static Box2D colliders from `solid_tiles` (merged runs), editor Tilemap panel + viewport paint/erase. Decision 31.
-- Tests: `test_tilemap` (tileset JSON/UV, coords, scene round-trip, rect merging, collider stops a falling body), `test_editor_tilemap` (viewport->world, paint/erase, TilesetCache).
-- FE4 added `test_tilemap_gl` (offscreen FBO pixel checks: placement, layer order, camera-edge culling, zoom) and `test_tile_paint` (`TilePaintTool`: pan/zoom coords, brush/erase, fill-rect, undo/redo, dirty flag). The ImGui widgets around the tool remain compile-checked only. UNTESTED on native Windows/MSVC.
-
-## Known issues and gaps (as of this PR's head)
-
-- HUD: no buttons, focus or input routing; text is ASCII only (`stb_easy_font`).
-- Audio: null backend only in editor and player (decision 27); no real device has been opened.
-- Animation: clip cache does not hot-reload; the Assets panel image list re-scans per frame, clips/sounds only at startup (decision 28).
-- Input: digital bindings only (no analog axes), single gamepad (`GLFW_JOYSTICK_1`), no rebinding UI.
-- Tilemaps: no tileset editor, auto-tiling, or GL test for tile drawing; the editor paint UI is compile-checked only.
-- Export: no installer/packaging; mingw output is built but never run (not under Wine or Windows).
-- Physics: decision 3 says the screen/Box2D y-flip is confined to `PhysicsWorld`, but the code does not apply one (positions pass through unchanged, and row 31 says so). Gravity direction on screen is therefore unverified. Needs a decision and a test before anyone relies on it. Not fixed in this wrap-up.
+- Physics has no impulse API; the sample jump sets velocity directly.
+- Platformer: no one-way platforms. Slice gap list in `docs/slice_platformer_gaps.md`.
+- ParticleEmitter: no per-particle random frames, rotation, sub-emitters or multi-point curves; no dedicated editor panel (generic Inspector only).
+- Clip editor: reopening an existing clip into the grid editor is not implemented; player does not hot-reload.
+- HUD: no GL test for button drawing; no HiDPI pointer scaling; images are not serialized to HUD JSON.
+- Text: no kerning, no non-Latin scripts; `font_scale` 1 is now an 8-unit em.
+- Terrain: 4-bit cardinal mask only; no 8-bit blob autotiling.
+- Editor ImGui widgets (tile paint mouse handling, Input Map, clip panel, tileset/terrain UI) are compile-checked only and have not been exercised interactively.
+- Windows: `path.string()` uses the ANSI codepage for non-ASCII paths; not fixed.
 
 ## Next steps
 
-- Franklin: re-run the Windows MSVC build on this PR's head and send the log; that is the only way to close the UNTESTED items below.
-- Add a GL test for tile drawing and a headless test for the editor paint tool.
-- Rebinding UI for the input action map; HUD buttons and input routing.
-- Consider the mingw export under Wine as an optional smoke test (not in CI; no CI files are allowed in this repo).
+- FE12 remainder: run the mingw-built player and test exes under wine when available; full pimpl/dllexport audit of every class added since master.
+- FE13–FE15 not started (`jobs.conf`).
+- Manual visual check of Play mode, the HUD and the particle preview.
 
 ## UNTESTED on native Windows/MSVC
 
-Everything below has been built or cross-compiled (mingw) and, where it
-has tests, run only on Linux (gcc and clang+ASan/UBSan under Xvfb):
+Everything in this PR. The mingw build is cross-compiled only and was not run. Specifically:
 
-- Windows/MSVC build fix (WINFIX) — compile only verified on the Linux toolchains and mingw.
-- Physics (Box2D world, contacts, Play/Stop isolation with physics).
-- Input action map with the GLFW backend (real device input).
-- Animation clips and render-time frame selection.
-- Audio null backend (the null backend itself is headless, but the MSVC build of `miniaudio` is not checked).
-- HUD text, image, progress bar and layout rendering.
-- Standalone export (`scripts/export-game.sh`), exe-relative project discovery via `GetModuleFileNameW`, and the mingw export folder (never run).
-- Tilemaps: the component, colliders, culled rendering, and the editor Tilemap panel and paint tool.
+- FE2 physics y-flip and sample jump.
+- FE3 HUD input, focus and the editor HUD panel.
+- FE4 tile paint tool (editor mouse handling compile-checked only).
+- FE5 platformer controller and grounded detection.
+- FE6 particle system, including the `test_particles_gl` offscreen run.
+- FE7 clip authoring, the Animation Clip panel and mtime hot-reload.
+- FE8 analog input, GLFW gamepad polling, rebinding, Input Map panel.
+- FE9 terrain brush and tileset editor UI.
+- FE10 UTF-8 font loading and atlas (embedded font data).
+- FE11 platformer slice project and export.
+- FE12 header-check target and the int→float casts.
 
-## Delegated decisions (PR #3 as a whole)
+## Stacking
 
-Decisions with no explicit instruction, all logged in `docs/decisions.md`:
-rows 3, 24–31 (physics scope and units, input action map storage and
-live binding, input backend abstraction, null audio backend, editor
-animation preview, HUD text and layout, export layout, tilemap format),
-plus the MSVC pimpl out-of-line constructor pattern (WINFIX section below).
+This PR targets `engine-nightly-2026-10-26` (PR #3). Once PR #3 merges to master, retarget this PR to master.
 
-## FE8 — input maps
-
-Input actions support four gamepads, player routing and analog axes with a rescaled deadzone and button threshold. Runtime rebinding listens for new input and detects conflicts; the editor Input Map panel edits the project map. Existing version 1 project input maps remain readable. Headless tests cover axis math, player routing, rebinding and project serialization. The panel edits numeric device codes; its widgets and physical devices have not been manually exercised.
-
-**UNTESTED on native Windows/MSVC** — FE8 input, GLFW gamepad polling and editor Input Map panel; the mingw build is cross-compiled only.
-
-FE9 adds tileset authoring and four-neighbor terrain painting with undo. UNTESTED on native Windows/MSVC; editor interaction requires manual verification.
-
-## FE12 notes
-- mingw-built exes were NOT run (wine not installed). UNTESTED on native Windows/MSVC.
-- New `header_check` target compiles every public header standalone; int→float conversions fixed (MSVC C4244 at /W4). UNTESTED on native Windows/MSVC.
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
