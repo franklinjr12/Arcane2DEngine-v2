@@ -115,11 +115,15 @@ add_library(arcane_runtime SHARED
   engine/src/project.cpp
   engine/src/builtin_components.cpp
   engine/src/physics.cpp
+  engine/src/platformer.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
   engine/src/audio.cpp
   engine/src/hud.cpp
-  engine/src/tilemap.cpp)
+  engine/src/text.cpp
+  engine/src/font_data.cpp
+  engine/src/tilemap.cpp
+  engine/src/particles.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json)
@@ -139,7 +143,9 @@ add_library(arcane_editor_core STATIC
   editor/editor_core/src/asset_catalog.cpp
   editor/editor_core/src/project_runtime.cpp
   editor/editor_core/src/scene_render.cpp
-  editor/editor_core/src/audio_wiring.cpp)
+  editor/editor_core/src/tile_paint.cpp
+  editor/editor_core/src/audio_wiring.cpp
+  editor/editor_core/src/clip_authoring.cpp)
 target_include_directories(arcane_editor_core
   PUBLIC editor/editor_core/include
   PRIVATE ${TP}/json)
@@ -147,6 +153,7 @@ target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
+  add_subdirectory(samples/platformer_slice_game)
   add_subdirectory(player)
   add_subdirectory(editor/app)
 endif()

@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <vector>
 
@@ -42,7 +44,7 @@ void test_falling_body_lands_on_static_box() {
   auto* ground_recorder = static_cast<ContactRecorder*>(scene.add_component(ground, "ContactRecorder", registry));
 
   arcane::Node* falling = scene.create_node("falling");
-  falling->local_transform().position = {0.0f, 320.0f};  // 10 m above origin.
+  falling->local_transform().position = {0.0f, -320.0f};  // 10 m above origin on screen (y-down).
   scene.add_component(falling, "RigidBody2D", registry);
   auto* falling_collider = static_cast<arcane::Collider2D*>(scene.add_component(falling, "Collider2D", registry));
   falling_collider->width = 32.0f;
@@ -57,10 +59,10 @@ void test_falling_body_lands_on_static_box() {
     world.step(scene, kFixedDt);
   }
 
-  // Ground stays ~16 px above the ground box's center (half of each box's
-  // height: 16 + 16), well short of its 320 px starting height.
-  ARCANE_ASSERT_TRUE(falling->local_transform().position.y < 64.0f);
-  ARCANE_ASSERT_TRUE(falling->local_transform().position.y > 16.0f);
+  // Rests on top of the ground box: center 32 px above the ground center
+  // (half of each box's height: 16 + 16), i.e. y near -32 in y-down space.
+  ARCANE_ASSERT_TRUE(falling->local_transform().position.y < -16.0f);
+  ARCANE_ASSERT_TRUE(falling->local_transform().position.y > -64.0f);
 
   ARCANE_ASSERT_TRUE(falling_recorder->begin_count >= 1);
   ARCANE_ASSERT_TRUE(ground_recorder->begin_count >= 1);
@@ -130,9 +132,81 @@ void test_rebuild_without_step_does_not_mutate_scene() {
   ARCANE_ASSERT_TRUE(node->local_transform().position.y == 7.0f);
 }
 
+// Default gravity pulls a body toward +y (down on screen), and velocity is
+// reported in the same y-down space.
+void test_gravity_moves_body_down_on_screen() {
+  arcane::ComponentRegistry registry = make_registry();
+  arcane::Scene scene;
+  arcane::Node* node = scene.create_node("body");
+  node->local_transform().position = {10.0f, 50.0f};
+  scene.add_component(node, "RigidBody2D", registry);
+  auto* rigid = static_cast<arcane::RigidBody2D*>(node->find_component("RigidBody2D"));
+  scene.add_component(node, "Collider2D", registry);
+
+  arcane::PhysicsWorld world;
+  world.rebuild(scene);
+  for (int i = 0; i < 30; ++i) world.step(scene, 1.0f / 60.0f);
+
+  ARCANE_ASSERT_TRUE(node->local_transform().position.y > 50.0f);
+  ARCANE_ASSERT_TRUE(rigid->linear_velocity.y > 0.0f);
+  ARCANE_ASSERT_TRUE(node->local_transform().position.x == 10.0f);
+}
+
+// Position, velocity and rotation survive the boundary with their sign: a
+// zero-gravity body moves exactly along its (y-down) velocity.
+void test_position_velocity_round_trip() {
+  arcane::ComponentRegistry registry = make_registry();
+  arcane::Scene scene;
+  arcane::Node* node = scene.create_node("body");
+  node->local_transform().position = {100.0f, 200.0f};
+  scene.add_component(node, "RigidBody2D", registry);
+  auto* rigid = static_cast<arcane::RigidBody2D*>(node->find_component("RigidBody2D"));
+  rigid->gravity_scale = 0.0f;
+  rigid->linear_velocity = {64.0f, -96.0f};  // right and UP on screen.
+  scene.add_component(node, "Collider2D", registry);
+
+  arcane::PhysicsWorld world;
+  world.rebuild(scene);
+  for (int i = 0; i < 60; ++i) world.step(scene, 1.0f / 60.0f);
+
+  const arcane::Vec2 p = node->local_transform().position;
+  ARCANE_ASSERT_TRUE(std::fabs(p.x - 164.0f) < 0.5f);
+  ARCANE_ASSERT_TRUE(std::fabs(p.y - 104.0f) < 0.5f);
+  ARCANE_ASSERT_TRUE(std::fabs(rigid->linear_velocity.x - 64.0f) < 0.01f);
+  ARCANE_ASSERT_TRUE(std::fabs(rigid->linear_velocity.y + 96.0f) < 0.01f);
+}
+
+// A body launched upward (negative y velocity) rises on screen before gravity
+// turns it around.
+void test_upward_velocity_rises_then_falls() {
+  arcane::ComponentRegistry registry = make_registry();
+  arcane::Scene scene;
+  arcane::Node* node = scene.create_node("body");
+  node->local_transform().position = {0.0f, 0.0f};
+  scene.add_component(node, "RigidBody2D", registry);
+  auto* rigid = static_cast<arcane::RigidBody2D*>(node->find_component("RigidBody2D"));
+  rigid->linear_velocity = {0.0f, -320.0f};
+  scene.add_component(node, "Collider2D", registry);
+
+  arcane::PhysicsWorld world;
+  world.rebuild(scene);
+  world.step(scene, 1.0f / 60.0f);
+  ARCANE_ASSERT_TRUE(node->local_transform().position.y < 0.0f);
+  float min_y = 0.0f;
+  for (int i = 0; i < 300; ++i) {
+    world.step(scene, 1.0f / 60.0f);
+    min_y = std::min(min_y, node->local_transform().position.y);
+  }
+  ARCANE_ASSERT_TRUE(min_y < -20.0f);
+  ARCANE_ASSERT_TRUE(node->local_transform().position.y > min_y);
+}
+
 }  // namespace
 
 int main() {
+  test_gravity_moves_body_down_on_screen();
+  test_position_velocity_round_trip();
+  test_upward_velocity_rises_then_falls();
   test_falling_body_lands_on_static_box();
   test_physics_component_serialization_round_trip();
   test_rebuild_without_step_does_not_mutate_scene();

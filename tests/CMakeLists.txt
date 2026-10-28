@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_tilemap)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_text test_hud_input test_tilemap test_particles)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -22,6 +22,10 @@ add_executable(test_editor_anim_audio test_editor_anim_audio.cpp)
 target_link_libraries(test_editor_anim_audio PRIVATE arcane_editor_core)
 add_test(NAME test_editor_anim_audio COMMAND test_editor_anim_audio)
 
+add_executable(test_clip_authoring test_clip_authoring.cpp)
+target_link_libraries(test_clip_authoring PRIVATE arcane_editor_core)
+add_test(NAME test_clip_authoring COMMAND test_clip_authoring)
+
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
@@ -29,6 +33,10 @@ add_test(NAME test_physics_headless COMMAND test_physics_headless)
 add_executable(test_physics_components test_physics_components.cpp)
 target_link_libraries(test_physics_components PRIVATE arcane_runtime)
 add_test(NAME test_physics_components COMMAND test_physics_components)
+
+add_executable(test_platformer test_platformer.cpp)
+target_link_libraries(test_platformer PRIVATE arcane_runtime)
+add_test(NAME test_platformer COMMAND test_platformer)
 
 add_executable(test_audio_null test_audio_null.cpp)
 target_link_libraries(test_audio_null PRIVATE miniaudio)
@@ -74,6 +82,18 @@ add_test(NAME test_renderer_gl COMMAND test_renderer_gl)
 set_tests_properties(test_renderer_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
+add_executable(test_tilemap_gl test_tilemap_gl.cpp)
+target_link_libraries(test_tilemap_gl PRIVATE arcane_editor_core)
+add_test(NAME test_tilemap_gl COMMAND test_tilemap_gl)
+set_tests_properties(test_tilemap_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_particles_gl test_particles_gl.cpp)
+target_link_libraries(test_particles_gl PRIVATE arcane_editor_core)
+add_test(NAME test_particles_gl COMMAND test_particles_gl)
+set_tests_properties(test_particles_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
 if(ARCANE_BUILD_SAMPLES)
   add_test(NAME test_player_frames COMMAND arcane_player --frames 30 --hidden)
   set_tests_properties(test_player_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
@@ -99,8 +119,46 @@ if(ARCANE_BUILD_SAMPLES AND UNIX)
       ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR})
   set_tests_properties(test_export_game PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_export_platformer_slice
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR}
+      ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>)
+  set_tests_properties(test_export_platformer_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+  add_test(NAME test_player_slice_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/platformer_slice --module $<TARGET_FILE:platformer_slice_game>
+    --frames 120 --hidden)
+  set_tests_properties(test_player_slice_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
 
 add_executable(test_editor_tilemap test_editor_tilemap.cpp)
 target_link_libraries(test_editor_tilemap PRIVATE arcane_editor_core)
 add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)
+
+add_executable(test_tile_paint test_tile_paint.cpp)
+target_link_libraries(test_tile_paint PRIVATE arcane_editor_core)
+add_test(NAME test_tile_paint COMMAND test_tile_paint)
+
+# Platformer validation slice: headless Play simulation of samples/platformer_slice.
+if(ARCANE_BUILD_SAMPLES)
+  add_executable(test_platformer_slice test_platformer_slice.cpp)
+  target_link_libraries(test_platformer_slice PRIVATE arcane_editor_core)
+  target_compile_definitions(test_platformer_slice PRIVATE
+    ARCANE_SLICE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/platformer_slice"
+    ARCANE_SLICE_MODULE_PATH="$<TARGET_FILE:platformer_slice_game>")
+  add_test(NAME test_platformer_slice COMMAND test_platformer_slice)
+endif()
+
+# --- every public engine header must compile standalone ---------------------
+file(GLOB ARCANE_PUBLIC_HEADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../engine/include/arcane/*.hpp)
+set(header_check_sources "")
+foreach(h ${ARCANE_PUBLIC_HEADERS})
+  get_filename_component(hn ${h} NAME_WE)
+  set(src ${CMAKE_CURRENT_BINARY_DIR}/header_check/${hn}.cpp)
+  file(GENERATE OUTPUT ${src} CONTENT "#include <arcane/${hn}.hpp>\n#include <arcane/${hn}.hpp>\n")
+  list(APPEND header_check_sources ${src})
+endforeach()
+add_library(header_check OBJECT ${header_check_sources})
+target_link_libraries(header_check PRIVATE arcane_runtime)

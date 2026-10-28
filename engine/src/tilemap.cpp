@@ -37,6 +37,10 @@ std::string save_tileset_to_json(const Tileset& tileset) {
   j["tile_height"] = tileset.tile_height;
   j["columns"] = tileset.columns;
   j["tile_count"] = tileset.tile_count;
+  j["tiles"] = nlohmann::json::array();
+  for (const auto& tile : tileset.tiles) j["tiles"].push_back({{"solid", tile.solid}, {"terrain", tile.terrain}});
+  j["terrains"] = nlohmann::json::array();
+  for (const auto& rule : tileset.terrains) j["terrains"].push_back({{"terrain", rule.terrain}, {"tiles", rule.tiles}});
   return j.dump(2);
 }
 
@@ -55,10 +59,34 @@ std::expected<Tileset, std::string> load_tileset_from_json(const std::string& te
     if (t.tile_width <= 0 || t.tile_height <= 0 || t.columns <= 0 || t.tile_count <= 0) {
       return std::unexpected("tileset: tile size, columns and tile_count must be positive");
     }
+    if (j.contains("tiles")) {
+      for (const auto& item : j.at("tiles")) t.tiles.push_back({item.value("solid", false), item.value("terrain", 0)});
+    }
+    if (j.contains("terrains")) {
+      for (const auto& item : j.at("terrains")) {
+        TerrainRule rule; rule.terrain = item.at("terrain").get<int>();
+        rule.tiles = item.at("tiles").get<std::array<int, 16>>();
+        t.terrains.push_back(rule);
+      }
+    }
     return t;
   } catch (const nlohmann::json::exception& ex) {
     return std::unexpected(std::format("tileset: {}", ex.what()));
   }
+}
+
+int Tileset::terrain_of(int tile_id) const noexcept {
+  if (tile_id <= 0 || tile_id > tile_count || static_cast<std::size_t>(tile_id) > tiles.size()) return 0;
+  return tiles[static_cast<std::size_t>(tile_id - 1)].terrain;
+}
+
+int Tileset::tile_for_mask(int terrain, int mask) const noexcept {
+  if (terrain <= 0 || mask < 0 || mask >= 16) return 0;
+  for (const auto& rule : terrains) if (rule.terrain == terrain) {
+    const int id = rule.tiles[static_cast<std::size_t>(mask)];
+    return id > 0 && id <= tile_count && terrain_of(id) == terrain ? id : 0;
+  }
+  return 0;
 }
 
 UvRect tile_uv(const Tileset& tileset, int tile_id) noexcept {
@@ -69,7 +97,8 @@ UvRect tile_uv(const Tileset& tileset, int tile_id) noexcept {
   const int row = index / tileset.columns;
   const float cw = 1.0f / static_cast<float>(tileset.columns);
   const float ch = 1.0f / static_cast<float>(rows);
-  return UvRect{col * cw, row * ch, (col + 1) * cw, (row + 1) * ch};
+  return UvRect{static_cast<float>(col) * cw, static_cast<float>(row) * ch, static_cast<float>(col + 1) * cw,
+                static_cast<float>(row + 1) * ch};
 }
 
 int Tilemap::tile_at(int layer, int cx, int cy) const noexcept {
@@ -128,7 +157,8 @@ std::vector<TileRect> Tilemap::solid_rects() const {
       }
       const int start = cx;
       while (cx < width && cell_solid(cx, cy)) ++cx;
-      rects.push_back(TileRect{start * tile_width, cy * tile_height, (cx - start) * tile_width, tile_height});
+      rects.push_back(TileRect{static_cast<float>(start) * tile_width, static_cast<float>(cy) * tile_height,
+                              static_cast<float>(cx - start) * tile_width, tile_height});
     }
   }
   return rects;

@@ -16,6 +16,7 @@ std::string save_project_to_json(const ProjectFile& project) {
   root["main_scene"] = project.main_scene;
   root["module"] = project.module;
   root["input_actions"] = nlohmann::json::parse(project.input_actions.save_to_json());
+  root["hud"] = nlohmann::json::parse(project.hud.save_to_json());
   return root.dump(2);
 }
 
@@ -50,6 +51,13 @@ std::expected<ProjectFile, std::string> load_project_from_json(const std::string
       return std::unexpected(input_actions.error());
     }
     project.input_actions = std::move(*input_actions);
+  }
+  if (root.contains("hud")) {
+    auto hud = Hud::load_from_json(root["hud"].dump());
+    if (!hud) {
+      return std::unexpected(hud.error());
+    }
+    project.hud = std::move(*hud);
   }
   return project;
 }

@@ -36,6 +36,8 @@ class ProjectSession {
   std::expected<void, std::string> save(const ComponentRegistry& registry);
 
   const ProjectFile& project() const noexcept { return project_; }
+  // For editor panels that edit project-level data (e.g. the HUD); call mark_dirty() after changes.
+  ProjectFile& mutable_project() noexcept { return project_; }
   const std::filesystem::path& project_dir() const noexcept { return project_dir_; }
   std::filesystem::path assets_dir() const { return project_dir_ / "assets"; }
   std::filesystem::path main_scene_path() const { return project_dir_ / project_.main_scene; }

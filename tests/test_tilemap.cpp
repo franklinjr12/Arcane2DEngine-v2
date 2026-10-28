@@ -16,9 +16,15 @@ void test_tileset_json_round_trip_and_uv() {
   t.tile_height = 16;
   t.columns = 4;
   t.tile_count = 8;
+  t.tiles.resize(8); t.tiles[1] = {true, 3};
+  arcane::TerrainRule rule; rule.terrain = 3; rule.tiles[5] = 2; t.terrains.push_back(rule);
   auto loaded = arcane::load_tileset_from_json(arcane::save_tileset_to_json(t));
   ARCANE_ASSERT_TRUE(loaded.has_value());
   ARCANE_ASSERT_TRUE(loaded->texture == 77 && loaded->columns == 4 && loaded->tile_count == 8);
+
+  ARCANE_ASSERT_TRUE(loaded->tiles[1].solid && loaded->terrain_of(2) == 3 && loaded->tile_for_mask(3, 5) == 2);
+  auto old = arcane::load_tileset_from_json(R"({"format_version":1,"texture":1,"tile_width":16,"tile_height":16,"columns":2,"tile_count":4})");
+  ARCANE_ASSERT_TRUE(old && old->tiles.empty() && old->terrains.empty());
 
   const auto uv = arcane::tile_uv(*loaded, 6);  // index 5 -> col 1, row 1 of a 4x2 grid
   ARCANE_ASSERT_TRUE(uv.u0 == 0.25f && uv.u1 == 0.5f && uv.v0 == 0.5f && uv.v1 == 1.0f);
@@ -107,7 +113,7 @@ void test_tilemap_collider_stops_falling_body() {
   arcane::Scene scene;
 
   arcane::Node* node = scene.create_node("ground");
-  node->local_transform().position = {0.0f, -32.0f};
+  node->local_transform().position = {0.0f, 200.0f};
   auto* map = static_cast<arcane::Tilemap*>(scene.add_component(node, "Tilemap", registry));
   map->width = 10;
   map->height = 1;
@@ -117,7 +123,7 @@ void test_tilemap_collider_stops_falling_body() {
   for (int x = 0; x < 10; ++x) map->set_tile(0, x, 0, 1);
 
   arcane::Node* ball = scene.create_node("ball");
-  ball->local_transform().position = {100.0f, 200.0f};
+  ball->local_transform().position = {100.0f, 0.0f};
   scene.add_component(ball, "RigidBody2D", registry);
   auto* collider = static_cast<arcane::Collider2D*>(scene.add_component(ball, "Collider2D", registry));
   collider->width = 16.0f;
@@ -127,10 +133,10 @@ void test_tilemap_collider_stops_falling_body() {
   world.rebuild(scene);
   for (int i = 0; i < 240; ++i) world.step(scene, 1.0f / 60.0f);
 
-  // Physics is passed through as-is (y-up, see decisions.md row 3): the tile box spans y in [-32, 0] around the
-  // node origin at y=-32, so a 16 px ball comes to rest with its center near y=8 instead of free-falling.
+  // Screen space is y-down: the tile row spans y in [200, 232], so a 16 px ball comes to rest on top of it with
+  // its center near y=192 instead of falling through.
   const float y = ball->local_transform().position.y;
-  ARCANE_ASSERT_TRUE(y > 0.0f && y < 20.0f);
+  ARCANE_ASSERT_TRUE(y > 180.0f && y < 200.0f);
 }
 
 }  // namespace

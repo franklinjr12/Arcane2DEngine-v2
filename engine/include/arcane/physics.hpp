@@ -31,6 +31,9 @@ class ARCANE_API RigidBody2D : public Component {
   Vec2 linear_velocity{};
   float gravity_scale = 1.0f;
   bool fixed_rotation = false;
+  // Runtime-only (not serialized): set by PhysicsWorld::step to true when the body rests on something below it
+  // (a touching contact whose normal points mostly up). Used by PlatformerController2D.
+  bool grounded = false;
 };
 
 // A collision shape attached to the same node as a RigidBody2D. A node with

@@ -69,7 +69,7 @@ void test_play_stop_isolation_with_physics() {
   for (int i = 0; i < 30; ++i) controller.tick(1.0f / 60.0f);
 
   arcane::Node* runtime_node = runtime->roots()[0].get();
-  ARCANE_ASSERT_TRUE(runtime_node->local_transform().position.y < 320.0f);
+  ARCANE_ASSERT_TRUE(runtime_node->local_transform().position.y > 320.0f);
 
   controller.stop();
   ARCANE_ASSERT_TRUE(controller.active_scene(authored) == &authored);

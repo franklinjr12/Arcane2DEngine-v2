@@ -8,6 +8,7 @@
 
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
+#include "arcane/platformer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
 
@@ -19,8 +20,10 @@ constexpr float kPxPerM = PhysicsWorld::kPixelsPerMeter;
 
 float px_to_m(float px) { return px / kPxPerM; }
 float m_to_px(float m) { return m * kPxPerM; }
-b2Vec2 px_to_m(const Vec2& v) { return b2Vec2{px_to_m(v.x), px_to_m(v.y)}; }
-Vec2 m_to_px(const b2Vec2& v) { return Vec2{m_to_px(v.x), m_to_px(v.y)}; }
+// Engine space is y-down (screen); Box2D is y-up. The flip lives only here: every position, offset, velocity and
+// angle crossing the boundary has y (or the rotation sign) negated.
+b2Vec2 px_to_m(const Vec2& v) { return b2Vec2{px_to_m(v.x), -px_to_m(v.y)}; }
+Vec2 m_to_px(const b2Vec2& v) { return Vec2{m_to_px(v.x), -m_to_px(v.y)}; }
 
 void* node_id_to_user_data(NodeId id) { return reinterpret_cast<void*>(static_cast<std::uintptr_t>(id)); }
 NodeId user_data_to_node_id(void* ptr) { return static_cast<NodeId>(reinterpret_cast<std::uintptr_t>(ptr)); }
@@ -44,6 +47,20 @@ void notify_contact(Scene& scene, b2ShapeId shape_a, b2ShapeId shape_b, bool beg
   for (const auto& component : node_b->components()) {
     if (begin) component->on_contact_begin(*node_a); else component->on_contact_end(*node_a);
   }
+}
+
+// True if any touching contact pushes up on `body` (manifold normal points from shape A to B, in y-up Box2D space).
+bool is_grounded(b2BodyId body) {
+  constexpr float kMinUpwardNormal = 0.7f;
+  b2ContactData contacts[16];
+  const int count = b2Body_GetContactData(body, contacts, 16);
+  for (int i = 0; i < count; ++i) {
+    if (contacts[i].manifold.pointCount == 0) continue;
+    const bool body_is_a = B2_ID_EQUALS(b2Shape_GetBody(contacts[i].shapeIdA), body);
+    const float up = body_is_a ? -contacts[i].manifold.normal.y : contacts[i].manifold.normal.y;
+    if (up > kMinUpwardNormal) return true;
+  }
+  return false;
 }
 
 }  // namespace
@@ -70,6 +87,7 @@ void register_physics_components(ComponentRegistry& registry) {
           make_property<Collider2D>("restitution", PropertyType::Float, &Collider2D::restitution),
           make_property<Collider2D>("is_sensor", PropertyType::Bool, &Collider2D::is_sensor),
       });
+  register_platformer_components(registry);
 }
 
 struct PhysicsWorld::Impl {
@@ -127,7 +145,7 @@ void PhysicsWorld::rebuild(Scene& scene) {
     b2BodyDef body_def = b2DefaultBodyDef();
     body_def.type = static_cast<b2BodyType>(rigid->body_type);
     body_def.position = px_to_m(world_transform.position);
-    body_def.rotation = b2MakeRot(world_transform.rotation_radians);
+    body_def.rotation = b2MakeRot(-world_transform.rotation_radians);
     body_def.linearVelocity = px_to_m(rigid->linear_velocity);
     body_def.gravityScale = rigid->gravity_scale;
     body_def.motionLocks.angularZ = rigid->fixed_rotation;
@@ -166,7 +184,10 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
     if (type == b2_dynamicBody || type == b2_kinematicBody) {
       Node* node = scene.find_node(node_id);
       auto* rigid = node ? dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D")) : nullptr;
-      if (rigid) b2Body_SetLinearVelocity(body, px_to_m(rigid->linear_velocity));
+      if (rigid) {
+        b2Body_SetLinearVelocity(body, px_to_m(rigid->linear_velocity));
+        b2Body_SetGravityScale(body, rigid->gravity_scale);
+      }
     }
   }
 
@@ -181,10 +202,13 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
     if (!node) continue;
 
     node->local_transform().position = m_to_px(b2Body_GetPosition(body));
-    node->local_transform().rotation_radians = b2Rot_GetAngle(b2Body_GetRotation(body));
+    node->local_transform().rotation_radians = -b2Rot_GetAngle(b2Body_GetRotation(body));
 
     auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
-    if (rigid) rigid->linear_velocity = m_to_px(b2Body_GetLinearVelocity(body));
+    if (rigid) {
+      rigid->linear_velocity = m_to_px(b2Body_GetLinearVelocity(body));
+      rigid->grounded = is_grounded(body);
+    }
   }
 
   const b2ContactEvents events = b2World_GetContactEvents(impl_->world);

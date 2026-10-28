@@ -46,7 +46,7 @@ class PlayerController : public arcane::Component {
     if (input->held("move_right")) velocity_x += move_speed;
     body->linear_velocity.x = velocity_x;
     if (input->pressed("jump")) {
-      body->linear_velocity.y = jump_speed;
+      body->linear_velocity.y = -jump_speed;  // y-down: up is negative.
     }
   }
 

@@ -4,6 +4,7 @@
 #include <string>
 
 #include "arcane/export.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 
 namespace arcane {
@@ -21,6 +22,8 @@ struct ProjectFile {
   // project file; empty if the project has no custom component types.
   std::string module;
   InputActionMap input_actions;
+  // Authored HUD layout (buttons, text, bars), instantiated at Play/startup.
+  Hud hud;
 };
 
 ARCANE_API std::string save_project_to_json(const ProjectFile& project);
