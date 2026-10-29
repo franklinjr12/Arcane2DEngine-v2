@@ -47,6 +47,7 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
 
 **2. What you can visibly see**
+- AF7 adds no visible feature: clip, HUD and input commands and panel routing remain blocked by incomplete command and undo foundations.
 - AF6 prerequisite work adds a strict project-opening API for future tooling; it has no new editor screen or CLI command. `test_editor_project` checks that strict loading refuses an unknown legacy module property without changing the file.
 - FE15 adds a top-down arena with solid walls, chasing enemy, health HUD and hit particles, plus editable ArenaRules properties in scene JSON and the Inspector.
 - AudioSource playback is audible in visible editor Play and player sessions when a device opens; fallback is logged.
@@ -63,6 +64,7 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
 - FE15 is partial: the missing AF3/AF4 CLI prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
