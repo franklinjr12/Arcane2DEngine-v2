@@ -62,6 +62,7 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
 - FE15 is partial: the missing AF3/AF4 CLI prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
 - FE14 is partial: AF3/AF4 are absent, so shared CLI audio settings and diagnostics are unavailable. Real-device playback has not been manually verified.
@@ -127,3 +128,7 @@ FE15 validation: GCC Debug 43/43 CTest, Clang ASan/UBSan 43/43 CTest, MinGW cros
 ## KI1 — carry-over issues
 
 No KI1 implementation was made: AF3 and AF4 are partial and absent, and the required shared command registry must be completed first. Physics impulse, one-way platforms, clip reopening and player clip hot-reload remain open. See the KI1 job handoff. **UNTESTED on native Windows/MSVC.**
+
+## AF5 — prerequisite and mutation inventory (partial)
+
+AF3 and AF4 remain incomplete. The editor mutation inventory records outstanding direct writes for AF5–AF8; no command routing or undo implementation is claimed. Native Windows/MSVC remains UNTESTED.
