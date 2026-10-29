@@ -55,6 +55,8 @@ AF3 check: `ctest --test-dir .build-and-test/build-gcc -R test_tooling_commands 
 
 FE18 check (prefabs): `ctest --test-dir .build-and-test/build-gcc -R test_prefab --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_prefab --output-on-failure`); expect it to pass. It saves a node subtree as `prefabs/rig.prefab.json` in a temporary project, instantiates it three ways through the registry commands, overrides/reverts properties, breaks and restores the link, reopens the project from disk, spawns 25 runtime instances and checks that malformed links are refused. There is no editor button or `arcane` CLI for prefabs (see risks), so nothing to click.
 
+FE20 check (atlas packing): `ctest --test-dir .build-and-test/build-gcc -R test_atlas --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_atlas --output-on-failure`); expect it to pass. It packs generated PNGs through `atlas.pack`, checks no overlaps/padding/bounds, byte-identical repeat output, the metadata round trip, UV lookup and a clip built from regions. No GUI or `arcane` CLI exists for it, so nothing to click.
+
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
 **2. What you can visibly see**
@@ -74,6 +76,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Editor saves now write the canonical v2 format; old files still open.
 - FE16 adds `docs/acceptance-audit.md` (baseline section 17 and AI-agent-friendly criteria mapped to tests or GAP) and `test_foundation_acceptance` (Sprite + Camera + module Spinner saved, reopened, played, stopped).
 - FE18 adds prefab files (`docs/formats/prefab.md`, `schemas/arcane.prefab.schema.json`), a `prefab` link on scene nodes, `prefab.*` registry commands (`docs/commands.md`) and the runtime calls `load_prefab_file` / `instantiate_prefab` / `spawn_prefab`. Visible only as files and test output.
+- FE20 adds `docs/formats/atlas.md`, `schemas/arcane.atlas.schema.json`, `arcane/atlas.hpp` (packer, load/save, UV lookup) and `atlas.pack/regions/make_clip` registry commands. Visible as files and test output only.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -81,6 +84,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE20 is PARTIAL: packing, format, commands and tests are done; there is no `arcane` CLI (AF4) so `atlas.*` is reachable from C++/tests only, no editor UI, and `Sprite` cannot reference a region by name (clips can, via `atlas.make_clip`). Export was not run end to end with an atlas (it copies `assets/` whole). **UNTESTED on native Windows/MSVC.**
 - FE18 is PARTIAL: data format, registry commands, runtime spawn and tests are done; the editor GUI has no prefab actions (editor edits still bypass commands, AF5) and there is no `arcane` CLI (AF4). Prefab edits do not propagate to existing instances; undoing a `prefab.remove` or redoing an `instantiate` creates new IDs. **UNTESTED on native Windows/MSVC.**
 - AF3 is PASS for its scope (registry, context, property commands) but nothing calls it yet: the editor does not route through it (AF5) and the `arcane` CLI (AF4) does not exist. Only property commands exist. Persistence writes the scene only and is optimistic about concurrent writers. **UNTESTED on native Windows/MSVC** (`tooling/` uses `std::expected`, `std::to_chars(float)`, `std::filesystem`; `ProjectContext` has an out-of-line destructor).
 - AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
@@ -198,3 +202,9 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - Commands (`arcane_tooling`): `prefab.save/instantiate/remove/override/revert/break_link/relink/info`, with inverses; `property_to_json`/`property_from_json` shared with `prop.*`.
 - Tests: `test_prefab` (save/instantiate/override round trip through disk, ID uniqueness, reference remapping, break/relink, 25 runtime spawns, malformed link refusal, dry run).
 - Gaps: no GUI (AF5) or `arcane` CLI (AF4) spelling, no propagation of prefab edits, no nesting. **UNTESTED on native Windows/MSVC.**
+
+## FE20 — sprite atlas packing
+
+- Format `arcane.atlas` v2 (pixel rects, derived UVs), deterministic shelf packer over `*.png` folders using stb_image/stb_image_write, PNG output byte-stable. Docs `docs/formats/atlas.md`, `commands.md`; schema `arcane.atlas`.
+- Commands: `atlas.pack`, `atlas.regions`, `atlas.make_clip` (`tooling/src/atlas_commands.cpp`, `register_atlas_commands`).
+- Tests: `test_atlas` (layout invariants over 40 sizes x 3 paddings, input-order independence, bounds/overlap, JSON strictness and round trip, folder packing, repeat-run bytes, clip UVs, argument refusal). Decision logged in `docs/decisions.md`.

@@ -46,6 +46,9 @@ Component: an integer component id, or a type name attached exactly once.
 | `prop.list` | `node`, `component` | `{component_id, type, properties:[{name,type,value}]}` |
 | `prop.get` | `node`, `component`, `name` | `{name, type, value}` |
 | `prop.set` (mutating) | `node`, `component`, `name`, `value` | `{changed, previous, value}` |
+| `atlas.pack` | `folder`, `atlas`, `image?`, `padding?` (default 1), `max_size?` (default 2048) | `{atlas, image, width, height, padding, regions:[{name,x,y,w,h,uv}]}`; writes the PNG and `arcane.atlas` file at once (ignores `persist`/`dry_run`) |
+| `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
+| `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |
 | `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
 | `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
 | `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
@@ -55,6 +58,9 @@ Component: an integer component id, or a type name attached exactly once.
 | `prefab.break_link` (mutating) | `node` | `{instance_id, nodes}`; inverse is `prefab.relink` |
 | `prefab.relink` (mutating) | `asset`, `instance_id`, `nodes:[{id,local_id}]`, `overrides?` | `{instance_id, nodes}` |
 | `prefab.info` | `node` | `{linked, asset, instance_id, local_id, overrides}` |
+
+Atlases (`docs/formats/atlas.md`): all paths are project-relative `/` paths; `image` defaults to the `atlas` path with `.png`
+in place of `.json`. Packing is deterministic. Register with `register_atlas_commands`.
 
 Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in `.prefab.json`.
 `node` selectors for override/revert/break_link/remove/info may name any node of an instance.

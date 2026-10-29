@@ -223,3 +223,9 @@ target_compile_definitions(test_topdown_commands PRIVATE
   ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
 add_dependencies(test_topdown_commands topdown_slice_game)
 add_test(NAME test_topdown_commands COMMAND test_topdown_commands)
+
+# --- sprite atlas packing, atlas.* commands -----------------------------------
+add_executable(test_atlas test_atlas.cpp)
+target_link_libraries(test_atlas PRIVATE arcane_tooling)
+target_include_directories(test_atlas SYSTEM PRIVATE ${TP}/stb)
+add_test(NAME test_atlas COMMAND test_atlas)
