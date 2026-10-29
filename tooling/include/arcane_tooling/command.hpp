@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <deque>
 #include <expected>
 #include <functional>
@@ -82,8 +83,28 @@ std::expected<void, ToolError> validate_args(const Json& schema, const Json& val
 class CommandHistory {
  public:
   // Records a successful execution; clears the redo stack. Calls with no
-  // inverse (reads, no-ops) are ignored.
-  void record(const Invocation& forward, const CommandResult& result);
+  // inverse (reads, no-ops) are ignored. A non-empty `coalesce_key` merges the
+  // call into the previous entry when that entry has the same key and no
+  // end_gesture(), undo, redo or save point came in between (one drag = one
+  // undo step): the original inverse is kept, the forward becomes the latest.
+  //
+  // `next_id_before` (Scene::next_id() before the call, 0 = unknown) makes undo rewind the id
+  // counter, so a redo allocates the same node/component ids and later redo steps that name
+  // them still resolve. Undo is strictly last-in-first-out, so no live id can be reused.
+  void record(const Invocation& forward, const CommandResult& result, const std::string& coalesce_key = {},
+              std::uint64_t next_id_before = 0);
+
+  // Ends the current coalescing run (mouse released, edit committed).
+  void end_gesture() { open_key_.clear(); }
+
+  // Save-point tracking: the history position when the document was written.
+  // at_save_point() is true again after undoing/redoing back to that position,
+  // and never true once the saved state became unreachable.
+  void mark_saved() {
+    saved_ = undo_.size();
+    open_key_.clear();
+  }
+  bool at_save_point() const noexcept { return saved_ == undo_.size(); }
 
   bool can_undo() const noexcept { return !undo_.empty(); }
   bool can_redo() const noexcept { return !redo_.empty(); }
@@ -96,9 +117,13 @@ class CommandHistory {
   struct Entry {
     Invocation forward;
     Invocation inverse;
+    std::uint64_t next_id_before = 0;
   };
   std::deque<Entry> undo_;
   std::deque<Entry> redo_;
+  std::string open_key_;
+  static constexpr std::size_t kUnreachable = static_cast<std::size_t>(-1);
+  std::size_t saved_ = 0;  // undo depth at the save point, or kUnreachable once overwritten
 };
 
 // Registers scene.tree/query/restore and node.info/find/add/remove/rename/reparent/duplicate/set_transform.

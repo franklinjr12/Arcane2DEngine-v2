@@ -208,6 +208,14 @@ target_compile_definitions(test_tooling_commands PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_tooling_commands COMMAND test_tooling_commands)
 
+# AF5B: editor edit path (EditSession): GUI-vs-CLI parity, undo/redo, drag coalescing, save point, direct-write lint.
+add_executable(test_edit_session test_edit_session.cpp)
+target_link_libraries(test_edit_session PRIVATE arcane_tooling)
+target_compile_definitions(test_edit_session PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
+  ARCANE_EDITOR_SOURCE_PATH="${CMAKE_SOURCE_DIR}/editor/app/editor_main.cpp")
+add_test(NAME test_edit_session COMMAND test_edit_session)
+
 # Prefabs: save/instantiate/override/break-link commands, runtime spawn, link validation.
 add_executable(test_prefab test_prefab.cpp)
 target_link_libraries(test_prefab PRIVATE arcane_tooling)

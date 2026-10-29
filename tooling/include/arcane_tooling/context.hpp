@@ -22,7 +22,9 @@ namespace arcane::tooling {
 class ProjectContext {
  public:
   // `module_override`, if non-empty, replaces project.json's "module" (used
-  // by build-tree tests). The scene is loaded strictly: a legacy file with
+  // by build-tree tests). `policy` is Strict except for the editor, which keeps
+  // opening legacy sample projects (its Save then refuses to drop unknown data
+  // itself). The scene is loaded strictly by default: a legacy file with
   // fields this engine does not know is refused (SCHEMA_INVALID) instead of
   // being loaded leniently and losing them on save. Fails with
   // PROJECT_NOT_FOUND, MODULE_LOAD_FAILED or SCHEMA_INVALID; nothing is left
@@ -33,7 +35,9 @@ class ProjectContext {
   // must still load). It is read strictly too, and save() writes that file.
   static std::expected<std::unique_ptr<ProjectContext>, ToolError> open(const std::filesystem::path& project_dir,
                                                                         const std::string& module_override = {},
-                                                                        const std::string& scene_override = {});
+                                                                        const std::string& scene_override = {},
+                                                                        editor::SceneLoadPolicy policy =
+                                                                            editor::SceneLoadPolicy::Strict);
 
   ~ProjectContext();
   ProjectContext(const ProjectContext&) = delete;
@@ -44,6 +48,8 @@ class ProjectContext {
   const std::filesystem::path& project_dir() const noexcept;
   ComponentRegistry& registry() noexcept;
   Scene& scene() noexcept;
+  // The editor's session for the same project (project.json data, assets dir, whole-project save).
+  editor::ProjectSession& session() noexcept { return runtime_.session(); }
   // Project-relative path of the scene the commands edit.
   const std::string& scene_file() const noexcept { return scene_file_; }
 

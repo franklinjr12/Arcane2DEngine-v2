@@ -1,8 +1,14 @@
 # Editor authoring command inventory
 
-AF5 is blocked on the unfinished AF3 registry and AF4 CLI. The following
-existing paths still mutate authored data directly; none has command coverage
-or command-routing lint yet. Locations refer to `editor/app/editor_main.cpp`.
+**AF5B update:** the core scene paths below (hierarchy create/delete/reparent,
+node name/transform, Add Component, Inspector properties incl. module types,
+asset assignment to Sprite/ParticleEmitter/AnimatedSprite/AudioSource/Tilemap) now run
+as registry commands through `arcane_tooling::EditSession` with undo/redo,
+drag coalescing and save-point dirty tracking; `test_edit_session` lints
+`editor_main.cpp` for direct scene writes. The remaining direct paths are tile
+authoring (AF6), clip/HUD/input (AF7) and project-level properties (AF8).
+
+Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
 
 - Core scene (AF5): hierarchy creates, deletes and reparents nodes; Inspector
   changes node name and local transform, adds components and calls registered
