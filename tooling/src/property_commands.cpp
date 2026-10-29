@@ -136,6 +136,8 @@ std::expected<PropertyValue, ToolError> json_to_value(const PropertyDescriptor& 
   return property_from_json(property.type, property.name, j, context);
 }
 
+}  // namespace
+
 // "component" is a component id (integer) or a type name that must be
 // attached to the node exactly once.
 std::expected<Component*, ToolError> resolve_component(ProjectContext& context, Node& node, const Json& selector) {
@@ -168,6 +170,8 @@ std::expected<Component*, ToolError> resolve_component(ProjectContext& context, 
   }
   return found;
 }
+
+namespace {
 
 std::expected<const std::vector<PropertyDescriptor>*, ToolError> descriptors_of(ProjectContext& context,
                                                                                   const Component& component) {
@@ -203,7 +207,7 @@ std::expected<Target, ToolError> resolve_target(ProjectContext& context, const J
   return Target{*node, *component};
 }
 
-const Json kTarget = {{"node", {{"type", "string"}}}, {"component", Json::object()}};
+const Json kTarget = {{"node", {{"type", "string"}}}, {"component", {{"cli_text", true}}}};
 
 Json args_schema(std::initializer_list<const char*> extra_keys, std::initializer_list<const char*> required) {
   Json properties = kTarget;

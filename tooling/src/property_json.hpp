@@ -15,4 +15,7 @@ Json property_to_json(PropertyType type, const PropertyValue& value);
 std::expected<PropertyValue, ToolError> property_from_json(PropertyType type, const std::string& property_name,
                                                          const Json& json, ProjectContext& context);
 
+// "component" selector: a component id (integer) or a type name attached to the node exactly once.
+std::expected<Component*, ToolError> resolve_component(ProjectContext& context, Node& node, const Json& selector);
+
 }  // namespace arcane::tooling

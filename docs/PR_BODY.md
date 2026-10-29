@@ -45,13 +45,13 @@ To launch the existing applications on Windows after the build:
 .\build\bin\arcane_editor.exe --project samples/sample_project
 .\build\bin\arcane_player.exe --project samples/sample_project
 ```
-Open the sample project in the editor, add Camera2D to a node via the Inspector, set a target ID and shake settings, and use File > Save. Click Play and observe follow and shake; Stop returns to editing. Open the saved project in the player and observe the same camera. The `arcane` CLI is not available in this branch yet, so a CLI check cannot be run.
+Open the sample project in the editor, add Camera2D to a node via the Inspector, set a target ID and shake settings, and use File > Save. Click Play and observe follow and shake; Stop returns to editing. Open the saved project in the player and observe the same camera. The `arcane` CLI is checked below (AF4B).
 
 FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unicode filename; expect it to pass.
 
 Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
 
-AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. No `arcane` CLI exists yet, so CLI checks cannot be run.
+AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. CLI checks are in the AF4B paragraph.
 
 AF3 check: `ctest --test-dir .build-and-test/build-gcc -R test_tooling_commands --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_tooling_commands --output-on-failure`); expect it to pass. It sets and undoes typed properties on `sample_game`'s `Spinner` and on builtin `Camera2D`/`Sprite` in a temporary project; there is nothing to click or run by hand.
 
@@ -64,6 +64,20 @@ FE21 check (tween/timers): `ctest --test-dir .build-and-test/build-gcc -R test_t
 FE22 check (scene transitions + saves): `ctest --test-dir .build-and-test/build-gcc -R test_scene_flow --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_scene_flow --output-on-failure`); expect it to pass. It covers the `transition`/`save` sections of `project.json`, switching with a persistent node and the HUD fade, atomic save writes, save version migration and the `transition.*` / `save.*` commands. Inspect a save by hand: it is the text file `<slot>.save.json` (format in `docs/formats/save.md`; folder under `%APPDATA%\Arcane\<game_id>` on Windows).
 
 AF12 check (deterministic replay + rendering evidence): `ctest --test-dir .build-and-test/build-gcc -R "replay|render_golden" --output-on-failure` under `xvfb-run -a` (Windows: `ctest --test-dir build -C Debug -R "replay|render_golden" --output-on-failure`; `test_replay_player` needs `bash`, so on Windows it may be skipped or fail on missing bash: not a defect, run the player line below instead); expect `test_replay`, `test_replay_player` and `test_render_golden` to pass (or skip with 77 without a GL display). By hand: `build-gcc/bin/arcane_player --hidden --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so --replay samples/platformer_slice/replays/walk_jump.replay.json --trace-out /tmp/a.trace.json --screenshot /tmp/a.png`, then run it again with `--expect-trace /tmp/a.trace.json` (exit 0); open `/tmp/a.png` to see the final frame; edit one `down` in the recording and re-run with `--expect-trace` (exit 3, log names the first divergent frame). Format: `docs/formats/replay.md`.
+
+AF4B check (`arcane` CLI): `ctest --test-dir .build-and-test/build-gcc -R test_cli --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_cli --output-on-failure`); expect it to pass. Then try it by hand on a throwaway project (Linux; Windows: `.\build\bin\arcane.exe`, quote JSON with `'...'` in bash or `"{...}"`-escaped in PowerShell):
+```
+A=.build-and-test/build-gcc/bin/arcane
+$A project new /tmp/demo --name Demo                        # {"ok":true,"path":"/tmp/demo/project.json",...}
+$A --project /tmp/demo node add --name Player               # {"id":1,"ok":true,"path":"/Player",...}
+$A --project /tmp/demo component add --node id:1 --type Sprite
+$A --project /tmp/demo prop set --node path:/Player --component Sprite --name width --value 32.0 --dry-run   # "dry_run":true, file unchanged
+$A --project /tmp/demo prop set --node path:/Player --component Sprite --name width --value 32.0
+$A --project /tmp/demo scene tree --pretty && $A --project /tmp/demo validate && $A --project /tmp/demo fmt --check
+$A --project samples/sample_project validate                # ok, with "warnings" saying the legacy files need `arcane migrate`
+$A docs | head                                              # the generated reference (checked in as docs/cli-reference.md)
+```
+Errors print `{"ok":false,"error":{...}}` and exit with the status in the reference (`$A frobnicate; echo $?` gives 2).
 
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
@@ -241,3 +255,12 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - `arcane/debug.hpp`: `DebugConfig`, `FrameStats`, `FrameTimer`, `count_particles`, `format_debug_overlay`, `fill_debug_overlay_hud`, `run_benchmark`. `SpriteRenderer::stats()` (draw calls, sprites) and `PhysicsWorld::body_count()` feed it.
 - `project.json` gained the optional `debug` section (schema, `docs/formats/project.md`); `debug.get/set` and `bench.run` commands; `tools/bench_main.cpp` builds `arcane_bench`. Docs and baseline numbers: `docs/perf.md`.
 - Tests: `test_debug` (timer, text, benchmark counts/ranges, config round trip, commands), `bench_cli_smoke`, `bench_cli_bad_args`, `bench_cli_bad_flag`, renderer stats assertion in `test_renderer_gl`.
+
+
+## AF4B — `arcane` headless CLI
+
+- New `arcane` executable (`tools/arcane_main.cpp`, logic in `tooling/src/cli.cpp`, testable as `run_cli`). Registry commands: `scene tree|query`, `node info|find|add|remove|rename|reparent|duplicate|set-transform`, `component types|list|add|remove` (new, `tooling/src/scene_commands.cpp`) plus the existing `prop`, `prefab`, `atlas`, `transition`, `save`, `debug`, `replay`, `bench`, `audio` commands. File-level commands (`tooling/src/offline.cpp`): `project new|info|settings-get|settings-set`, `scene new|list`, `validate [--file]`, `fmt [--check]`, `migrate [--dry-run]`, `schema --type|--command|--component`, `docs`. `batch FILE|-` runs JSONL.
+- `ProjectContext::open` takes an optional scene override (`--scene`); `Scene::remove_component` added to the engine library; schemas are embedded in the binary at configure time (`cmake/embed_schemas.cmake`, byte arrays so MSVC has no literal-size limit).
+- Output is always one JSON object; errors and exit codes follow the table in `docs/cli-reference.md` (generated by `arcane docs`, drift-checked by `test_cli`). `--dry-run` writes nothing; commands that write files immediately refuse it (exit 7).
+- Tests: `test_cli` runs the CLI in process against temporary projects including the compiled `sample_game` module (Spinner), reopen and canonical-output checks, exit codes 2/3/4/5/6/7, selector ambiguity, dry-run, scene override, batch (dry-run, stop on error), validate/fmt/migrate on a copy of the legacy `sample_project`, schema, docs drift, and the real executable's exit statuses.
+- Partial coverage (documented in the CLI reference): no tilemap/tileset/HUD/input/clip-authoring commands, no `run`/`export`/`render`/`test`; the editor still edits data directly. UNTESTED on native Windows/MSVC (mingw cross-build only).

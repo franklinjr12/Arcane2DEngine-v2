@@ -162,7 +162,14 @@ target_include_directories(arcane_editor_core
 target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 
 # --- authoring command registry (no GUI deps) ---------------------------------
+include(cmake/embed_schemas.cmake)
+embed_schemas(${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
 add_library(arcane_tooling STATIC
+  ${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp
+  tooling/src/offline.cpp
+  tooling/src/cli.cpp
+  tooling/src/all_commands.cpp
+  tooling/src/scene_commands.cpp
   tooling/src/error.cpp
   tooling/src/context.cpp
   tooling/src/command.cpp
@@ -175,6 +182,10 @@ add_library(arcane_tooling STATIC
   tooling/src/replay_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
+
+# Headless authoring CLI (docs/cli-reference.md): no GL context, window or audio device.
+add_executable(arcane tools/arcane_main.cpp)
+target_link_libraries(arcane PRIVATE arcane_tooling)
 
 # Headless benchmark (docs/perf.md); a short smoke run is in CTest, the full run is manual.
 add_executable(arcane_bench tools/bench_main.cpp)

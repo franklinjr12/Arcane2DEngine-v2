@@ -215,6 +215,17 @@ target_compile_definitions(test_prefab PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_prefab COMMAND test_prefab)
 
+# --- AF4B `arcane` CLI: end-to-end on temporary projects incl. a compiled module, exit codes, docs drift ---
+add_executable(test_cli test_cli.cpp)
+target_link_libraries(test_cli PRIVATE arcane_tooling)
+target_compile_definitions(test_cli PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
+  ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+  ARCANE_CLI_REFERENCE_PATH="${CMAKE_SOURCE_DIR}/docs/cli-reference.md"
+  ARCANE_CLI_PATH="$<TARGET_FILE:arcane>")
+add_dependencies(test_cli arcane)
+add_test(NAME test_cli COMMAND test_cli)
+
 # Registered module properties of the top-down slice through the registry.
 add_executable(test_topdown_commands test_topdown_commands.cpp)
 target_link_libraries(test_topdown_commands PRIVATE arcane_tooling)
