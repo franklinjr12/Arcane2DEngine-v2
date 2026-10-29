@@ -180,3 +180,5 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | 74 | Compatible-load save guard | Preserve compatible project opening, but refuse ProjectSession save when strict validation of the originally loaded project or scene fails, so unknown legacy data is not silently discarded. This does not detect external changes after opening or make the two-file save transactional. |
 
 | 75 | Save revision checks | Compare both project and scene contents with the last read or written bytes before saving, rejecting detected external changes while keeping the session dirty. This is an optimistic check, not a lock or a multi-file transaction. |
+
+| 76 | AF10 prerequisite boundary | Defer AF10 implementation until the incomplete AF3 command registry and AF4 CLI prerequisites are complete; record the missing headless run, test and structured export explicitly. This follows the nightly requirement to finish partial prerequisites before building on them. |

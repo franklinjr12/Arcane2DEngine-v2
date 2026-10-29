@@ -48,6 +48,8 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 
 AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. No `arcane` CLI exists yet, so CLI checks cannot be run.
 
+AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
+
 **2. What you can visibly see**
 - AF9 prerequisite: saving reports external edits detected in the project or scene since opening or the last save.
 - AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
@@ -68,6 +70,7 @@ AF9 prerequisite check: open a temporary copy of a sample in the editor, change 
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
 - AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
 - AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
 - AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
