@@ -35,3 +35,24 @@ Schema: `schemas/arcane.scene.schema.json`. Rules shared with all files: `canoni
   `color` → `[r, g, b, a]`; `string` → string; `asset_id` / `entity_id` → unsigned 64-bit integer.
 - Optional on read (defaults): `parent_id` 0, `position` `[0, 0]`, `rotation_radians` 0, `scale`
   `[1, 1]`, `components` empty, `properties` empty, `next_id` derived.
+
+## Tilemap layers
+
+The builtin `Tilemap` component stores `layers` structurally: an array of layers (back to front),
+each an array of `height` rows, each an array of `width` tile ids (`0` = empty, ids are 1-based, see
+`tileset.md`). `solid_tiles` stays a comma-separated string of ids.
+
+```json
+"layers": [
+  [ [1, 0, 2],
+    [0, 3, 0] ],
+  [ [0, 0, 0],
+    [0, 0, 4] ]
+],
+"width": 3, "height": 2
+```
+(The writer prints one id per line.) The reader checks the shape against `width`/`height` whatever
+the key order is: a wrong row count, row length, negative or non-integer id is an error. The older
+text form (`"1,0,2,0,3,0;0,0,0,0,0,4"`, layers split by `;`, ids by `,`, missing trailing ids read as
+0) is still read, strictly during migration: a non-numeric id or more ids than `width*height` fails
+the migration instead of dropping cells. Writing always pads short layers to full rows.

@@ -1,0 +1,86 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.input.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "actions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "bindings": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "axis_sign": {
+                  "enum": [
+                    -1,
+                    0,
+                    1
+                  ]
+                },
+                "code": {
+                  "type": "integer"
+                },
+                "deadzone": {
+                  "maximum": 0.99,
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "device": {
+                  "enum": [
+                    "keyboard",
+                    "mouse_button",
+                    "gamepad_button",
+                    "gamepad_axis"
+                  ]
+                },
+                "pad": {
+                  "maximum": 3,
+                  "minimum": -1,
+                  "type": "integer"
+                },
+                "threshold": {
+                  "maximum": 1,
+                  "minimum": 0,
+                  "type": "number"
+                }
+              },
+              "required": [
+                "device",
+                "code"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "player": {
+            "maximum": 3,
+            "minimum": -1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "format": {
+      "const": "arcane.input"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version"
+  ],
+  "title": "Arcane input action map (v2)",
+  "type": "object"
+}

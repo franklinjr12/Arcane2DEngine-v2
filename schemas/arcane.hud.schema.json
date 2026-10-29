@@ -1,0 +1,305 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.hud.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "elements": {
+      "description": "Drawn in order; ids are unique within the HUD.",
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchor": {
+                "enum": [
+                  "top_left",
+                  "top",
+                  "top_right",
+                  "left",
+                  "center",
+                  "right",
+                  "bottom_left",
+                  "bottom",
+                  "bottom_right"
+                ]
+              },
+              "color": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "font_scale": {
+                "type": "number"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "offset": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text": {
+                "type": "string"
+              },
+              "type": {
+                "const": "text"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchor": {
+                "enum": [
+                  "top_left",
+                  "top",
+                  "top_right",
+                  "left",
+                  "center",
+                  "right",
+                  "bottom_left",
+                  "bottom",
+                  "bottom_right"
+                ]
+              },
+              "asset": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "offset": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "size": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "tint": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "type": {
+                "const": "image"
+              },
+              "uv": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchor": {
+                "enum": [
+                  "top_left",
+                  "top",
+                  "top_right",
+                  "left",
+                  "center",
+                  "right",
+                  "bottom_left",
+                  "bottom",
+                  "bottom_right"
+                ]
+              },
+              "background": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "fill": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "fraction": {
+                "type": "number"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "offset": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "size": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "type": {
+                "const": "progress_bar"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "anchor": {
+                "enum": [
+                  "top_left",
+                  "top",
+                  "top_right",
+                  "left",
+                  "center",
+                  "right",
+                  "bottom_left",
+                  "bottom",
+                  "bottom_right"
+                ]
+              },
+              "disabled": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "font_scale": {
+                "type": "number"
+              },
+              "hover": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "normal": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "offset": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "pressed": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "size": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 2,
+                "minItems": 2,
+                "type": "array"
+              },
+              "text_color": {
+                "items": {
+                  "type": "number"
+                },
+                "maxItems": 4,
+                "minItems": 4,
+                "type": "array"
+              },
+              "type": {
+                "const": "button"
+              }
+            },
+            "required": [
+              "type",
+              "id"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "format": {
+      "const": "arcane.hud"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version"
+  ],
+  "title": "Arcane HUD (v2)",
+  "type": "object"
+}

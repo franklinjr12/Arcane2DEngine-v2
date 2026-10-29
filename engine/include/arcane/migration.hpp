@@ -34,12 +34,14 @@ struct MigratedFile {
 };
 
 struct MigrationReport {
-  std::vector<MigratedFile> files;  // project.json first, then scenes sorted by path
+  std::vector<MigratedFile> files;  // project.json, scenes sorted by path, then tileset/clip files sorted by path
   bool applied = false;             // false for dry runs and when nothing changed
 };
 
-// Migrates <project_dir>/project.json and every *.scene.json below the
-// project directory (the main scene must exist). All files are validated
+// Migrates <project_dir>/project.json (with its nested input and HUD
+// documents), every *.scene.json below the project directory (the main scene
+// must exist) and every tileset/clip JSON file below it (recognized by
+// content, since they may have any *.json name; files are never renamed). All files are validated
 // before any is written; writes are staged and committed together and
 // rolled back on failure, so the project is either fully migrated or
 // untouched. `registry` must contain the builtin types and the project

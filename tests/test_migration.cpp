@@ -60,7 +60,13 @@ void check_sample(const std::string& source, const std::string& module, const st
   // Dry run reports changes and writes nothing.
   auto dry = arcane::migrate_project(dir, legacy->registry(), {.dry_run = true});
   ARCANE_ASSERT_TRUE(dry.has_value() && !dry->applied);
-  ARCANE_ASSERT_TRUE(dry->files.size() == 2 && dry->files[0].path == "project.json" && dry->files[0].changed);
+  ARCANE_ASSERT_TRUE(dry->files.size() >= 3 && dry->files[0].path == "project.json" && dry->files[0].changed);
+  for (const auto& file : dry->files) ARCANE_ASSERT_TRUE(file.changed);  // legacy sample: every file migrates
+  std::size_t asset_files = 0;
+  for (const auto& file : dry->files) {
+    if (file.path.starts_with("assets/")) ++asset_files;
+  }
+  ARCANE_ASSERT_TRUE(asset_files >= 1);
   ARCANE_ASSERT_TRUE(read(dir / "scenes/main.scene.json") == legacy_scene_file);
 
   auto report = arcane::migrate_project(dir, legacy->registry());
@@ -70,6 +76,7 @@ void check_sample(const std::string& source, const std::string& module, const st
   const std::string scene_v2 = read(dir / "scenes/main.scene.json");
   // Same meaning: migrated files equal what the legacy load re-serialized to.
   ARCANE_ASSERT_TRUE(project_v2 == legacy_project);
+  ARCANE_ASSERT_TRUE(project_v2.find("format_version") == std::string::npos);  // nested HUD/input are v2 too
   ARCANE_ASSERT_TRUE(scene_v2 == legacy_scene);
 
   // Reload the migrated project: IDs and module properties survive.
@@ -101,6 +108,18 @@ void check_sample(const std::string& source, const std::string& module, const st
     fs::create_directories(golden / "scenes");
     write(golden / "project.json", project_v2);
     write(golden / "scenes/main.scene.json", scene_v2);
+    for (const auto& file : report->files) {
+      if (!file.path.starts_with("assets/")) continue;
+      fs::create_directories((golden / file.path).parent_path());
+      write(golden / file.path, file.new_text);
+    }
+  }
+  for (const auto& file : report->files) {
+    if (!file.path.starts_with("assets/")) continue;
+    ARCANE_ASSERT_TRUE(read(golden / file.path) == file.new_text);
+    ARCANE_ASSERT_TRUE(read(dir / file.path) == file.new_text);
+    ARCANE_ASSERT_TRUE(arcane::canonicalize_json(file.new_text).value() == file.new_text);
+    ARCANE_ASSERT_TRUE(file.new_text.find("\"format_version\"") == std::string::npos);
   }
   ARCANE_ASSERT_TRUE(read(golden / "project.json") == project_v2);
   ARCANE_ASSERT_TRUE(read(golden / "scenes/main.scene.json") == scene_v2);
@@ -167,7 +186,7 @@ void check_sample(const std::string& source, const std::string& module, const st
 // The shipped schemas are canonical files themselves and pin the same header
 // constants the readers enforce.
 void check_schemas() {
-  for (const char* name : {"project", "scene"}) {
+  for (const char* name : {"project", "scene", "tileset", "clip", "hud", "input"}) {
     const std::string text = read(fs::path(ARCANE_SCHEMA_DIR) / (std::string("arcane.") + name + ".schema.json"));
     ARCANE_ASSERT_TRUE(arcane::canonicalize_json(text).value() == text);
     ARCANE_ASSERT_TRUE(text.find(std::string("\"const\": \"arcane.") + name + "\"") != std::string::npos);

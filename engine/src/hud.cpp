@@ -5,6 +5,9 @@
 #include <cmath>
 #include <format>
 #include <json.hpp>
+#include <unordered_set>
+
+#include "canonical_json.hpp"
 
 namespace arcane {
 
@@ -105,139 +108,248 @@ bool Hud::clicked(std::string_view id) const {
 // ---- JSON ---------------------------------------------------------------
 
 namespace {
-constexpr int kHudFormatVersion = 1;
+constexpr const char* kHudFormat = "arcane.hud";
 constexpr std::array<const char*, 9> kAnchorNames = {"top_left", "top", "top_right", "left", "center",
                                                      "right", "bottom_left", "bottom", "bottom_right"};
 
-nlohmann::json color_to_json(const Color& c) { return nlohmann::json::array({c.r, c.g, c.b, c.a}); }
+using nlohmann::json;
 
-Color color_from_json(const nlohmann::json& j, const std::string& key, Color fallback) {
-  if (!j.contains(key) || !j[key].is_array() || j[key].size() != 4) return fallback;
-  return Color{j[key][0].get<float>(), j[key][1].get<float>(), j[key][2].get<float>(), j[key][3].get<float>()};
-}
+json color_to_json(const Color& c) { return json::array({c.r, c.g, c.b, c.a}); }
 
-std::expected<HudAnchor, std::string> anchor_from_json(const nlohmann::json& j, HudAnchor fallback) {
+HudAnchor anchor_from_json(const json& j, HudAnchor fallback) {
   if (!j.contains("anchor")) return fallback;
-  const std::string name = j["anchor"].is_string() ? j["anchor"].get<std::string>() : std::string();
+  const std::string name = canonical::as_string(j["anchor"], "HUD 'anchor'");
   for (size_t i = 0; i < kAnchorNames.size(); ++i) {
     if (name == kAnchorNames[i]) return static_cast<HudAnchor>(i);
   }
-  return std::unexpected(std::format("unknown HUD anchor '{}'", name));
+  canonical::fail(std::format("unknown HUD anchor '{}'", name));
 }
 
-void put_layout(nlohmann::json& j, HudAnchor anchor, float ox, float oy) {
+void put_layout(json& j, HudAnchor anchor, float ox, float oy) {
   j["anchor"] = kAnchorNames[static_cast<size_t>(anchor)];
-  j["offset"] = nlohmann::json::array({ox, oy});
+  j["offset"] = json::array({ox, oy});
 }
 
-void get_offset(const nlohmann::json& j, float& ox, float& oy) {
-  if (j.contains("offset") && j["offset"].is_array() && j["offset"].size() == 2) {
-    ox = j["offset"][0].get<float>();
-    oy = j["offset"][1].get<float>();
+void get_offset(const json& j, float& ox, float& oy, const std::string& where) {
+  if (!j.contains("offset")) return;
+  const Vec2 v = canonical::as_vec2(j["offset"], where + " 'offset'");
+  ox = v.x;
+  oy = v.y;
+}
+
+void get_size(const json& j, float& w, float& h, const std::string& where) {
+  if (!j.contains("size")) return;
+  const Vec2 v = canonical::as_vec2(j["size"], where + " 'size'");
+  w = v.x;
+  h = v.y;
+}
+
+void get_color(const json& j, const char* key, Color& out, const std::string& where) {
+  if (j.contains(key)) out = canonical::as_color(j[key], where + " '" + key + "'");
+}
+
+std::string& element_id(HudElement& element) {
+  return std::visit([](auto& e) -> std::string& { return e.id; }, element);
+}
+
+const char* element_kind(const HudElement& element) {
+  switch (element.index()) {
+    case 0: return "text";
+    case 1: return "image";
+    case 2: return "bar";
+    default: return "button";
   }
 }
-}  // namespace
 
-std::string Hud::save_to_json() const {
-  nlohmann::json root;
-  root["format_version"] = kHudFormatVersion;
-  nlohmann::json list = nlohmann::json::array();
-  for (const HudElement& element : elements_) {
-    nlohmann::json j;
-    if (const auto* t = std::get_if<HudText>(&element)) {
-      j["type"] = "text";
-      j["text"] = t->text;
-      put_layout(j, t->anchor, t->offset_x, t->offset_y);
-      j["font_scale"] = t->font_scale;
-      j["color"] = color_to_json(t->color);
-    } else if (const auto* bar = std::get_if<HudProgressBar>(&element)) {
-      j["type"] = "progress_bar";
-      put_layout(j, bar->anchor, bar->offset_x, bar->offset_y);
-      j["size"] = nlohmann::json::array({bar->width, bar->height});
-      j["fraction"] = bar->fraction;
-      j["fill"] = color_to_json(bar->fill);
-      j["background"] = color_to_json(bar->background);
-    } else if (const auto* b = std::get_if<HudButton>(&element)) {
-      j["type"] = "button";
-      j["id"] = b->id;
-      j["label"] = b->label;
-      put_layout(j, b->anchor, b->offset_x, b->offset_y);
-      j["size"] = nlohmann::json::array({b->width, b->height});
-      j["font_scale"] = b->font_scale;
-      j["enabled"] = b->enabled;
-      j["normal"] = color_to_json(b->normal);
-      j["hover"] = color_to_json(b->hover);
-      j["pressed"] = color_to_json(b->pressed);
-      j["disabled"] = color_to_json(b->disabled);
-      j["text_color"] = color_to_json(b->text_color);
-    } else {
-      continue;  // images are runtime-only
-    }
-    list.push_back(std::move(j));
-  }
-  root["elements"] = std::move(list);
-  return root.dump(2);
-}
-
-std::expected<Hud, std::string> Hud::load_from_json(const std::string& text) {
-  nlohmann::json root;
+std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_unknown) {
+  auto parsed = canonical::parse_strict(text);
+  if (!parsed) return std::unexpected(std::format("malformed HUD JSON: {}", parsed.error()));
   try {
-    root = nlohmann::json::parse(text);
-    if (root.value("format_version", 0) != kHudFormatVersion) {
-      return std::unexpected(std::format("unsupported HUD format_version {}", root.value("format_version", 0)));
+    const json& root = *parsed;
+    canonical::require_object(root, "HUD");
+    const canonical::Dialect dialect = canonical::detect_dialect(root, kHudFormat, "HUD");
+    const bool v2 = dialect == canonical::Dialect::V2;
+    const bool strict = strict_unknown || v2;
+    if (strict) {
+      if (v2) {
+        canonical::require_only_keys(root, {"format", "version", "elements"}, "HUD");
+      } else {
+        canonical::require_only_keys(root, {"format_version", "elements"}, "HUD");
+      }
     }
     Hud hud;
-    for (const auto& j : root.value("elements", nlohmann::json::array())) {
-      const std::string type = j.value("type", std::string());
-      auto anchor = anchor_from_json(j, HudAnchor::TopLeft);
-      if (!anchor) return std::unexpected(anchor.error());
-      auto size = [&](float& w, float& h) {
-        if (j.contains("size") && j["size"].is_array() && j["size"].size() == 2) {
-          w = j["size"][0].get<float>();
-          h = j["size"][1].get<float>();
-        }
-      };
+    if (!root.contains("elements")) return hud;
+    if (!root["elements"].is_array()) return std::unexpected(std::string("HUD: 'elements' must be an array"));
+    std::unordered_set<std::string> seen_ids;
+    for (std::size_t i = 0; i < root["elements"].size(); ++i) {
+      const json& j = root["elements"][i];
+      const std::string where = std::format("HUD element {}", i);
+      canonical::require_object(j, where);
+      const std::string type = j.contains("type") ? canonical::as_string(j["type"], where + " 'type'") : std::string();
+      std::string id;
+      if (j.contains("id")) id = canonical::as_string(j["id"], where + " 'id'");
+      if (v2 && id.empty()) return std::unexpected(std::format("HUD: {} needs a non-empty 'id'", where));
+      if (strict && !id.empty() && !seen_ids.insert(id).second) {
+        return std::unexpected(std::format("HUD: duplicate element id '{}'", id));
+      }
+      const HudAnchor anchor = anchor_from_json(j, HudAnchor::TopLeft);
       if (type == "text") {
+        if (strict) {
+          canonical::require_only_keys(j, {"type", "id", "text", "anchor", "offset", "font_scale", "color"}, where);
+        }
         HudText t;
-        t.text = j.value("text", std::string());
-        t.anchor = *anchor;
-        get_offset(j, t.offset_x, t.offset_y);
-        t.font_scale = j.value("font_scale", t.font_scale);
-        t.color = color_from_json(j, "color", t.color);
+        t.id = id;
+        if (j.contains("text")) t.text = canonical::as_string(j["text"], where + " 'text'");
+        t.anchor = anchor;
+        get_offset(j, t.offset_x, t.offset_y, where);
+        if (j.contains("font_scale")) t.font_scale = canonical::as_float(j["font_scale"], where + " 'font_scale'");
+        get_color(j, "color", t.color, where);
         hud.add(std::move(t));
+      } else if (type == "image") {
+        if (strict) {
+          canonical::require_only_keys(j, {"type", "id", "asset", "uv", "anchor", "offset", "size", "tint"}, where);
+        }
+        HudImage image;
+        image.id = id;
+        if (j.contains("asset")) image.texture_asset = canonical::as_uint(j["asset"], where + " 'asset'");
+        if (j.contains("uv")) {
+          if (!j["uv"].is_array() || j["uv"].size() != 4) {
+            return std::unexpected(std::format("HUD: {} 'uv' must be an array of 4 numbers", where));
+          }
+          image.uv = UvRect{canonical::as_float(j["uv"][0], where), canonical::as_float(j["uv"][1], where),
+                            canonical::as_float(j["uv"][2], where), canonical::as_float(j["uv"][3], where)};
+        }
+        image.anchor = anchor;
+        get_offset(j, image.offset_x, image.offset_y, where);
+        get_size(j, image.width, image.height, where);
+        get_color(j, "tint", image.tint, where);
+        hud.add(std::move(image));
       } else if (type == "progress_bar") {
+        if (strict) {
+          canonical::require_only_keys(
+              j, {"type", "id", "anchor", "offset", "size", "fraction", "fill", "background"}, where);
+        }
         HudProgressBar bar;
-        bar.anchor = *anchor;
-        get_offset(j, bar.offset_x, bar.offset_y);
-        size(bar.width, bar.height);
-        bar.fraction = j.value("fraction", bar.fraction);
-        bar.fill = color_from_json(j, "fill", bar.fill);
-        bar.background = color_from_json(j, "background", bar.background);
+        bar.id = id;
+        bar.anchor = anchor;
+        get_offset(j, bar.offset_x, bar.offset_y, where);
+        get_size(j, bar.width, bar.height, where);
+        if (j.contains("fraction")) bar.fraction = canonical::as_float(j["fraction"], where + " 'fraction'");
+        get_color(j, "fill", bar.fill, where);
+        get_color(j, "background", bar.background, where);
         hud.add(std::move(bar));
       } else if (type == "button") {
+        if (strict) {
+          canonical::require_only_keys(j,
+                                       {"type", "id", "label", "anchor", "offset", "size", "font_scale", "enabled",
+                                        "normal", "hover", "pressed", "disabled", "text_color"},
+                                       where);
+        }
         HudButton b;
-        b.id = j.value("id", std::string());
-        b.label = j.value("label", std::string());
-        b.anchor = j.contains("anchor") ? *anchor : HudAnchor::Center;
-        get_offset(j, b.offset_x, b.offset_y);
-        size(b.width, b.height);
-        b.font_scale = j.value("font_scale", b.font_scale);
-        b.enabled = j.value("enabled", true);
-        b.normal = color_from_json(j, "normal", b.normal);
-        b.hover = color_from_json(j, "hover", b.hover);
-        b.pressed = color_from_json(j, "pressed", b.pressed);
-        b.disabled = color_from_json(j, "disabled", b.disabled);
-        b.text_color = color_from_json(j, "text_color", b.text_color);
+        b.id = id;
+        if (j.contains("label")) b.label = canonical::as_string(j["label"], where + " 'label'");
+        b.anchor = j.contains("anchor") ? anchor : HudAnchor::Center;
+        get_offset(j, b.offset_x, b.offset_y, where);
+        get_size(j, b.width, b.height, where);
+        if (j.contains("font_scale")) b.font_scale = canonical::as_float(j["font_scale"], where + " 'font_scale'");
+        if (j.contains("enabled")) b.enabled = canonical::as_bool(j["enabled"], where + " 'enabled'");
+        get_color(j, "normal", b.normal, where);
+        get_color(j, "hover", b.hover, where);
+        get_color(j, "pressed", b.pressed, where);
+        get_color(j, "disabled", b.disabled, where);
+        get_color(j, "text_color", b.text_color, where);
         hud.add(std::move(b));
       } else {
         return std::unexpected(std::format("unknown HUD element type '{}'", type));
       }
     }
+    // Legacy files have no ids on text/bars (and maybe on buttons): assign
+    // them deterministically in file order; v2 files are already complete.
+    if (!v2) hud.ensure_unique_ids();
     return hud;
-  } catch (const nlohmann::json::exception& ex) {
-    return std::unexpected(std::format("malformed HUD JSON: {}", ex.what()));
+  } catch (const canonical::SchemaError& ex) {
+    return std::unexpected(std::format("HUD: {}", ex.what()));
   }
 }
+}  // namespace
+
+void Hud::ensure_unique_ids() {
+  std::unordered_set<std::string> used;
+  std::vector<bool> needs_id(elements_.size(), false);
+  for (std::size_t i = 0; i < elements_.size(); ++i) {
+    const std::string& id = element_id(elements_[i]);
+    needs_id[i] = id.empty() || !used.insert(id).second;
+  }
+  std::array<int, 4> next{1, 1, 1, 1};
+  for (std::size_t i = 0; i < elements_.size(); ++i) {
+    if (!needs_id[i]) continue;
+    std::string id;
+    do {
+      id = std::format("{}_{}", element_kind(elements_[i]), next[elements_[i].index()]++);
+    } while (!used.insert(id).second);
+    element_id(elements_[i]) = std::move(id);
+  }
+}
+
+std::expected<std::string, std::string> Hud::save_canonical_json() const {
+  Hud copy;
+  copy.elements_ = elements_;
+  copy.ensure_unique_ids();
+  json root;
+  root["format"] = kHudFormat;
+  root["version"] = 2;
+  json list = json::array();
+  for (const HudElement& element : copy.elements_) {
+    json j;
+    if (const auto* t = std::get_if<HudText>(&element)) {
+      j["type"] = "text";
+      j["id"] = t->id;
+      j["text"] = t->text;
+      put_layout(j, t->anchor, t->offset_x, t->offset_y);
+      j["font_scale"] = t->font_scale;
+      j["color"] = color_to_json(t->color);
+    } else if (const auto* image = std::get_if<HudImage>(&element)) {
+      j["type"] = "image";
+      j["id"] = image->id;
+      j["asset"] = image->texture_asset;
+      j["uv"] = json::array({image->uv.u0, image->uv.v0, image->uv.u1, image->uv.v1});
+      put_layout(j, image->anchor, image->offset_x, image->offset_y);
+      j["size"] = json::array({image->width, image->height});
+      j["tint"] = color_to_json(image->tint);
+    } else if (const auto* bar = std::get_if<HudProgressBar>(&element)) {
+      j["type"] = "progress_bar";
+      j["id"] = bar->id;
+      put_layout(j, bar->anchor, bar->offset_x, bar->offset_y);
+      j["size"] = json::array({bar->width, bar->height});
+      j["fraction"] = bar->fraction;
+      j["fill"] = color_to_json(bar->fill);
+      j["background"] = color_to_json(bar->background);
+    } else {
+      const auto& b = std::get<HudButton>(element);
+      j["type"] = "button";
+      j["id"] = b.id;
+      j["label"] = b.label;
+      put_layout(j, b.anchor, b.offset_x, b.offset_y);
+      j["size"] = json::array({b.width, b.height});
+      j["font_scale"] = b.font_scale;
+      j["enabled"] = b.enabled;
+      j["normal"] = color_to_json(b.normal);
+      j["hover"] = color_to_json(b.hover);
+      j["pressed"] = color_to_json(b.pressed);
+      j["disabled"] = color_to_json(b.disabled);
+      j["text_color"] = color_to_json(b.text_color);
+    }
+    list.push_back(std::move(j));
+  }
+  root["elements"] = std::move(list);
+  return canonical::dump(root);
+}
+
+std::string Hud::save_to_json() const { return save_canonical_json().value_or(std::string()); }
+
+std::expected<Hud, std::string> Hud::load_from_json(const std::string& text) { return load_hud(text, false); }
+
+std::expected<Hud, std::string> Hud::load_from_json_strict(const std::string& text) { return load_hud(text, true); }
 
 // ---- input routing ------------------------------------------------------
 

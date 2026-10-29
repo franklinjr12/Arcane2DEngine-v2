@@ -10,6 +10,7 @@
 #include "arcane/migration.hpp"
 #include "arcane/property.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/tilemap.hpp"
 #include "canonical_json.hpp"
 
 namespace arcane {
@@ -66,6 +67,95 @@ PropertyValue property_value_from_json(PropertyType type, const json& j, const s
   canonical::fail(std::format("{}: unknown property type", context));
 }
 
+// Tilemap::layers is a String property (";"/"," text, kept for the inspector
+// and legacy files); scene v2 stores it structurally: layers -> rows -> ids.
+bool is_tile_layers(const Component& component, const PropertyDescriptor& descriptor) {
+  return descriptor.name == "layers" && component.type_name() == "Tilemap";
+}
+
+json tile_layers_to_json(const Tilemap& map) {
+  json layers = json::array();
+  for (int layer = 0; layer < map.layer_count(); ++layer) {
+    json rows = json::array();
+    for (int y = 0; y < map.height; ++y) {
+      json row = json::array();
+      for (int x = 0; x < map.width; ++x) row.push_back(map.tile_at(layer, x, y));
+      rows.push_back(std::move(row));
+    }
+    layers.push_back(std::move(rows));
+  }
+  return layers;
+}
+
+// Fills `map` (whose width/height are already set) from a structured array
+// or, strictly, from the legacy text form. Cells outside width x height are
+// errors so no tile data is dropped.
+void set_tile_layers(Tilemap& map, const json& value, bool strict, const std::string& context) {
+  std::vector<std::vector<int>> layers;  // row-major, width*height or fewer ids per layer
+  const auto cells = static_cast<std::size_t>(std::max(map.width, 0)) * static_cast<std::size_t>(std::max(map.height, 0));
+  if (value.is_string()) {
+    const std::string text = value.get<std::string>();
+    if (!strict) {
+      map.set_layers_from_string(text);
+      return;
+    }
+    std::size_t start = 0;
+    while (!text.empty() && start <= text.size()) {
+      std::size_t end = text.find(';', start);
+      if (end == std::string::npos) end = text.size();
+      std::vector<int> ids;
+      std::size_t pos = start;
+      while (pos < end) {
+        std::size_t comma = text.find(',', pos);
+        if (comma == std::string::npos || comma > end) comma = end;
+        const std::string token = text.substr(pos, comma - pos);
+        if (token.empty() || token.find_first_not_of("0123456789") != std::string::npos || token.size() > 9) {
+          canonical::fail(std::format("{}: bad tile id '{}'", context, token));
+        }
+        ids.push_back(std::stoi(token));
+        pos = comma + 1;
+      }
+      layers.push_back(std::move(ids));
+      start = end + 1;
+    }
+  } else {
+    if (!value.is_array()) canonical::fail(std::format("{}: expected an array of layers", context));
+    for (std::size_t l = 0; l < value.size(); ++l) {
+      const std::string where = std::format("{} layer {}", context, l);
+      const json& rows = value[l];
+      if (!rows.is_array() || rows.size() != static_cast<std::size_t>(std::max(map.height, 0))) {
+        canonical::fail(std::format("{}: expected {} rows (the map height)", where, map.height));
+      }
+      std::vector<int> ids;
+      for (std::size_t y = 0; y < rows.size(); ++y) {
+        const json& row = rows[y];
+        if (!row.is_array() || row.size() != static_cast<std::size_t>(std::max(map.width, 0))) {
+          canonical::fail(std::format("{} row {}: expected {} tile ids (the map width)", where, y, map.width));
+        }
+        for (const json& id : row) {
+          const int tile = canonical::as_int(id, where);
+          if (tile < 0) canonical::fail(std::format("{} row {}: negative tile id", where, y));
+          ids.push_back(tile);
+        }
+      }
+      layers.push_back(std::move(ids));
+    }
+  }
+  map.set_layers_from_string("");
+  for (std::size_t l = 0; l < layers.size(); ++l) {
+    if (layers[l].size() > cells) {
+      canonical::fail(std::format("{} layer {}: {} cells do not fit the {}x{} map", context, l, layers[l].size(),
+                                  map.width, map.height));
+    }
+    map.add_layer();
+    for (std::size_t i = 0; i < layers[l].size(); ++i) {
+      if (layers[l][i] == 0) continue;
+      const int w = std::max(map.width, 1);
+      map.set_tile(static_cast<int>(l), static_cast<int>(i) % w, static_cast<int>(i) / w, layers[l][i]);
+    }
+  }
+}
+
 void serialize_node(const Node& node, const ComponentRegistry& registry, json& out_nodes) {
   json entry;
   entry["id"] = node.id();
@@ -84,7 +174,10 @@ void serialize_node(const Node& node, const ComponentRegistry& registry, json& o
     json properties = json::object();
     if (const auto* descriptors = registry.properties_of(component->type_name())) {
       for (const PropertyDescriptor& descriptor : *descriptors) {
-        properties[descriptor.name] = property_value_to_json(descriptor.type, descriptor.get(*component));
+        properties[descriptor.name] =
+            is_tile_layers(*component, descriptor)
+                ? tile_layers_to_json(static_cast<const Tilemap&>(*component))
+                : property_value_to_json(descriptor.type, descriptor.get(*component));
       }
     }
     c["properties"] = std::move(properties);
@@ -208,6 +301,8 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
         if (!c.contains("properties")) continue;
         canonical::require_object(c["properties"], cwhere + " 'properties'");
         const auto* descriptors = registry.properties_of(type_name);
+        const json* tile_layers = nullptr;  // applied after width/height, whatever the key order
+        const PropertyDescriptor* tile_layers_descriptor = nullptr;
         for (auto it = c["properties"].begin(); it != c["properties"].end(); ++it) {
           const PropertyDescriptor* descriptor = nullptr;
           if (descriptors) {
@@ -224,8 +319,17 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
             }
             continue;  // legacy leniency: unknown property on a known type is ignored, see docs/decisions.md
           }
+          if (is_tile_layers(*component, *descriptor)) {
+            tile_layers = &it.value();
+            tile_layers_descriptor = descriptor;
+            continue;
+          }
           descriptor->set(*component, property_value_from_json(descriptor->type, it.value(),
                                                                std::format("{} property '{}'", cwhere, it.key())));
+        }
+        if (tile_layers) {
+          set_tile_layers(static_cast<Tilemap&>(*component), *tile_layers, strict,
+                          std::format("{} property '{}'", cwhere, tile_layers_descriptor->name));
         }
       }
     }

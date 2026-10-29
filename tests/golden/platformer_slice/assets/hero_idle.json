@@ -1,0 +1,26 @@
+{
+  "format": "arcane.clip",
+  "frames": [
+    {
+      "duration_seconds": 0.5,
+      "uv": [
+        0.0,
+        0.0,
+        0.25,
+        1.0
+      ]
+    },
+    {
+      "duration_seconds": 0.5,
+      "uv": [
+        0.25,
+        0.0,
+        0.5,
+        1.0
+      ]
+    }
+  ],
+  "loop": true,
+  "name": "idle",
+  "version": 2
+}

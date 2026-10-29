@@ -24,9 +24,10 @@ UTF-8 are rejected (the plain nlohmann parser would silently keep the last dupli
 
 ## Headers and versions
 
-Standalone files start (after sorting: `format` first among the header keys) with
-`"format": "arcane.<kind>"` and an integer `"version"`. v2 is the first versioned release of
-project and scene files. Legacy files carry only `"format_version": 1`.
+Every document starts (after sorting: `format` first among the header keys) with
+`"format": "arcane.<kind>"` and an integer `"version"`. v2 is the first versioned release of all
+kinds: `arcane.project`, `arcane.scene`, `arcane.tileset`, `arcane.clip` and the documents nested in
+the project, `arcane.input` and `arcane.hud`. Legacy files carry only `"format_version": 1`.
 
 | Situation | Result |
 | --- | --- |
@@ -47,15 +48,20 @@ Project-relative paths use `/` only, with no leading `/`, drive letter, empty, `
 `migrate_project_json`, `migrate_scene_json` and `migrate_project` (`arcane/migration.hpp`) turn
 legacy or v2 input into canonical v2. They are strict about legacy files too: an unknown field or
 property, an unregistered component type, a future version or malformed input fails the migration
-instead of dropping data. Nested documents (`input_actions`, `hud`) keep their own
-`format_version: 1` for now; migration refuses if their loaders would drop anything in the file.
-Every result is verified to reload and re-serialize to the same bytes.
+instead of dropping data (including unknown HUD/input/tileset/clip fields, out-of-range input values
+that a plain legacy load would clamp, and tile data that does not fit the map). Every result is
+verified to reload and re-serialize to the same bytes. The nested `input_actions` and `hud`
+documents get their own `format`/`version` header on migration; a project whose header is already
+v2 but whose nested documents still say `format_version: 1` (written by the first AF1 build) is
+read and upgraded the same way.
 
-`migrate_project` migrates `project.json` and every `*.scene.json` under the project directory. It
+`migrate_project` migrates `project.json`, every `*.scene.json` and every tileset/clip file under the
+project directory. Tileset and clip files may have any `*.json` name (the samples use `tiles.json`,
+`hero_idle.json`), so they are recognized by content (`format` or the legacy keys only that kind
+has); files are never renamed and other JSON files are left alone. It
 validates everything first, supports a dry run (the report carries old and new text), stages all
 changed files as `<name>.arcane-tmp`, commits them, and restores the already-committed files if a
 commit fails. Running it on a v2 project changes nothing. The caller supplies a registry containing
 the builtin types and the project module's types.
 
-Legacy readers stay as the compatibility path; there is no removal date yet (to be set in a later
-job together with the tileset/clip migration).
+Legacy readers stay as the compatibility path for every kind; there is no removal date.

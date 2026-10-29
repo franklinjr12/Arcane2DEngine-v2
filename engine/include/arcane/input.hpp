@@ -198,10 +198,15 @@ class ARCANE_API InputActionMap {
   float axis(std::string_view negative, std::string_view positive) const;
   Vec2 mouse_position() const noexcept { return mouse_position_; }
 
-  // Only the action/binding config round-trips (format_version 1, see
-  // docs/decisions.md); per-frame held/pressed/released state does not.
+  // Only the action/binding config round-trips (canonical `arcane.input`
+  // v2, docs/formats/input.md; legacy format_version 1 still loads);
+  // per-frame held/pressed/released state does not.
+  std::expected<std::string, std::string> save_canonical_json() const;
+  // Convenience wrapper; returns an empty string on failure.
   std::string save_to_json() const;
   static std::expected<InputActionMap, std::string> load_from_json(const std::string& text);
+  // Legacy files are checked as strictly as v2 ones (no clamping, no unknown fields); used by migration.
+  static std::expected<InputActionMap, std::string> load_from_json_strict(const std::string& text);
 
  private:
   struct ActionState {

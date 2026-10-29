@@ -5,7 +5,7 @@
 Linux:
 ```
 scripts/build-and-test.sh          # gcc Debug + clang ASan/UBSan + mingw cross-build; expect gcc PASS and clang PASS
-ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json"   # expect 3/3 passed
+ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json|formats_v2"   # expect 4/4 passed
 ```
 Windows / MSVC (PowerShell, from the repo root):
 ```
@@ -16,13 +16,18 @@ ctest --test-dir build -C Debug --output-on-failure
 Expected: all tests pass, in particular `test_canonical_json` and `test_migration` (the latter migrates
 both sample projects in a temp copy and compares against `tests/golden/*`).
 
+AF2 check: the same `test_migration` now also migrates the sample tileset/clip files and nested HUD/input
+(`tests/golden/*/assets/*.json`, `tests/golden/*/project.json`); `test_formats_v2` covers clips, tilesets
+(FE9 terrain), tile rows, HUD ids/images, input defaults and unsupported versions.
+
 Open a sample in the editor and save it (File > Save): `samples/sample_project/project.json` and the
 scene now start with `"format": "arcane.project"` / `"arcane.scene"` and `"version": 2`, keys sorted,
 two-space indent. Reopening it works; use `git diff` to see the migrated text, `git checkout samples`
 to restore the legacy copies.
 
 **2. What you can visibly see**
-- New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`; JSON Schemas in `schemas/`.
+- New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`, plus (AF2) `tileset.md`, `clip.md`, `hud.md`, `input.md`; JSON Schemas in `schemas/`.
+- AF2: Tilemap layers are now rows of ids in the scene file (not a `;`/`,` string); tileset/clip files and the project's HUD/input are `arcane.*` version 2; HUD elements all have ids and images keep an asset id.
 - Golden migrated files under `tests/golden/` (what a v2 project and scene look like).
 - Editor saves now write the canonical v2 format; old files still open.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
@@ -50,8 +55,16 @@ to restore the legacy copies.
 - Docs `docs/formats/*`, schemas `schemas/*.schema.json`; decisions 51–60.
 - Tests: `test_canonical_json` (format rules, float policy, malformed/future/unknown), `test_migration` (both samples with their modules: semantic equality, byte-identical repeat, golden files, unknown property/field, future version, malformed, rollback on commit failure, missing module types).
 
+## AF2 — tileset, clip, HUD, input and tile-row migration
+- `arcane.tileset` / `arcane.clip` v2 writers and strict readers (legacy v1 kept), `migrate_tileset_json` / `migrate_clip_json`.
+- Nested `arcane.hud` / `arcane.input` v2; HUD elements get stable string ids (assigned deterministically for legacy files), `HudImage::texture_asset` is persisted; strict range/duplicate checks for input.
+- Scene v2 `Tilemap.layers` is structured rows; old text form still reads and migrates (strictly).
+- `migrate_project` also migrates tileset/clip files (found by content, never renamed).
+- Schemas for the four new kinds, docs/formats, decisions 61–68, tests `test_formats_v2` + extended `test_migration` with goldens.
+- Not done (later jobs): resolving `HudImage::texture_asset` to a texture at Play (AF7); `solid_tiles` stays a string.
+
 ## Test results
-`scripts/build-and-test.sh`: gcc Debug PASS (38/38 tests), clang ASan/UBSan PASS (38/38), mingw-w64 cross-build PASS (build only, not run).
+`scripts/build-and-test.sh`: gcc Debug PASS (39/39 tests; AF2 adds test_formats_v2), clang ASan/UBSan PASS (39/39), mingw-w64 cross-build PASS (build only, not run).
 
 ## UNTESTED on native Windows/MSVC
 Everything above (mingw cross-build only), notably `std::to_chars` float formatting, `std::filesystem::rename` over an existing file, and the golden-file byte comparison.

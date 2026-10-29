@@ -5,8 +5,8 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 ```json
 {
   "format": "arcane.project",
-  "hud": { "elements": [], "format_version": 1 },
-  "input_actions": { "actions": [], "format_version": 1 },
+  "hud": { "elements": [], "format": "arcane.hud", "version": 2 },
+  "input_actions": { "actions": [], "format": "arcane.input", "version": 2 },
   "main_scene": "scenes/main.scene.json",
   "module": "sample_game.so",
   "name": "sample_project",
@@ -21,7 +21,7 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 | `name` | string | required |
 | `main_scene` | project-relative path | required; the scene opened at startup |
 | `module` | project-relative path or `""` | native game module (`.so`/`.dll`); not binary engine data, it is compiled user code |
-| `input_actions` | object | nested document, own `format_version: 1`; becomes `format/version` in a later job |
-| `hud` | object | same |
+| `input_actions` | object | nested `arcane.input` v2 document, see `input.md` |
+| `hud` | object | nested `arcane.hud` v2 document, see `hud.md` |
 
-Unknown fields are errors. v1 differs only in the header (`"format_version": 1`).
+Nested documents of the first AF1 build (`format_version: 1` inside a v2 project) are still read and upgraded on migration. Unknown fields are errors. v1 differs only in the header (`"format_version": 1`).

@@ -2,7 +2,8 @@
   "format": "arcane.project",
   "hud": {
     "elements": [],
-    "format_version": 1
+    "format": "arcane.hud",
+    "version": 2
   },
   "input_actions": {
     "actions": [
@@ -42,7 +43,8 @@
         "name": "jump"
       }
     ],
-    "format_version": 1
+    "format": "arcane.input",
+    "version": 2
   },
   "main_scene": "scenes/main.scene.json",
   "module": "sample_game.so",

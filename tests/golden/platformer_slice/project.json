@@ -11,6 +11,7 @@
           1.0
         ],
         "font_scale": 3.0,
+        "id": "text_1",
         "offset": [
           16.0,
           16.0
@@ -33,6 +34,7 @@
           1.0
         ],
         "fraction": 1.0,
+        "id": "bar_1",
         "offset": [
           -16.0,
           16.0
@@ -52,6 +54,7 @@
           1.0
         ],
         "font_scale": 5.0,
+        "id": "text_2",
         "offset": [
           0.0,
           -60.0
@@ -106,7 +109,8 @@
         "type": "button"
       }
     ],
-    "format_version": 1
+    "format": "arcane.hud",
+    "version": 2
   },
   "input_actions": {
     "actions": [
@@ -146,7 +150,8 @@
         "name": "jump"
       }
     ],
-    "format_version": 1
+    "format": "arcane.input",
+    "version": 2
   },
   "main_scene": "scenes/main.scene.json",
   "module": "platformer_slice_game.so",
