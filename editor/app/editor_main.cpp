@@ -499,7 +499,11 @@ int main(int argc, char** argv) {
   int selected_tile = 1;
   int rule_terrain = 1;
   bool paint_rect = false;  // drag a rectangle instead of a freehand brush
-  arcane::editor::TilePaintTool paint_tool;
+  // Paint tool settings; every cell edit is a tilemap.* command in the edit history (one drag = one undo step).
+  int paint_layer = 0;
+  int paint_tile = 1;
+  bool tilemap_layer_failed = false;  // stop auto-adding the first layer if the command keeps failing
+  bool paint_stroke = false;  // a viewport drag is in progress: keep coalescing into one undo step
   std::optional<arcane::Vec2> rect_start;  // world position where the rectangle drag began
   bool rect_erase = false;
   auto hud_renderer = arcane::HudRenderer::create();
@@ -597,9 +601,9 @@ int main(int argc, char** argv) {
 
     ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
-    // Scene undo/redo (commands). Ctrl+Z belongs to tile painting while paint mode is on and while typing text.
+    // Scene undo/redo (commands, tile strokes included); not while typing text.
     bool do_undo = false, do_redo = false;
-    if (!paint_mode && !ImGui::GetIO().WantTextInput) {
+    if (!ImGui::GetIO().WantTextInput) {
       const ImGuiIO& keys = ImGui::GetIO();
       if (keys.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !keys.KeyShift) do_undo = true;
       if (keys.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y) || (keys.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z)))) {
@@ -607,7 +611,7 @@ int main(int argc, char** argv) {
       }
     }
     // A drag ends when no widget is active any more: the next edit starts a new undo step.
-    if (!ImGui::IsAnyItemActive()) edits.end_gesture();
+    if (!ImGui::IsAnyItemActive() && !paint_stroke) edits.end_gesture();
 
     if (ImGui::BeginMainMenuBar()) {
       if (ImGui::BeginMenu("File")) {
@@ -831,23 +835,34 @@ int main(int argc, char** argv) {
         ImGui::Checkbox("Terrain brush", &terrain_mode);
         if (terrain_mode) { ImGui::InputInt("Terrain id", &paint_terrain); paint_terrain = std::max(1, paint_terrain); }
         else ImGui::Checkbox("Fill rectangle (drag)", &paint_rect);
-        if (ImGui::Button("Undo") && paint_tool.undo(*paint_map)) session.mark_dirty();
-        ImGui::SameLine();
-        if (ImGui::Button("Redo") && paint_tool.redo(*paint_map)) session.mark_dirty();
-        if (paint_map->layer_count() == 0 || ImGui::Button("Add layer")) {
-          paint_map->add_layer();
-          session.mark_dirty();
+        // Undo/redo go through the command history; the scene may change, so drop the pointers afterwards.
+        if (ImGui::Button("Undo") && edits.can_undo()) {
+          if (auto done = edits.undo(); !done) ARCANE_LOG_ERROR(kLogCategory, "undo failed: {}", done.error().message);
+          paint_map = nullptr;
         }
-        ImGui::InputInt("Layer", &paint_tool.layer);
-        paint_tool.layer = std::clamp(paint_tool.layer, 0, std::max(0, paint_map->layer_count() - 1));
+        ImGui::SameLine();
+        if (paint_map && ImGui::Button("Redo") && edits.can_redo()) {
+          if (auto done = edits.redo(); !done) ARCANE_LOG_ERROR(kLogCategory, "redo failed: {}", done.error().message);
+          paint_map = nullptr;
+        }
+        if (paint_map && (ImGui::Button("Add layer") || paint_map->layer_count() == 0)) {
+          if (paint_map->layer_count() > 0 || !tilemap_layer_failed) {
+            tilemap_layer_failed = !run_edit({"tilemap.add_layer", {{"node", node_selector(paint_node->id())}}});
+          }
+          paint_map = nullptr;
+        }
+      }
+      if (paint_map) {
+        ImGui::InputInt("Layer", &paint_layer);
+        paint_layer = std::clamp(paint_layer, 0, std::max(0, paint_map->layer_count() - 1));
         const arcane::Tileset* tileset = tilesets.get(paint_map->tileset);
         if (!tileset) {
           ImGui::TextUnformatted("Assign a tileset from Assets > Tilesets.");
         } else {
-          if (ImGui::Selectable("0: erase", paint_tool.tile == 0)) paint_tool.tile = 0;
+          if (ImGui::Selectable("0: erase", paint_tile == 0)) paint_tile = 0;
           for (int id = 1; id <= tileset->tile_count; ++id) {
             const std::string label = std::to_string(id);
-            if (ImGui::Selectable(label.c_str(), paint_tool.tile == id, 0, ImVec2(28, 0))) paint_tool.tile = id;
+            if (ImGui::Selectable(label.c_str(), paint_tile == id, 0, ImVec2(28, 0))) paint_tile = id;
             if (id % 8 != 0 && id < tileset->tile_count) ImGui::SameLine();
           }
         }
@@ -1025,31 +1040,59 @@ int main(int argc, char** argv) {
             arcane::editor::viewport_to_world(*active_scene, mouse.x - origin.x, mouse.y - origin.y, viewport.width(),
                                               viewport.height());
         const auto node_world = paint_node->world_transform();
+        const std::string target = node_selector(paint_node->id());
+        // Cell under a world position, not clamped to the grid (rectangles clamp afterwards).
+        auto cell_of = [&](arcane::Vec2 at, int& cx, int& cy) {
+          if (paint_map->tile_width <= 0.0f || paint_map->tile_height <= 0.0f || node_world.scale.x == 0.0f ||
+              node_world.scale.y == 0.0f) {
+            return false;
+          }
+          cx = static_cast<int>(std::floor((at.x - node_world.position.x) / node_world.scale.x / paint_map->tile_width));
+          cy = static_cast<int>(std::floor((at.y - node_world.position.y) / node_world.scale.y / paint_map->tile_height));
+          return true;
+        };
         if (ImGui::IsItemHovered() && (left || right)) {
+          paint_stroke = true;
           if (paint_rect && !terrain_mode) {
             if (!rect_start) {
               rect_start = world;
               rect_erase = right;
             }
           } else {
-            paint_tool.begin_stroke();
-            const auto* brush_set = terrain_mode ? tilesets.get(paint_map->tileset) : nullptr;
-            if (terrain_mode ? (brush_set && paint_tool.terrain_brush(*paint_map, *brush_set, node_world, world, paint_terrain, right))
-                             : paint_tool.brush(*paint_map, node_world, world, right)) session.mark_dirty();
+            int cx = 0, cy = 0;
+            if (cell_of(world, cx, cy) && paint_map->in_bounds(cx, cy) && paint_map->layer_count() > 0) {
+              arcane::tooling::Json cell = {{"node", target}, {"layer", paint_layer}, {"x", cx}, {"y", cy}};
+              const char* command = "tilemap.paint";
+              if (terrain_mode) {
+                command = "tilemap.terrain_paint";
+                cell["terrain"] = paint_terrain;
+                cell["erase"] = right;
+              } else if (right || paint_tile == 0) {
+                command = "tilemap.erase";
+              } else {
+                cell["tile"] = paint_tile;
+              }
+              auto done = edits.run({command, cell}, "tile-stroke");
+              // Painting a tile the tileset lacks, or terrain without a rule, is simply ignored while dragging.
+              if (!done) ARCANE_LOG_DEBUG(kLogCategory, "{}: {}", command, done.error().message);
+            }
           }
         } else if (!left && !right) {
           if (rect_start) {
-            paint_tool.begin_stroke();
-            if (paint_tool.fill_rect(*paint_map, node_world, *rect_start, world, rect_erase)) session.mark_dirty();
+            int ax = 0, ay = 0, bx = 0, by = 0;
+            if (cell_of(*rect_start, ax, ay) && cell_of(world, bx, by) && paint_map->layer_count() > 0) {
+              const int x0 = std::max(0, std::min(ax, bx)), x1 = std::min(paint_map->width - 1, std::max(ax, bx));
+              const int y0 = std::max(0, std::min(ay, by)), y1 = std::min(paint_map->height - 1, std::max(ay, by));
+              if (x0 <= x1 && y0 <= y1) {
+                auto done = edits.run({"tilemap.fill_rect", {{"node", target}, {"layer", paint_layer}, {"x0", x0}, {"y0", y0},
+                                                              {"x1", x1}, {"y1", y1}, {"tile", rect_erase ? 0 : paint_tile}}});
+                if (!done) ARCANE_LOG_ERROR(kLogCategory, "fill failed: {}", done.error().message);
+              }
+            }
             rect_start.reset();
           }
-          paint_tool.end_stroke();
-        }
-        const ImGuiIO& io = ImGui::GetIO();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift) {
-          if (paint_tool.undo(*paint_map)) session.mark_dirty();
-        } else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z)))) {
-          if (paint_tool.redo(*paint_map)) session.mark_dirty();
+          if (paint_stroke) edits.end_gesture();  // mouse released: the next stroke is a new undo step
+          paint_stroke = false;
         }
       }
     }

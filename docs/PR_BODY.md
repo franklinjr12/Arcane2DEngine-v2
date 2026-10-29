@@ -83,6 +83,19 @@ Errors print `{"ok":false,"error":{...}}` and exit with the status in the refere
 
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
+AF6B (tilemap/tileset commands). Linux:
+```
+d=/tmp/af6b; build-gcc/bin/arcane project new $d --name T; cp samples/topdown_slice/assets/tiles.png $d/assets/
+A="build-gcc/bin/arcane --project $d"
+$A node add --name Map; $A component add --node id:1 --type Tilemap
+$A tilemap add_layer --node id:1
+$A tilemap fill_rect --node id:1 --x0 0 --y0 0 --x1 2 --y1 1 --tile 2   # {"changed":6,"ok":true}
+$A tilemap dump_csv --node id:1                                          # csv with 2,2,2 in rows 0 and 1
+$A tilemap paint --node id:1 --x 99 --y 0 --tile 1                       # exit 4, VALUE_INVALID (outside grid)
+ctest --test-dir build-gcc -R tilemap_commands --output-on-failure       # expect passed
+```
+Editor (any platform): open a project with a Tilemap node, select it, tick "Paint in viewport", drag to paint, then Ctrl+Z / Edit > Undo: one whole drag disappears per undo; Redo brings it back.
+
 **2. What you can visibly see**
 - AF3 adds the `arcane_tooling` library and `docs/commands.md` (command reference, error codes); no new GUI or CLI executable. Visible only through `test_tooling_commands`.
 - AF11 adds `AGENTS.md` with build, format and current authoring guidance, and expands the editor action inventory. No CLI or generated command reference is available.
@@ -104,6 +117,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - FE22 adds `arcane/scene_flow.hpp` (`SceneManager`: switch scenes, fade through the HUD, persistent nodes), `arcane/save_game.hpp` (key/value saves, atomic write, migration hook), optional `transition` / `save` sections in `project.json`, `docs/formats/save.md`, `schemas/arcane.save.schema.json` and `transition.*` / `save.*` registry commands. Visible as files and test output only.
 - FE23: F3 debug overlay in the player (HUD text) and editor (small window); `arcane_bench` JSON output; `docs/perf.md`.
 - AF12 adds `arcane/replay.hpp` (recording, `ReplayInput`, `ReplayRecorder`, canonical per-frame state hash, first-divergent-frame), `arcane/screenshot.hpp` (framebuffer readback, PNG write/read, image compare), `replay.save` / `replay.run` registry commands, the player flags `--replay/--trace-out/--expect-trace/--screenshot`, `docs/formats/replay.md`, two schemas, `samples/platformer_slice/replays/walk_jump.replay.json` and the golden `tests/golden/render/basic.png`.
+- AF6B: `arcane tilemap paint/erase/fill_rect/terrain_paint/set_cells/import_csv/dump_csv/info/get/add_layer` and `arcane tileset create/set_tile/set_rule/remove_rule/info/validate` (see `docs/cli-reference.md`). In the editor, tile painting (brush, erase, rectangle, terrain brush, Add layer) now uses the same commands and the normal Undo/Redo (Ctrl+Z / Edit menu), one drag per undo step.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -274,3 +288,12 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - `CommandHistory` gained drag coalescing (`coalesce_key`/`end_gesture`), save-point tracking (`mark_saved`/`at_save_point`) and id-counter rewind on undo so redo re-creates the same node/component ids.
 - Not done (AF6/AF7/AF8): tile paint, tileset/clip panels, HUD, input map still mutate data directly and their own paint undo is separate; no editor UI for prefab commands; undo history is not cleared by non-command edits.
 - UNTESTED on native Windows/MSVC.
+
+## AF6B — tilemap and tileset commands
+
+- `tooling/src/tilemap_commands.cpp`: `tilemap.info/get/add_layer/set_cells/paint/erase/fill_rect/terrain_paint/dump_csv/import_csv` and `tileset.info/validate/create/set_tile/set_rule/remove_rule`; reference in `docs/commands.md` and `docs/cli-reference.md`. Cell edits validate first (grid, layer, tile id vs `tile_count`) and share one inverse, `tilemap.set_cells`.
+- `CommandResult::redo` + `CommandHistory` merge of same-key `set_cells` entries: one drag stroke is one undo step; save-point rules unchanged.
+- `TilePaintTool::terrain_cell` (cell-addressed core of the terrain brush) is shared by the GUI and `tilemap.terrain_paint`.
+- Editor: Tilemap panel brush/erase/rectangle/terrain/Add layer/Undo/Redo run through `EditSession` (the separate TilePaintTool undo stack is no longer used by the editor).
+- Tests: `test_tilemap_commands` (cells + exact inverses, CSV round trip and rejects, terrain neighbour updates, rule validation, stroke undo/redo via EditSession, topdown sample tilemap with its module). `scripts/build-and-test.sh`: gcc PASS, clang ASan/UBSan PASS, mingw build PASS.
+- Gaps: the Tileset panel still edits a draft and writes the file directly (CLI `tileset.*` covers the same operations; no GUI/CLI parity claim); tileset commands write at once (no `--dry-run`); the editor tile-paint GUI was not exercised by an automated test (only the command path it calls). UNTESTED on native Windows/MSVC.

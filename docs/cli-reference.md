@@ -654,6 +654,207 @@ Read only.
 | `--component` | string | no |  |
 | `--type` | string | no |  |
 
+### `arcane tilemap add-layer`
+
+Append an empty layer; the result names its index.
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--node` | string | yes |  |
+
+### `arcane tilemap dump-csv`
+
+Dump one layer as CSV (one row per grid row, tile ids, 0 = empty). With `file` (project-relative), also writes it there at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--file` | string | no |  |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+
+### `arcane tilemap erase`
+
+Clear one cell (tile 0).
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--x` | integer | yes |  |
+| `--y` | integer | yes |  |
+
+### `arcane tilemap fill-rect`
+
+Fill the inclusive cell rectangle x0,y0..x1,y1 with a tile (0 = erase). Corners may be given in any order and must be inside the grid.
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--tile` | integer | yes |  |
+| `--x0` | integer | yes |  |
+| `--x1` | integer | yes |  |
+| `--y0` | integer | yes |  |
+| `--y1` | integer | yes |  |
+
+### `arcane tilemap get`
+
+Read one cell (tile id, 0 = empty).
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--x` | integer | yes |  |
+| `--y` | integer | yes |  |
+
+### `arcane tilemap import-csv`
+
+Write CSV tile ids into a layer starting at cell (x, y) (default 0,0). Give the text as `csv` or read it from a project-relative `file`. Rows must be the same length, fit the grid and use valid tile ids; nothing changes otherwise.
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--csv` | id or name | no |  |
+| `--file` | string | no |  |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--x` | integer | no |  |
+| `--y` | integer | no |  |
+
+### `arcane tilemap info`
+
+Describe a Tilemap component: size, cell size, layers and the tileset it points at.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--node` | string | yes |  |
+
+### `arcane tilemap paint`
+
+Paint one cell with a tile id (layer defaults to 0).
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--tile` | integer | yes |  |
+| `--x` | integer | yes |  |
+| `--y` | integer | yes |  |
+
+### `arcane tilemap set-cells`
+
+Set many cells at once: cells is a list of {layer, x, y, tile}. All are validated first; nothing changes if any is invalid. This is also the inverse of every other cell edit.
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--cells` | array | yes |  |
+| `--node` | string | yes |  |
+
+### `arcane tilemap terrain-paint`
+
+Paint (or with erase=true clear) a cell with auto-tiling: the tile is picked from the tileset's rule for `terrain` by its N/E/S/W neighbours, and the neighbours of that terrain are re-picked (the editor's terrain brush).
+
+Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--erase` | boolean | no |  |
+| `--layer` | integer | no |  |
+| `--node` | string | yes |  |
+| `--terrain` | integer | yes |  |
+| `--x` | integer | yes |  |
+| `--y` | integer | yes |  |
+
+### `arcane tileset create`
+
+Create a tileset file. `texture` is an image under assets/ (project-relative path, e.g. assets/tiles.png) or a raw asset id. Fails if the file exists unless overwrite=true.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--columns` | integer | yes |  |
+| `--overwrite` | boolean | no |  |
+| `--texture` | id or name | yes |  |
+| `--tile-count` | integer | yes |  |
+| `--tile-height` | integer | yes |  |
+| `--tile-width` | integer | yes |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset info`
+
+Show a tileset file: sheet layout, per-tile solid/terrain flags and terrain rules.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset remove-rule`
+
+Remove the auto-tile rule of a terrain.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--terrain` | integer | yes |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset set-rule`
+
+Add or replace the auto-tile rule of a terrain: `tiles` is 16 tile ids indexed by neighbour mask (N=1 E=2 S=4 W=8; 0 = no tile). Run tileset.validate afterwards to check the tiles are marked with the terrain.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--terrain` | integer | yes |  |
+| `--tiles` | array | yes |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset set-tile`
+
+Set the solid flag and/or terrain of tile `tile` (1-based id). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--solid` | boolean | no |  |
+| `--terrain` | integer | no |  |
+| `--tile` | integer | yes |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset validate`
+
+Check a tileset's content: rule tiles inside tile_count, rule tiles marked with their terrain, duplicate or empty rules. ok=false (exit 4) lists the problems; the file is never changed.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--tileset` | string | yes |  |
+
 ### `arcane transition get`
 
 Read the authored scene-transition settings (fade seconds and colour) from project.json.

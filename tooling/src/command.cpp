@@ -139,12 +139,25 @@ std::expected<CommandResult, ToolError> CommandRegistry::execute(ProjectContext&
   return result;
 }
 
-void CommandHistory::record(const Invocation& forward, const CommandResult& result, const std::string& coalesce_key,
+void CommandHistory::record(const Invocation& called, const CommandResult& result, const std::string& coalesce_key,
                             std::uint64_t next_id_before) {
   if (!result.inverse) return;
+  const Invocation& forward = result.redo ? *result.redo : called;
   // Merging rewrites the top entry, which would change what the save point means.
   if (!coalesce_key.empty() && coalesce_key == open_key_ && !undo_.empty() && saved_ != undo_.size()) {
-    undo_.back().forward = forward;
+    Entry& top = undo_.back();
+    const bool cells = forward.command == "tilemap.set_cells" && top.forward.command == "tilemap.set_cells" &&
+                       result.inverse->command == "tilemap.set_cells" && top.inverse.command == "tilemap.set_cells" &&
+                       forward.args["node"] == top.forward.args["node"];
+    if (cells) {
+      // One stroke over many cells: redo applies all cells in order; undo restores the latest edits first.
+      for (const auto& cell : forward.args["cells"]) top.forward.args["cells"].push_back(cell);
+      Json inverse_cells = result.inverse->args["cells"];
+      for (const auto& cell : top.inverse.args["cells"]) inverse_cells.push_back(cell);
+      top.inverse.args["cells"] = std::move(inverse_cells);
+    } else {
+      top.forward = forward;
+    }
     return;
   }
   if (saved_ != kUnreachable && saved_ > undo_.size()) saved_ = kUnreachable;  // saved state lived in the redo stack

@@ -121,6 +121,23 @@ Values use the scene encodings (`docs/formats/scene.md`): bool, 32-bit int,
 finite binary32 float, `[x,y]`, `[r,g,b,a]`, string, unsigned id. `entity_id`
 values must be 0 or an existing node.
 
+Tilemaps and tilesets (`docs/formats/tileset.md`, `tooling/src/tilemap_commands.cpp`): cell commands take a `node` with a
+`Tilemap` component and cell coordinates (`x`,`y`, 0-based, y down; `layer` defaults to 0). `tilemap.paint`, `erase`,
+`fill_rect`, `terrain_paint` and `import_csv` all reduce to a list of changed cells whose inverse is one `tilemap.set_cells`
+with the previous ids (the redo is the exact `set_cells`, so `CommandHistory` merges consecutive calls with the same
+coalesce key into one stroke: the editor's drag = one undo step). Cells and tile ids are validated first (`VALUE_INVALID`
+for out-of-grid cells, missing layers and ids above the tileset's `tile_count` when the map's tileset resolves); nothing
+changes on error. `terrain_paint` is the editor's terrain brush (rule lookup by N/E/S/W mask, neighbours of that terrain
+re-picked; `erase=true` clears and re-picks neighbours). CSV is one row per grid row, comma-separated non-negative
+integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or a project-relative `file` at offset
+`x`,`y`, `dump_csv` returns the text and with `file` writes it at once (so it refuses `--dry-run`).
+`tileset.*` take a project-relative `tileset` path under `assets/` (the asset id derives from it) and write the file at once
+(no `persist`/`dry_run`): `create` (texture as `assets/*.png` path or asset id), `set_tile` (solid/terrain),
+`set_rule` (16 tile ids by neighbour mask N=1 E=2 S=4 W=8; replaces an existing rule), `remove_rule`, `info` and
+`validate` (rule tiles inside `tile_count`, rule tiles marked with their terrain, duplicate/empty rules; `ok:false` lists
+problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
+`tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
