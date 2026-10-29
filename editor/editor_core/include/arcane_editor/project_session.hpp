@@ -10,6 +10,8 @@
 
 namespace arcane::editor {
 
+enum class SceneLoadPolicy { Compatible, Strict };
+
 // Owns the editor's view of an on-disk project: the parsed ProjectFile, the
 // currently loaded (authored) Scene, and a dirty flag. Wraps project.hpp's
 // and Scene's pure JSON (de)serialization with the file I/O and path
@@ -18,7 +20,8 @@ namespace arcane::editor {
 class ProjectSession {
  public:
   static std::expected<ProjectSession, std::string> open(const std::filesystem::path& project_dir,
-                                                           const ComponentRegistry& registry);
+                                                           const ComponentRegistry& registry,
+                                                           SceneLoadPolicy policy = SceneLoadPolicy::Compatible);
 
   // Creates a brand-new project on disk: project.json + an empty main scene
   // under scenes/.

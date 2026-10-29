@@ -27,7 +27,8 @@ class ProjectRuntime {
   // build config loads the module it just built rather than a shared copy
   // in the source tree a different config could have last overwritten.
   static std::expected<ProjectRuntime, std::string> open(const std::filesystem::path& project_dir,
-                                                           const std::string& module_override = {});
+                                                           const std::string& module_override = {},
+                                                           SceneLoadPolicy policy = SceneLoadPolicy::Compatible);
 
   ProjectRuntime(ProjectRuntime&&) noexcept = default;
   ProjectRuntime& operator=(ProjectRuntime&&) noexcept = default;

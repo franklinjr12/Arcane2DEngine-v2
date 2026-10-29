@@ -14,6 +14,7 @@
 #include "arcane/scene.hpp"
 #include "arcane_editor/asset_catalog.hpp"
 #include "arcane_editor/project_session.hpp"
+#include "arcane_editor/project_runtime.hpp"
 #include "test_assert.hpp"
 
 namespace {
@@ -127,11 +128,39 @@ void test_asset_catalog_ids_are_stable_and_listable() {
   std::filesystem::remove_all(assets_dir);
 }
 
+void test_strict_runtime_rejects_unknown_legacy_module_property() {
+  auto module = arcane::GameModule::load(ARCANE_SAMPLE_GAME_PATH);
+  ARCANE_ASSERT_TRUE(module.has_value());
+  auto registry = make_registry_with_module(*module);
+  const auto dir = std::filesystem::temp_directory_path() / "arcane_test_strict_runtime";
+  std::filesystem::remove_all(dir);
+  auto created = arcane::editor::ProjectSession::create(dir, "strict test", registry);
+  ARCANE_ASSERT_TRUE(created.has_value());
+  const auto path = created->main_scene_path();
+  {
+    std::ofstream out(path);
+    out << R"({"format_version":1,"next_id":3,"nodes":[{"id":1,"name":"n","parent_id":0,"position":[0,0],"rotation_radians":0,"scale":[1,1],"components":[{"id":2,"type":"Spinner","properties":{"unknown_future_property":42}}]}]})";
+  }
+  auto compatible = arcane::editor::ProjectRuntime::open(dir, ARCANE_SAMPLE_GAME_PATH);
+  ARCANE_ASSERT_TRUE(compatible.has_value());
+  auto strict = arcane::editor::ProjectRuntime::open(dir, ARCANE_SAMPLE_GAME_PATH,
+                                                      arcane::editor::SceneLoadPolicy::Strict);
+  ARCANE_ASSERT_TRUE(!strict.has_value());
+  ARCANE_ASSERT_TRUE(strict.error().find("unknown_future_property") != std::string::npos);
+  // Failed strict loading does not rewrite the source file.
+  std::ifstream in(path);
+  const std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  in.close();
+  ARCANE_ASSERT_TRUE(contents.find("unknown_future_property") != std::string::npos);
+  std::filesystem::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
   test_registry_walk_covers_builtin_and_module_types();
   test_project_session_save_reopen_keeps_edits();
   test_asset_catalog_ids_are_stable_and_listable();
+  test_strict_runtime_rejects_unknown_legacy_module_property();
   return 0;
 }

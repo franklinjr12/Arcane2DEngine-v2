@@ -5,7 +5,8 @@
 namespace arcane::editor {
 
 std::expected<ProjectSession, std::string> ProjectSession::open(const std::filesystem::path& project_dir,
-                                                                  const ComponentRegistry& registry) {
+                                                                  const ComponentRegistry& registry,
+                                                                  SceneLoadPolicy policy) {
   auto project_text = read_text_file(project_dir / "project.json");
   if (!project_text) {
     return std::unexpected(project_text.error());
@@ -23,7 +24,8 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   if (!scene_text) {
     return std::unexpected(scene_text.error());
   }
-  auto scene = Scene::load_from_json(*scene_text, registry);
+  auto scene = policy == SceneLoadPolicy::Strict ? Scene::load_from_json_strict(*scene_text, registry)
+                                                 : Scene::load_from_json(*scene_text, registry);
   if (!scene) {
     return std::unexpected(scene.error());
   }
