@@ -25,11 +25,20 @@ struct World {
   arcane::RigidBody2D* body = nullptr;
   arcane::PlatformerController2D* controller = nullptr;
 
-  explicit World(float player_y = 191.0f, int floor_tiles = 40) {
+  explicit World(float player_y = 191.0f, int floor_tiles = 40, bool one_way = false) {
     arcane::register_tilemap_components(registry);
     arcane::register_physics_components(registry);
     arcane::Node* ground = scene.create_node("ground");
     ground->local_transform().position = {0.0f, 200.0f};
+    if (one_way) {
+      auto* ground_body = static_cast<arcane::RigidBody2D*>(scene.add_component(ground, "RigidBody2D", registry));
+      ground_body->body_type = static_cast<int>(arcane::BodyType::Static);
+      ground->local_transform().position = {100.0f, 216.0f};
+      auto* platform = static_cast<arcane::Collider2D*>(scene.add_component(ground, "Collider2D", registry));
+      platform->width = 200.0f;
+      platform->height = 32.0f;
+      platform->one_way = true;
+    } else {
     auto* map = static_cast<arcane::Tilemap*>(scene.add_component(ground, "Tilemap", registry));
     map->width = floor_tiles;
     map->height = 1;
@@ -37,6 +46,8 @@ struct World {
     map->solid_tiles = "1";
     map->add_layer();
     for (int x = 0; x < floor_tiles; ++x) map->set_tile(0, x, 0, 1);
+
+    }
 
     player = scene.create_node("player");
     player->local_transform().position = {100.0f, player_y};
@@ -50,6 +61,7 @@ struct World {
 
     input.set_action({"move_left", {{arcane::InputDevice::Keyboard, arcane::Keys::kA}}});
     input.set_action({"move_right", {{arcane::InputDevice::Keyboard, arcane::Keys::kD}}});
+    input.set_action({"move_down", {{arcane::InputDevice::Keyboard, arcane::Keys::kS}}});
     input.set_action({"jump", {{arcane::InputDevice::Keyboard, arcane::Keys::kSpace}}});
     arcane::set_active_input_map(&input);
     physics.rebuild(scene);
@@ -156,6 +168,25 @@ void test_buffered_jump_fires_on_landing() {
   ARCANE_ASSERT_TRUE(min_vy < -100.0f);  // jumped on landing without a second press
 }
 
+void test_one_way() {
+  World landing(100.0f, 40, true);
+  landing.step(120);
+  ARCANE_ASSERT_TRUE(landing.body->grounded);
+  ARCANE_ASSERT_TRUE(landing.y() < 195.0f);
+  landing.key(arcane::Keys::kS, true);
+  landing.key(arcane::Keys::kSpace, true);
+  landing.step();
+  landing.step(59);
+  ARCANE_ASSERT_TRUE(landing.y() > 240.0f);
+
+  World rising(250.0f, 40, true);
+  rising.body->linear_velocity.y = -400.0f;
+  rising.step(12);
+  ARCANE_ASSERT_TRUE(rising.y() < 200.0f);
+  rising.step(120);
+  ARCANE_ASSERT_TRUE(rising.body->grounded);
+}
+
 void test_serialization_round_trip() {
   arcane::ComponentRegistry registry;
   arcane::register_physics_components(registry);
@@ -166,6 +197,9 @@ void test_serialization_round_trip() {
   c->coyote_time = 0.25f;
   c->jump_cut = 0.3f;
   c->jump_action = "hop";
+  c->down_action = "descend";
+  auto* collider = static_cast<arcane::Collider2D*>(original.add_component(node, "Collider2D", registry));
+  collider->one_way = true;
   auto loaded = arcane::Scene::load_from_json(original.save_to_json(registry), registry);
   ARCANE_ASSERT_TRUE(loaded.has_value());
   auto* restored = static_cast<arcane::PlatformerController2D*>(
@@ -173,6 +207,9 @@ void test_serialization_round_trip() {
   ARCANE_ASSERT_TRUE(restored != nullptr);
   ARCANE_ASSERT_TRUE(restored->max_speed == 123.0f && restored->coyote_time == 0.25f);
   ARCANE_ASSERT_TRUE(restored->jump_cut == 0.3f && restored->jump_action == "hop");
+  ARCANE_ASSERT_TRUE(restored->down_action == "descend");
+  auto* restored_collider = static_cast<arcane::Collider2D*>(loaded->roots()[0]->find_component("Collider2D"));
+  ARCANE_ASSERT_TRUE(restored_collider && restored_collider->one_way);
 }
 
 }  // namespace
@@ -183,6 +220,7 @@ int main() {
   test_jump_cut_lowers_apex();
   test_coyote_window();
   test_buffered_jump_fires_on_landing();
+  test_one_way();
   test_serialization_round_trip();
   return 0;
 }
