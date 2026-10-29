@@ -25,6 +25,13 @@ scene now start with `"format": "arcane.project"` / `"arcane.scene"` and `"versi
 two-space indent. Reopening it works; use `git diff` to see the migrated text, `git checkout samples`
 to restore the legacy copies.
 
+To launch the existing applications on Windows after the build:
+```
+.\build\bin\Debug\arcane_editor.exe
+.\build\bin\Debug\arcane_player.exe --project samples/sample_project
+```
+Open the sample project in the editor and use File > Save; the player should open the sample scene. The `arcane` CLI is not available in this branch yet, so a CLI check cannot be run.
+
 **2. What you can visibly see**
 - New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`, plus (AF2) `tileset.md`, `clip.md`, `hud.md`, `input.md`; JSON Schemas in `schemas/`.
 - AF2: Tilemap layers are now rows of ids in the scene file (not a `;`/`,` string); tileset/clip files and the project's HUD/input are `arcane.*` version 2; HUD elements all have ids and images keep an asset id.
@@ -37,6 +44,7 @@ to restore the legacy copies.
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF3 registry and AF4 CLI remain incomplete; no CLI commands are available. The incomplete AF3 work is preserved on the local WIP branch.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
 - `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
 - Saving a legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Unknown component properties in legacy files are still dropped silently on an editor save (migration refuses them).
@@ -68,3 +76,6 @@ to restore the legacy copies.
 
 ## UNTESTED on native Windows/MSVC
 Everything above (mingw cross-build only), notably `std::to_chars` float formatting, `std::filesystem::rename` over an existing file, and the golden-file byte comparison.
+
+## AF4 prerequisite review
+AF3 is PARTIAL: its preserved WIP is not integrated and lacks property commands and tests. Its save path must be corrected to avoid partial multi-file writes and strict legacy loading must be enforced before authoring. AF4 has not been implemented. The existing branch was revalidated with `scripts/build-and-test.sh`: gcc and clang sanitizer tests passed, and the mingw cross-build passed.
