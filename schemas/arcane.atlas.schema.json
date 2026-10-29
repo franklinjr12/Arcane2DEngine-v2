@@ -1,0 +1,74 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.atlas.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.atlas"
+    },
+    "height": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "image": {
+      "type": "string"
+    },
+    "padding": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "regions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "h": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "w": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "x": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "y": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "x",
+          "y",
+          "w",
+          "h"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "version": {
+      "const": 2
+    },
+    "width": {
+      "minimum": 1,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "image",
+    "width",
+    "height",
+    "regions"
+  ],
+  "title": "Arcane sprite atlas (v2)",
+  "type": "object"
+}

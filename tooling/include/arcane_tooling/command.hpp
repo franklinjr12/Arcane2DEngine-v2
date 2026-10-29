@@ -106,6 +106,9 @@ void register_prefab_commands(CommandRegistry& registry);
 // Registers audio.backend (backend selection diagnostics; opens no device by default).
 void register_audio_commands(CommandRegistry& registry);
 
+// Registers atlas.pack, atlas.regions, atlas.make_clip (asset files only; the scene is untouched).
+void register_atlas_commands(CommandRegistry& registry);
+
 // Node / component selectors shared by commands: "id:42" or
 // "path:/Root/Player" (must resolve to exactly one node).
 std::expected<Node*, ToolError> resolve_node(ProjectContext& context, const std::string& selector);
