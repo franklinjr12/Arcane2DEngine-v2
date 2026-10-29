@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "arcane/audio.hpp"
+#include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
@@ -147,12 +148,23 @@ int run_project(const Args& args) {
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
 
+  // Debug overlay: starts as authored in project.json ("debug"), F3 toggles it.
+  const arcane::DebugConfig debug_config = runtime->session().project().debug;
+  bool overlay_visible = debug_config.overlay_visible;
+  bool overlay_key_was_down = false;
+  arcane::FrameTimer frame_timer;
+  arcane::Hud overlay_hud;
+
   while (!window->should_close()) {
     if (args.frames.has_value() && frame_count >= *args.frames) break;
 
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
+    frame_timer.tick(delta_seconds);
+    const bool overlay_key_down = input_backend.is_down(arcane::InputDevice::Keyboard, arcane::kDebugOverlayKey);
+    if (overlay_key_down && !overlay_key_was_down) overlay_visible = !overlay_visible;
+    overlay_key_was_down = overlay_key_down;
 
     // HUD sees pointer/confirm input first; what it consumes is hidden from gameplay actions.
     int fb_width = 0, fb_height = 0;
@@ -171,6 +183,15 @@ int run_project(const Args& args) {
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
                                 &tilesets);
     if (runtime->module_api()) runtime->module_api()->on_render();
+
+    if (overlay_visible) {
+      const arcane::RenderStats& render_stats = renderer->stats();
+      arcane::FrameStats stats{frame_timer.fps(), frame_timer.frame_ms(), render_stats.draw_calls,
+                               render_stats.sprites, physics.body_count(), arcane::count_particles(scene)};
+      arcane::fill_debug_overlay_hud(overlay_hud, stats, debug_config);
+      hud_renderer->draw(overlay_hud, *renderer, fb_width, fb_height);
+      renderer->flush();
+    }
 
     window->swap_buffers();
     window->poll_events();

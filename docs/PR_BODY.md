@@ -15,6 +15,8 @@ xvfb-run -a ctest --test-dir .build-and-test/build-gcc -R topdown --output-on-fa
 The editor opens the sample project; select a node, add Camera2D in the Inspector, and set its target node ID, zoom, bounds, or shake values. Save, click Play, and observe the camera follow and shake; click Stop to return to editing. The player opens the saved scene. Existing samples continue to load.
 For FE15, open the arena in the editor, select Arena and inspect the registered ArenaRules values; click Play and use WASD. The blue player moves in four directions and stops at the perimeter; the red enemy follows and contact lowers the health HUD and creates a burst. Stop returns to editing. The player command opens the same arena. Run `ctest --test-dir .build-and-test/build-gcc -R "topdown" --output-on-failure` under `xvfb-run -a` for the 600-step simulation, 120-frame player and packaged export checks.
 
+FE23 check (debug overlay + benchmark): `.build-and-test/build-gcc/bin/arcane_bench --frames 60` (Windows: `.\build\bin\arcane_bench.exe --frames 60`) prints an `arcane.bench` JSON document with `live_particles` 1000 and `physics_bodies` 201; `arcane_bench --frames 0` prints an error and exits with status 2. `ctest --test-dir .build-and-test/build-gcc -R "test_debug|bench_cli" --output-on-failure`; expect 4 passed. In the player or editor on a project, press **F3**: a six-line overlay (FPS, frame ms, draw calls, sprites, bodies, particles) appears or disappears. To start with it shown, add `"debug": {"overlay_visible": true}` to `project.json`. Baseline numbers: `docs/perf.md`.
+
 Windows / MSVC (PowerShell, from the repo root):
 ```
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64
@@ -82,6 +84,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - FE18 adds prefab files (`docs/formats/prefab.md`, `schemas/arcane.prefab.schema.json`), a `prefab` link on scene nodes, `prefab.*` registry commands (`docs/commands.md`) and the runtime calls `load_prefab_file` / `instantiate_prefab` / `spawn_prefab`. Visible only as files and test output.
 - FE20 adds `docs/formats/atlas.md`, `schemas/arcane.atlas.schema.json`, `arcane/atlas.hpp` (packer, load/save, UV lookup) and `atlas.pack/regions/make_clip` registry commands. Visible as files and test output only.
 - FE22 adds `arcane/scene_flow.hpp` (`SceneManager`: switch scenes, fade through the HUD, persistent nodes), `arcane/save_game.hpp` (key/value saves, atomic write, migration hook), optional `transition` / `save` sections in `project.json`, `docs/formats/save.md`, `schemas/arcane.save.schema.json` and `transition.*` / `save.*` registry commands. Visible as files and test output only.
+- FE23: F3 debug overlay in the player (HUD text) and editor (small window); `arcane_bench` JSON output; `docs/perf.md`.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -89,6 +92,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE23 is PARTIAL on the AI-agent side: `debug.get/set` and `bench.run` are registry commands, but there is no `arcane` CLI (AF4), so they are reachable from C++/tests only; the standalone `arcane_bench` executable gives the benchmark a CLI meanwhile. The overlay was not looked at on screen (only hidden runs under Xvfb, which load a project with the overlay on); the benchmark does not measure rendering. Windows/MSVC build of `arcane_bench`, the overlay and the F3 key is UNTESTED on native Windows/MSVC.
 - FE22 is PARTIAL: the library API, formats, commands and tests are done, but the player/editor main loops do not own a `SceneManager` yet (they hold the single project scene, and physics/tween systems are bound to it), so a game calls the API from its own code; there is no `arcane` CLI (AF4) so the commands are reachable from C++/tests only, and no editor UI for transition/save settings. Persistent nodes are marked at runtime (not authored in scenes); physics bodies of a carried node are not rebuilt by the manager. The fade overlay was not visually inspected. `save_directory` Windows path (`%APPDATA%`) is UNTESTED on native Windows/MSVC.
 - FE20 is PARTIAL: packing, format, commands and tests are done; there is no `arcane` CLI (AF4) so `atlas.*` is reachable from C++/tests only, no editor UI, and `Sprite` cannot reference a region by name (clips can, via `atlas.make_clip`). Export was not run end to end with an atlas (it copies `assets/` whole). **UNTESTED on native Windows/MSVC.**
 - FE18 is PARTIAL: data format, registry commands, runtime spawn and tests are done; the editor GUI has no prefab actions (editor edits still bypass commands, AF5) and there is no `arcane` CLI (AF4). Prefab edits do not propagate to existing instances; undoing a `prefab.remove` or redoing an `instantiate` creates new IDs. **UNTESTED on native Windows/MSVC.**
@@ -227,3 +231,9 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - Save API (`save_game.hpp`, `docs/formats/save.md`): flat typed key/value `arcane.save` v2, `data_version` + `SaveMigration` hook run step by step, atomic temp-file + rename write (`write_text_file_atomic`), per-user folder via `ARCANE_SAVE_DIR` / `%APPDATA%` / XDG.
 - Project config: optional `transition` and `save` sections (`docs/formats/project.md`, schema updated); omitted when default, so existing projects and goldens are byte-identical.
 - Commands (`docs/commands.md`): `transition.get/set`, `save.config_get/config_set`, `save.list/get/set/remove/migrate`. Test: `tests/test_scene_flow.cpp`.
+
+## FE23 — debug overlay and benchmark
+
+- `arcane/debug.hpp`: `DebugConfig`, `FrameStats`, `FrameTimer`, `count_particles`, `format_debug_overlay`, `fill_debug_overlay_hud`, `run_benchmark`. `SpriteRenderer::stats()` (draw calls, sprites) and `PhysicsWorld::body_count()` feed it.
+- `project.json` gained the optional `debug` section (schema, `docs/formats/project.md`); `debug.get/set` and `bench.run` commands; `tools/bench_main.cpp` builds `arcane_bench`. Docs and baseline numbers: `docs/perf.md`.
+- Tests: `test_debug` (timer, text, benchmark counts/ranges, config round trip, commands), `bench_cli_smoke`, `bench_cli_bad_args`, `bench_cli_bad_flag`, renderer stats assertion in `test_renderer_gl`.

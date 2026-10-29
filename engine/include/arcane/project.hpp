@@ -3,6 +3,7 @@
 #include <expected>
 #include <string>
 
+#include "arcane/debug.hpp"
 #include "arcane/export.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -43,6 +44,7 @@ struct ProjectFile {
   Hud hud;
   TransitionConfig transition;
   SaveConfig save;
+  DebugConfig debug;
 };
 
 // Writes canonical project v2 (docs/formats/project.md).

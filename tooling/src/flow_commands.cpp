@@ -1,4 +1,4 @@
-// transition.* / save.* commands (docs/formats/project.md, docs/formats/save.md,
+// transition.* / save.* / debug.* commands (docs/formats/project.md, docs/formats/save.md,
 // docs/commands.md). The config commands read and write project.json and the
 // save commands read and write save files; neither touches the open scene, so
 // they ignore `persist`/`dry_run` like the other asset-file commands.
@@ -102,6 +102,10 @@ Json values_json(const SaveData& data) {
   Json values = Json::object();
   for (const auto& [key, value] : data.values) values[key] = value_json(value);
   return values;
+}
+
+Json debug_json(const DebugConfig& d) {
+  return {{"overlay_visible", d.overlay_visible}, {"overlay_font_scale", d.overlay_font_scale}};
 }
 
 const Json kDirProperty = {{"type", "string"}};
@@ -371,6 +375,45 @@ void register_flow_commands(CommandRegistry& registry) {
         data->data_version = to;
         if (auto ok = write_slot(*dir, slot, *data); !ok) return std::unexpected(ok.error());
         return CommandResult{{{"slot", slot}, {"from_version", from}, {"data_version", to}, {"values", values_json(*data)}}, std::nullopt};
+      });
+}
+
+void register_debug_commands(CommandRegistry& registry) {
+  registry.add({"debug.get",
+                "Read the debug overlay settings (shown at startup, font scale) from project.json. F3 toggles the overlay in the player and editor.",
+                {{"type", "object"}, {"additionalProperties", false}},
+                {{"type", "object"}},
+                false},
+               [](ProjectContext& context, const Json&) -> std::expected<CommandResult, ToolError> {
+                 auto project = load_project_file(context);
+                 if (!project) return std::unexpected(project.error());
+                 return CommandResult{debug_json(project->debug), std::nullopt};
+               });
+
+  registry.add(
+      {"debug.set",
+       "Change the debug overlay settings in project.json; omitted fields keep their value. Writes at once.",
+       {{"type", "object"},
+        {"properties",
+         {{"overlay_visible", {{"type", "boolean"}}},
+          {"overlay_font_scale", {{"type", "number"}, {"exclusiveMinimum", 0}, {"maximum", 8}}}}},
+        {"additionalProperties", false}},
+       {{"type", "object"}},
+       false},
+      [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
+        auto project = load_project_file(context);
+        if (!project) return std::unexpected(project.error());
+        const Json previous = debug_json(project->debug);
+        DebugConfig& d = project->debug;
+        if (args.contains("overlay_visible")) d.overlay_visible = args["overlay_visible"].get<bool>();
+        if (args.contains("overlay_font_scale")) d.overlay_font_scale = args["overlay_font_scale"].get<float>();
+        const Json now = debug_json(d);
+        if (now != previous) {
+          if (auto ok = store_project_file(context, *project); !ok) return std::unexpected(ok.error());
+        }
+        return CommandResult{{{"changed", now != previous}, {"previous", previous}, {"debug", now}},
+                             now != previous ? std::optional<Invocation>(Invocation{"debug.set", previous})
+                                             : std::nullopt};
       });
 }
 

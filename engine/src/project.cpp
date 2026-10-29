@@ -25,12 +25,12 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
         canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                                     "save"},
+                                     "save", "debug"},
                                      "project");
       } else {
         canonical::require_only_keys(
             root, {"format_version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                         "save"},
+                         "save", "debug"},
             "project");
       }
     }
@@ -72,6 +72,16 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
       if (!(c.fade_out_seconds >= 0.0f && c.fade_out_seconds <= 60.0f) ||
           !(c.fade_in_seconds >= 0.0f && c.fade_in_seconds <= 60.0f)) {
         canonical::fail("project 'transition': fade seconds must be within [0, 60]");
+      }
+    }
+    if (root.contains("debug")) {
+      const json& d = root["debug"];
+      canonical::require_object(d, "project 'debug'");
+      canonical::require_only_keys(d, {"overlay_visible", "overlay_font_scale"}, "project 'debug'");
+      if (d.contains("overlay_visible")) project.debug.overlay_visible = canonical::as_bool(d["overlay_visible"], "debug 'overlay_visible'");
+      if (d.contains("overlay_font_scale")) project.debug.overlay_font_scale = canonical::as_float(d["overlay_font_scale"], "debug 'overlay_font_scale'");
+      if (!(project.debug.overlay_font_scale > 0.0f && project.debug.overlay_font_scale <= 8.0f)) {
+        canonical::fail("project 'debug': overlay_font_scale must be within (0, 8]");
       }
     }
     if (root.contains("save")) {
@@ -131,6 +141,15 @@ std::expected<std::string, std::string> save_project_canonical_json(const Projec
     root["transition"] = {{"fade_out_seconds", t.fade_out_seconds},
                           {"fade_in_seconds", t.fade_in_seconds},
                           {"color", {t.color.r, t.color.g, t.color.b, t.color.a}}};
+  }
+  const DebugConfig default_debug;
+  if (project.debug.overlay_visible != default_debug.overlay_visible ||
+      project.debug.overlay_font_scale != default_debug.overlay_font_scale) {
+    if (!(project.debug.overlay_font_scale > 0.0f && project.debug.overlay_font_scale <= 8.0f)) {
+      return std::unexpected(std::string("project debug: overlay_font_scale must be within (0, 8]"));
+    }
+    root["debug"] = {{"overlay_visible", project.debug.overlay_visible},
+                     {"overlay_font_scale", project.debug.overlay_font_scale}};
   }
   if (!project.save.game_id.empty() || project.save.data_version != 1) {
     if (!project.save.game_id.empty() && !is_valid_game_id(project.save.game_id)) {

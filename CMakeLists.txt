@@ -130,7 +130,8 @@ add_library(arcane_runtime SHARED
   engine/src/text.cpp
   engine/src/font_data.cpp
   engine/src/tilemap.cpp
-  engine/src/particles.cpp)
+  engine/src/particles.cpp
+  engine/src/debug.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json engine/src)
@@ -167,9 +168,14 @@ add_library(arcane_tooling STATIC
   tooling/src/audio_commands.cpp
   tooling/src/atlas_commands.cpp
   tooling/src/flow_commands.cpp
-  tooling/src/prefab_commands.cpp)
+  tooling/src/prefab_commands.cpp
+  tooling/src/bench_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
+
+# Headless benchmark (docs/perf.md); a short smoke run is in CTest, the full run is manual.
+add_executable(arcane_bench tools/bench_main.cpp)
+target_link_libraries(arcane_bench PRIVATE arcane_tooling)
 
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
