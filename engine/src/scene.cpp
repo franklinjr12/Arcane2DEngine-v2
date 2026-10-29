@@ -85,6 +85,63 @@ bool Scene::reparent(Node* node, Node* new_parent) {
   return true;
 }
 
+namespace {
+
+using IdMap = std::unordered_map<std::uint64_t, std::uint64_t>;
+
+}  // namespace
+
+Node* Scene::adopt_root(Scene& from, Node* root, const ComponentRegistry& registry) {
+  if (&from == this || !root || root->parent_ || root->pending_destroy_) return nullptr;
+  auto it = std::find_if(from.roots_.begin(), from.roots_.end(),
+                         [root](const std::unique_ptr<Node>& candidate) { return candidate.get() == root; });
+  if (it == from.roots_.end()) return nullptr;
+  std::unique_ptr<Node> owned = std::move(*it);
+  from.roots_.erase(it);
+
+  IdMap ids;
+  std::vector<Component*> moved;
+  std::function<void(Node&)> reassign = [&](Node& node) {
+    const NodeId old_node_id = node.id_;
+    from.nodes_by_id_.erase(old_node_id);
+    node.id_ = allocate_id();
+    ids[old_node_id] = node.id_;
+    nodes_by_id_[node.id_] = &node;
+    for (auto& component : node.components_) {
+      const ComponentId old_component_id = component->id_;
+      from.components_by_id_.erase(old_component_id);
+      component->id_ = allocate_id();
+      ids[old_component_id] = component->id_;
+      components_by_id_[component->id_] = component.get();
+      moved.push_back(component.get());
+    }
+    for (auto& child : node.children_) reassign(*child);
+  };
+  reassign(*owned);
+  std::function<void(Node&)> relink = [&](Node& node) {
+    if (node.prefab_link_) {
+      const auto mapped = ids.find(node.prefab_link_->instance_id);
+      if (mapped != ids.end()) node.prefab_link_->instance_id = mapped->second;
+    }
+    for (auto& child : node.children_) relink(*child);
+  };
+  relink(*owned);
+  for (Component* component : moved) {
+    const auto* descriptors = registry.properties_of(component->type_name());
+    if (!descriptors) continue;
+    for (const PropertyDescriptor& d : *descriptors) {
+      if (d.type != PropertyType::EntityId) continue;
+      const auto old_id = std::get<AssetId>(d.get(*component));
+      if (old_id == 0) continue;
+      const auto mapped = ids.find(old_id);
+      d.set(*component, PropertyValue{static_cast<AssetId>(mapped == ids.end() ? 0 : mapped->second)});
+    }
+  }
+  Node* raw = owned.get();
+  roots_.push_back(std::move(owned));
+  return raw;
+}
+
 void Scene::mark_pending_destroy(Node* node) {
   if (node->pending_destroy_) {
     return;

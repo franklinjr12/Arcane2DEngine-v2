@@ -44,6 +44,15 @@ class ARCANE_API Scene {
   // descendant of node (which would create a cycle).
   bool reparent(Node* node, Node* new_parent);
 
+  // Moves the subtree of root node `root` out of `from` and into this scene
+  // as a root, keeping the live Node/Component objects (and their runtime
+  // state). Every node and component gets a fresh ID from this scene's
+  // counter; EntityId properties that pointed inside the subtree follow, any
+  // other node reference is cleared. Returns the node, or nullptr (nothing
+  // moved) if `root` is not a root of `from`, is pending destroy, or `from`
+  // is this scene. Used by SceneManager to keep persistent nodes.
+  Node* adopt_root(Scene& from, Node* root, const ComponentRegistry& registry);
+
   // Marks `id`'s node and its whole subtree for destruction. Safe to call
   // while iterating the scene (e.g. from a component's on_update): nodes
   // are only unlinked and their components' on_destroy() called during the

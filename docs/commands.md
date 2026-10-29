@@ -49,6 +49,15 @@ Component: an integer component id, or a type name attached exactly once.
 | `atlas.pack` | `folder`, `atlas`, `image?`, `padding?` (default 1), `max_size?` (default 2048) | `{atlas, image, width, height, padding, regions:[{name,x,y,w,h,uv}]}`; writes the PNG and `arcane.atlas` file at once (ignores `persist`/`dry_run`) |
 | `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
 | `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |
+| `transition.get` | none | `{fade_out_seconds, fade_in_seconds, color}` from `project.json` |
+| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `transition.set` with the previous values |
+| `save.config_get` | none | `{game_id, data_version, directory}` |
+| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; writes `project.json` at once; inverse restores the previous values |
+| `save.list` | `dir?` | `{directory, slots:[{slot, data_version, valid}]}` |
+| `save.get` | `slot`, `key?`, `dir?` | `{data_version, values}` or `{key, value, data_version}` |
+| `save.set` | `slot`, `key`, `value`, `create?`, `dir?` | `{slot, key, value, previous}`; atomic write; `create` makes a missing slot at the project's `data_version` |
+| `save.remove` | `slot`, `key`, `dir?` | `{slot, removed}` |
+| `save.migrate` | `slot`, `to?` (default `save.data_version`), `rename?`, `remove?`, `defaults?`, `dir?` | `{slot, from_version, data_version, values}`; never downgrades; a failure writes nothing |
 | `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
 | `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
 | `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
@@ -68,6 +77,10 @@ Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in
 `position` on `prefab.instantiate` are shortcuts for root overrides. The root's `name`/`position`
 differing from the prefab are ordinary overrides. A stale redo of `prefab.instantiate` creates new
 IDs, so a history entry recorded before an undo/redo cycle may not find the old instance.
+
+Transitions and saves (`docs/formats/project.md`, `docs/formats/save.md`): without `dir` the save commands use
+`save_directory(save.game_id)` and fail with `VALUE_INVALID` if no `game_id` is set. They touch only `project.json`
+and save files, never the open scene. Register with `register_flow_commands`.
 
 `audio.backend` opens no audio device unless `probe_device` is true; without it
 the answer is always `null`. With it, a device is opened briefly and, if that

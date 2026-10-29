@@ -56,6 +56,8 @@ FE20 check (atlas packing): `ctest --test-dir .build-and-test/build-gcc -R test_
 
 FE21 check (tween/timers): `ctest --test-dir .build-and-test/build-gcc -R test_tween --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_tween --output-on-failure`); expect it to pass. It checks easing values, delay/loop/yoyo timing, completion on the 60th fixed step, cancellation when a node is destroyed, timers, and save/load/play of an authored `Tween` component. In the editor you can add a `Tween` component in the Inspector (target `position.x`, `to`, `duration`, `easing`) and click Play to see the node move; there is no `arcane` CLI, and `prop.set` on `Tween` properties is the only command path.
 
+FE22 check (scene transitions + saves): `ctest --test-dir .build-and-test/build-gcc -R test_scene_flow --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_scene_flow --output-on-failure`); expect it to pass. It covers the `transition`/`save` sections of `project.json`, switching with a persistent node and the HUD fade, atomic save writes, save version migration and the `transition.*` / `save.*` commands. Inspect a save by hand: it is the text file `<slot>.save.json` (format in `docs/formats/save.md`; folder under `%APPDATA%\Arcane\<game_id>` on Windows).
+
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
 **2. What you can visibly see**
@@ -76,6 +78,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - FE16 adds `docs/acceptance-audit.md` (baseline section 17 and AI-agent-friendly criteria mapped to tests or GAP) and `test_foundation_acceptance` (Sprite + Camera + module Spinner saved, reopened, played, stopped).
 - FE18 adds prefab files (`docs/formats/prefab.md`, `schemas/arcane.prefab.schema.json`), a `prefab` link on scene nodes, `prefab.*` registry commands (`docs/commands.md`) and the runtime calls `load_prefab_file` / `instantiate_prefab` / `spawn_prefab`. Visible only as files and test output.
 - FE20 adds `docs/formats/atlas.md`, `schemas/arcane.atlas.schema.json`, `arcane/atlas.hpp` (packer, load/save, UV lookup) and `atlas.pack/regions/make_clip` registry commands. Visible as files and test output only.
+- FE22 adds `arcane/scene_flow.hpp` (`SceneManager`: switch scenes, fade through the HUD, persistent nodes), `arcane/save_game.hpp` (key/value saves, atomic write, migration hook), optional `transition` / `save` sections in `project.json`, `docs/formats/save.md`, `schemas/arcane.save.schema.json` and `transition.*` / `save.*` registry commands. Visible as files and test output only.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -83,6 +86,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE22 is PARTIAL: the library API, formats, commands and tests are done, but the player/editor main loops do not own a `SceneManager` yet (they hold the single project scene, and physics/tween systems are bound to it), so a game calls the API from its own code; there is no `arcane` CLI (AF4) so the commands are reachable from C++/tests only, and no editor UI for transition/save settings. Persistent nodes are marked at runtime (not authored in scenes); physics bodies of a carried node are not rebuilt by the manager. The fade overlay was not visually inspected. `save_directory` Windows path (`%APPDATA%`) is UNTESTED on native Windows/MSVC.
 - FE20 is PARTIAL: packing, format, commands and tests are done; there is no `arcane` CLI (AF4) so `atlas.*` is reachable from C++/tests only, no editor UI, and `Sprite` cannot reference a region by name (clips can, via `atlas.make_clip`). Export was not run end to end with an atlas (it copies `assets/` whole). **UNTESTED on native Windows/MSVC.**
 - FE18 is PARTIAL: data format, registry commands, runtime spawn and tests are done; the editor GUI has no prefab actions (editor edits still bypass commands, AF5) and there is no `arcane` CLI (AF4). Prefab edits do not propagate to existing instances; undoing a `prefab.remove` or redoing an `instantiate` creates new IDs. **UNTESTED on native Windows/MSVC.**
 - AF3 is PASS for its scope (registry, context, property commands) but nothing calls it yet: the editor does not route through it (AF5) and the `arcane` CLI (AF4) does not exist. Only property commands exist. Persistence writes the scene only and is optimistic about concurrent writers. **UNTESTED on native Windows/MSVC** (`tooling/` uses `std::expected`, `std::to_chars(float)`, `std::filesystem`; `ProjectContext` has an out-of-line destructor).
@@ -213,3 +217,10 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - `engine/include/arcane/tween.hpp`: 12 easing curves (`ease`, stable text names), pure `evaluate_tween` (delay, loops, yoyo), `TweenSystem` (free-standing tweens with apply/on-complete callbacks, node-property tweens, cancel by id or node), `Timers` (`after`/`every`, optionally node-bound) and the registered `Tween` component (docs/formats/scene.md).
 - Driven by the fixed update (caller passes the fixed dt); tweens/timers bound to a node are dropped silently when the node is destroyed or pending destruction. Decision logged in `docs/decisions.md`.
 - Gaps: HUD elements are not nodes, so HUD tweens use the free-standing `start()` with a lambda (no authored HUD tween); no `tween.*` CLI/GUI commands (AF4/AF5 absent); `Tween` target/easing are strings (typos make it inert). **UNTESTED on native Windows/MSVC.**
+
+## FE22 — scene transitions and save API
+
+- `SceneManager` (`engine/include/arcane/scene_flow.hpp`): `switch_now`, timed `request_switch` + `update(dt)` (fade out, switch, fade in; overlay is the HUD bar `scene_fade`), runtime-marked persistent root nodes moved with `Scene::adopt_root` (IDs renumbered, EntityId references inside the subtree follow, old scene torn down with `on_destroy`). A failed load keeps the current scene and sets `last_error()`.
+- Save API (`save_game.hpp`, `docs/formats/save.md`): flat typed key/value `arcane.save` v2, `data_version` + `SaveMigration` hook run step by step, atomic temp-file + rename write (`write_text_file_atomic`), per-user folder via `ARCANE_SAVE_DIR` / `%APPDATA%` / XDG.
+- Project config: optional `transition` and `save` sections (`docs/formats/project.md`, schema updated); omitted when default, so existing projects and goldens are byte-identical.
+- Commands (`docs/commands.md`): `transition.get/set`, `save.config_get/config_set`, `save.list/get/set/remove/migrate`. Test: `tests/test_scene_flow.cpp`.
