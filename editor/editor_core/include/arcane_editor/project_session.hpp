@@ -58,6 +58,9 @@ class ProjectSession {
   std::filesystem::path project_dir_;
   Scene scene_;
   bool dirty_ = false;
+  // Compatible loading may discard fields that this engine does not know.
+  // Keep the strict-load diagnostic so Save cannot silently erase them.
+  std::string unsafe_save_reason_;
 };
 
 }  // namespace arcane::editor

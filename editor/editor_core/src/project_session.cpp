@@ -24,12 +24,19 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   if (!scene_text) {
     return std::unexpected(scene_text.error());
   }
-  auto scene = policy == SceneLoadPolicy::Strict ? Scene::load_from_json_strict(*scene_text, registry)
-                                                 : Scene::load_from_json(*scene_text, registry);
+  auto scene = Scene::load_from_json_strict(*scene_text, registry);
+  if (!scene && policy == SceneLoadPolicy::Compatible) {
+    session.unsafe_save_reason_ = session.main_scene_path().string() + ": " + scene.error();
+    scene = Scene::load_from_json(*scene_text, registry);
+  }
   if (!scene) {
     return std::unexpected(scene.error());
   }
   session.scene_ = std::move(*scene);
+  auto strict_project = load_project_from_json_strict(*project_text);
+  if (!strict_project && session.unsafe_save_reason_.empty()) {
+    session.unsafe_save_reason_ = "project.json: " + strict_project.error();
+  }
   session.dirty_ = false;
   return session;
 }
@@ -55,6 +62,9 @@ std::expected<ProjectSession, std::string> ProjectSession::create(const std::fil
 }
 
 std::expected<void, std::string> ProjectSession::save(const ComponentRegistry& registry) {
+  if (!unsafe_save_reason_.empty()) {
+    return std::unexpected("Cannot safely save a compatible-loaded project: " + unsafe_save_reason_);
+  }
   std::error_code ec;
   std::filesystem::create_directories(main_scene_path().parent_path(), ec);
 

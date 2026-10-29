@@ -47,6 +47,7 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
 
 **2. What you can visibly see**
+- AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
 - AF7 adds no visible feature: clip, HUD and input commands and panel routing remain blocked by incomplete command and undo foundations.
 - AF6 prerequisite work adds a strict project-opening API for future tooling; it has no new editor screen or CLI command. `test_editor_project` checks that strict loading refuses an unknown legacy module property without changing the file.
 - FE15 adds a top-down arena with solid walls, chasing enemy, health HUD and hit particles, plus editable ArenaRules properties in scene JSON and the Inspector.
@@ -64,6 +65,7 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard does not detect later external changes or make project and scene writes transactional.
 - AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
@@ -73,7 +75,7 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
 - `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
-- Saving a legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Unknown component properties in legacy files are still dropped silently on an editor save (migration refuses them).
+- Saving a compatible legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Save now refuses unknown fields detected in the project and scene at open; it does not detect external changes after opening.
 
 ---
 
@@ -139,3 +141,7 @@ AF3 and AF4 remain incomplete. The editor mutation inventory records outstanding
 ## AF6 prerequisite progress
 
 ProjectSession and module-aware ProjectRuntime can opt into strict legacy scene loading. Their existing default remains compatible. The shared command registry, CLI, generic undo, and AF6 tilemap/tileset commands and editor routing are still missing; AF6 is PARTIAL. `scripts/build-and-test.sh` passed GCC Debug CTest, Clang ASan/UBSan CTest, and MinGW cross-build. UNTESTED on native Windows/MSVC.
+
+## AF8 prerequisite progress (partial)
+
+Compatible-loaded ProjectSession saves refuse unknown legacy project or scene data instead of silently discarding it. Headless tests exercise a real module property and a project field, preserving the original file and dirty state. The editor action inventory now classifies more widgets, but registry/CLI coverage and enforcement remain absent. `scripts/build-and-test.sh`: GCC Debug and Clang ASan/UBSan CTest passed; MinGW cross-build passed. **UNTESTED on native Windows/MSVC.**

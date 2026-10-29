@@ -19,6 +19,19 @@ or command-routing lint yet. Locations refer to `editor/app/editor_main.cpp`.
 - Remaining data actions (AF8): audit asset assignment and registered audio,
   physics, particle and project properties for parity, including module types.
 
+Widget review for AF8: the Inspector uses registered descriptors for all
+component types, including AudioSource (`clip`, `volume`, `loop`,
+`play_on_start`), RigidBody2D, Collider2D, ParticleEmitter and module types;
+all of their edits currently call setters directly. Project HUD and input
+widgets mutate `ProjectFile` directly. There are no project name, main-scene
+or module setting widgets in this editor. No separate physics material or
+layer authoring exists. File > Save persists the current project and scene;
+clip and tileset Save persist their respective drafts directly. Hierarchy
+selection, asset browsing, paint mode/layer/tile selection, clip and tileset
+draft values before Save, animation and particle preview, and Play/Stop are
+transient. Paint undo/redo changes authored tiles; it is not view-only.
+This review identifies missing coverage; no CLI or enforcement exists yet.
+
 Selection, viewport and panel choices, paint brush selection, preview toggles,
 play mode and unsaved panel drafts are transient editor state. A draft becomes
 an authored change when saved; it must then use the shared command path.
