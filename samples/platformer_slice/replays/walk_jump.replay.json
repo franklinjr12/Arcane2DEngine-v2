@@ -1,0 +1,39 @@
+{
+  "events": [
+    {
+      "code": 68,
+      "down": true,
+      "frame": 5,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": true,
+      "frame": 30,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": false,
+      "frame": 34,
+      "kind": "key"
+    },
+    {
+      "code": 68,
+      "down": false,
+      "frame": 80,
+      "kind": "key"
+    },
+    {
+      "code": 65,
+      "down": true,
+      "frame": 100,
+      "kind": "key"
+    }
+  ],
+  "fixed_hz": 60,
+  "format": "arcane.replay",
+  "frames": 150,
+  "seed": 0,
+  "version": 1
+}

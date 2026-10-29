@@ -53,6 +53,8 @@ Component: an integer component id, or a type name attached exactly once.
 | `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `transition.set` with the previous values |
 | `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
 | `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `debug.set` with the previous values |
+| `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
+| `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
 | `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |
 | `save.config_get` | none | `{game_id, data_version, directory}` |
 | `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; writes `project.json` at once; inverse restores the previous values |
@@ -106,7 +108,7 @@ null. Exit status for the CLI:
 | --- | --- |
 | `UNKNOWN_COMMAND`, `ARGS_INVALID`, `USAGE` | 2 |
 | `PROJECT_NOT_FOUND`, `IO_ERROR` | 3 |
-| `SCHEMA_INVALID`, `VALUE_INVALID`, `PROPERTY_UNKNOWN`, `NODE_NOT_FOUND`, `COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN` | 4 |
+| `SCHEMA_INVALID`, `VALUE_INVALID`, `PROPERTY_UNKNOWN`, `NODE_NOT_FOUND`, `COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED` | 4 |
 | `SELECTOR_AMBIGUOUS`, `CONFLICT` | 5 |
 | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` | 6 |
 | `UNSUPPORTED_VERSION` | 7 |

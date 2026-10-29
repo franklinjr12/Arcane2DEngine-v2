@@ -119,6 +119,10 @@ void register_debug_commands(CommandRegistry& registry);
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 
+// Registers replay.save (write an input recording) and replay.run (replay it headless, hash every frame,
+// compare with an expected trace). The open scene is never advanced: replays run on a copy.
+void register_replay_commands(CommandRegistry& registry);
+
 // The headless benchmark behind bench.run and `arcane_bench`: validates `args` (sprites, emitters,
 // particles_per_emitter, bodies, frames; all optional integers) and returns the stable
 // `arcane.bench` v1 document {format, version, config, results}.

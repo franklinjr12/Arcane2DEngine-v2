@@ -13,8 +13,11 @@
 #include "arcane/module.hpp"
 #include "arcane/physics.hpp"
 #include "arcane/renderer.hpp"
+#include "arcane/replay.hpp"
+#include "arcane/screenshot.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
+#include "arcane/canonical_json.hpp"
 #include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_editor/scene_render.hpp"
@@ -40,6 +43,13 @@ struct Args {
   // value against that default to decide "was --module passed" breaks
   // when they happen to be equal, see editor_main.cpp's module_override.
   std::string project_module_override;
+  // Deterministic replay (--project mode, docs/formats/replay.md): --replay plays a recording one fixed step per
+  // frame instead of reading the keyboard, then exits; --screenshot saves the last rendered frame as PNG;
+  // --trace-out writes the per-frame state hashes; --expect-trace compares them (exit 3 on divergence).
+  std::string replay_file;
+  std::string screenshot_file;
+  std::string trace_out_file;
+  std::string expect_trace_file;
 };
 
 Args parse_args(int argc, char** argv) {
@@ -55,6 +65,14 @@ Args parse_args(int argc, char** argv) {
       args.project_module_override = args.module_path;
     } else if (arg == "--project" && i + 1 < argc) {
       args.project_dir = argv[++i];
+    } else if (arg == "--replay" && i + 1 < argc) {
+      args.replay_file = argv[++i];
+    } else if (arg == "--screenshot" && i + 1 < argc) {
+      args.screenshot_file = argv[++i];
+    } else if (arg == "--trace-out" && i + 1 < argc) {
+      args.trace_out_file = argv[++i];
+    } else if (arg == "--expect-trace" && i + 1 < argc) {
+      args.expect_trace_file = argv[++i];
     }
   }
   return args;
@@ -137,6 +155,19 @@ int run_project(const Args& args) {
   arcane::editor::start_play_on_start_sounds(runtime->session().scene(), *audio,
                                               arcane::editor::list_audio_assets(runtime->session().assets_dir()));
 
+  std::optional<arcane::ReplayInput> replay;
+  if (!args.replay_file.empty()) {
+    auto text = arcane::read_text_file(args.replay_file);
+    auto recording = text ? arcane::load_recording_json(*text) : std::unexpected(text.error());
+    if (!recording) {
+      ARCANE_LOG_ERROR(kLogCategory, "cannot use replay '{}': {}", args.replay_file, recording.error());
+      return 1;
+    }
+    replay.emplace(std::move(*recording));
+    arcane::apply_replay_seed(runtime->session().scene(), runtime->registry(), replay->recording().seed);
+  }
+  std::vector<std::uint64_t> trace;
+
   arcane::PhysicsWorld physics;
   physics.rebuild(runtime->session().scene());
 
@@ -155,8 +186,10 @@ int run_project(const Args& args) {
   arcane::FrameTimer frame_timer;
   arcane::Hud overlay_hud;
 
+  int exit_code = 0;
   while (!window->should_close()) {
     if (args.frames.has_value() && frame_count >= *args.frames) break;
+    if (replay && replay->finished()) break;
 
     const auto now = std::chrono::steady_clock::now();
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
@@ -169,16 +202,24 @@ int run_project(const Args& args) {
     // HUD sees pointer/confirm input first; what it consumes is hidden from gameplay actions.
     int fb_width = 0, fb_height = 0;
     window->framebuffer_size(fb_width, fb_height);
-    hud_input.update(hud, input_backend, fb_width, fb_height);
-    input_map.update(hud_input.gameplay_backend());
-
-    const int steps = timestep.advance(delta_seconds);
+    int steps = 0;
+    float step_dt = static_cast<float>(timestep.fixed_delta_seconds());
+    if (replay) {
+      input_map.update(replay->advance());  // recorded input only; the keyboard is ignored
+      steps = 1;
+      step_dt = static_cast<float>(1.0 / replay->recording().fixed_hz);
+    } else {
+      hud_input.update(hud, input_backend, fb_width, fb_height);
+      input_map.update(hud_input.gameplay_backend());
+      steps = timestep.advance(delta_seconds);
+    }
     arcane::Scene& scene = runtime->session().scene();
     for (int i = 0; i < steps; ++i) {
-      if (runtime->module_api()) runtime->module_api()->on_update(static_cast<float>(timestep.fixed_delta_seconds()));
-      scene.update(static_cast<float>(timestep.fixed_delta_seconds()));
-      physics.step(scene, static_cast<float>(timestep.fixed_delta_seconds()));
+      if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
+      scene.update(step_dt);
+      physics.step(scene, step_dt);
     }
+    if (replay) trace.push_back(arcane::hash_scene_state(scene, runtime->registry()));
 
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
                                 &tilesets);
@@ -193,15 +234,46 @@ int run_project(const Args& args) {
       renderer->flush();
     }
 
+    if (replay && replay->finished() && !args.screenshot_file.empty()) {
+      auto image = arcane::capture_framebuffer(fb_width, fb_height);
+      auto saved = image ? arcane::write_png(args.screenshot_file, *image) : std::unexpected(image.error());
+      if (!saved) {
+        ARCANE_LOG_ERROR(kLogCategory, "screenshot failed: {}", saved.error());
+        exit_code = 1;
+      }
+    }
+
     window->swap_buffers();
     window->poll_events();
     ++frame_count;
   }
 
+  if (replay) {
+    if (!args.trace_out_file.empty()) {
+      auto text = arcane::save_trace_json(trace);
+      auto written = text ? arcane::write_text_file_atomic(args.trace_out_file, *text) : std::unexpected(text.error());
+      if (!written) {
+        ARCANE_LOG_ERROR(kLogCategory, "cannot write trace: {}", written.error());
+        exit_code = 1;
+      }
+    }
+    if (!args.expect_trace_file.empty()) {
+      auto text = arcane::read_text_file(args.expect_trace_file);
+      auto expected = text ? arcane::load_trace_json(*text) : std::unexpected(text.error());
+      if (!expected) {
+        ARCANE_LOG_ERROR(kLogCategory, "cannot use trace '{}': {}", args.expect_trace_file, expected.error());
+        exit_code = 1;
+      } else if (auto frame = arcane::first_divergent_frame(*expected, trace)) {
+        ARCANE_LOG_ERROR(kLogCategory, "replay diverged: first divergent frame is {}", *frame);
+        exit_code = 3;
+      }
+    }
+  }
+
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
-  return 0;
+  return exit_code;
 }
 
 // Directory holding the running executable, so an exported game finds its

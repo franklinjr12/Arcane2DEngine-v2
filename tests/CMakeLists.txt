@@ -247,3 +247,24 @@ add_test(NAME bench_cli_bad_args COMMAND arcane_bench --frames 0)
 set_tests_properties(bench_cli_bad_args PROPERTIES WILL_FAIL TRUE)
 add_test(NAME bench_cli_bad_flag COMMAND arcane_bench --nope 1)
 set_tests_properties(bench_cli_bad_flag PROPERTIES WILL_FAIL TRUE)
+
+# --- AF12 deterministic replay: recording format, state hash, divergence, replay.* commands --------
+add_executable(test_replay test_replay.cpp)
+target_link_libraries(test_replay PRIVATE arcane_tooling)
+add_test(NAME test_replay COMMAND test_replay)
+
+if(ARCANE_BUILD_SAMPLES)
+  add_test(NAME test_replay_player COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_player.sh
+    $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${CMAKE_SOURCE_DIR}/samples/platformer_slice/replays/walk_jump.replay.json)
+  set_tests_properties(test_replay_player PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+endif()
+
+# AF12 rendering evidence: readback + PNG + golden comparison (tolerance documented in the test).
+add_executable(test_render_golden test_render_golden.cpp)
+target_link_libraries(test_render_golden PRIVATE arcane_runtime)
+target_compile_definitions(test_render_golden PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+add_test(NAME test_render_golden COMMAND test_render_golden)
+set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
