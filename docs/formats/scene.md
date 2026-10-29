@@ -56,3 +56,11 @@ the key order is: a wrong row count, row length, negative or non-integer id is a
 text form (`"1,0,2,0,3,0;0,0,0,0,0,4"`, layers split by `;`, ids by `,`, missing trailing ids read as
 0) is still read, strictly during migration: a non-numeric id or more ids than `width*height` fails
 the migration instead of dropping cells. Writing always pads short layers to full rows.
+
+## Camera2D
+
+`Camera2D` is a registered component, so its properties use the standard v2 property encodings and appear in the Inspector. `primary` selects the first primary Camera2D in scene preorder for Play and player; absent one, the legacy `Camera` remains in use. Edit viewport behavior is unchanged. `target` is a scene node ID (0 disables following); `deadzone` is the world-space half-size around the camera and `smoothing` is an exponential rate per second (0 follows immediately). A missing target uses the camera node's world position. `zoom` defaults to 1; nonpositive values render as 1.
+
+`bounds_enabled`, `bounds_min`, and `bounds_max` define an explicit world rectangle, including tilemap extents if entered by the author. The viewport is clamped inside it; if the viewport is larger than an axis of the rectangle, that axis is centered. `pixel_snap` rounds the final center to screen-pixel increments at the current zoom. `shake_amplitude`, `shake_duration`, and integer `shake_seed` configure a deterministic, linearly decaying shake starting at Play; C++ can restart it with `start_shake()`. Camera tracking and shake advance on fixed scene ticks; transient state is not serialized. Clamp precedes pixel snapping, so snapping can move the view by at most half a screen pixel beyond a bound.
+
+The shared command registry and `arcane` CLI are not yet available (AF3/AF4 partial); there are no Camera2D CLI commands or CLI validation/round-trip yet. Until those jobs land, edit these registered values in the Inspector or canonical scene JSON.

@@ -1,15 +1,15 @@
 ## Franklin: how to test / validate
 
-**1. Step-by-step manual checks** (nothing in this PR needs a GUI; the editor/player behave as before)
+**1. Step-by-step manual checks**
 
 Linux:
 ```
 scripts/build-and-test.sh          # gcc Debug + clang ASan/UBSan + mingw cross-build; expect gcc PASS and clang PASS
-ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json|formats_v2"   # expect 4/4 passed
+ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json|formats_v2|camera2d"   # expect all passed
 .build-and-test/build-gcc/bin/arcane_editor --project samples/sample_project
 .build-and-test/build-gcc/bin/arcane_player --project samples/sample_project
 ```
-The editor opens the sample project; click Play to run it and Stop to return to editing. The player opens the sample scene.
+The editor opens the sample project; select a node, add Camera2D in the Inspector, and set its target node ID, zoom, bounds, or shake values. Save, click Play, and observe the camera follow and shake; click Stop to return to editing. The player opens the saved scene. Existing samples continue to load.
 Windows / MSVC (PowerShell, from the repo root):
 ```
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
@@ -33,11 +33,12 @@ To launch the existing applications on Windows after the build:
 .\build\bin\arcane_editor.exe --project samples/sample_project
 .\build\bin\arcane_player.exe --project samples/sample_project
 ```
-Open the sample project in the editor and use File > Save; the player should open the sample scene. The `arcane` CLI is not available in this branch yet, so a CLI check cannot be run.
+Open the sample project in the editor, add Camera2D to a node via the Inspector, set a target ID and shake settings, and use File > Save. Click Play and observe follow and shake; Stop returns to editing. Open the saved project in the player and observe the same camera. The `arcane` CLI is not available in this branch yet, so a CLI check cannot be run.
 
 FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unicode filename; expect it to pass.
 
 **2. What you can visibly see**
+- Camera2D appears in the Inspector; Play and player use its follow, bounds, zoom, shake and pixel snapping. Its settings appear in saved scene JSON.
 - Texture files with Unicode names can now be opened by the renderer on Windows; the regression test checks a Unicode filename.
 - New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`, plus (AF2) `tileset.md`, `clip.md`, `hud.md`, `input.md`; JSON Schemas in `schemas/`.
 - AF2: Tilemap layers are now rows of ids in the scene file (not a `;`/`,` string); tileset/clip files and the project's HUD/input are `arcane.*` version 2; HUD elements all have ids and images keep an asset id.
@@ -46,11 +47,11 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
-- Minimum: Windows/MSVC configure + build + `ctest` green (esp. `test_canonical_json`, `test_migration`).
+- Minimum: Windows/MSVC configure + build + `ctest` green (especially `test_camera2d`, `test_canonical_json`, `test_migration`), and review the FE13 CLI gap below.
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
-- AF3 registry and AF4 CLI remain incomplete; no CLI commands are available. The incomplete AF3 work is preserved on the local WIP branch.
+- FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
 - `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
@@ -91,3 +92,10 @@ AF3 is PARTIAL: its preserved WIP is not integrated and lacks property commands 
 - Audited public headers, DLL exports, pimpl special members, non-ASCII literals, narrow paths and compiler-sensitive conversions. The four engine pimpl owners define their constructors, destructors and moves out of line; editor core is statically linked. Public non-inline engine APIs examined are exported. Shared GLFW/glad setup is unchanged.
 - Texture file loading opens native Windows paths with `_wfopen`, then passes the opened file to stb; `test_renderer_gl` loads a texture whose filename contains escaped Unicode characters.
 - `scripts/build-and-test.sh`: GCC Debug 39/39 PASS, Clang ASan/UBSan 39/39 PASS, MinGW cross-build PASS. No Wine installed; Windows executables were not run. **UNTESTED on native Windows/MSVC**. Narrow path handling remains in audio, some app paths and diagnostics, so this does not establish general Unicode path support.
+
+
+## FE13 Camera2D
+
+Registered canonical scene properties, fixed-tick following and deterministic shake, bounds and pixel snapping; see `docs/formats/scene.md`. AF3/AF4 are partial and absent: shared GUI commands, CLI creation/property/validation and CLI shake round-trip remain unimplemented. UNTESTED on native Windows/MSVC.
+
+FE13 verification: GCC Debug 40/40, Clang ASan/UBSan 40/40, MinGW cross-build passed; native Windows/MSVC and visual camera behavior are untested.

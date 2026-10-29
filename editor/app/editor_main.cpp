@@ -932,7 +932,7 @@ int main(int argc, char** argv) {
       viewport.bind();
       arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
                                   editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud,
-                                  &tilesets);
+                                  &tilesets, !editable);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),

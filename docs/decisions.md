@@ -171,3 +171,5 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | # | Topic | Decision |
 |---|---|---|
 | 69 | Texture paths | Open texture files with native wide paths on Windows and pass the open stream to stb; preserve existing decoder behavior and test a Unicode filename. Other narrow-path consumers remain a documented limitation pending a broader Unicode path policy. |
+
+| 70 | Camera2D | Camera2D uses explicit world bounds (authors can enter tilemap extents), a world-space deadzone half-size, and exponential fixed-tick following; this keeps camera behavior independent of rendering and avoids coupling to a particular tilemap. Shake starts on Play and can be restarted from C++, with a deterministic integer seed and linear decay. Existing Camera and edit viewport behavior remain compatible. |

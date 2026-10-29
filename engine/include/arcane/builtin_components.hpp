@@ -8,6 +8,7 @@
 namespace arcane {
 
 class ComponentRegistry;
+class Scene;
 
 // Built-in, engine-provided component types (as opposed to a game module's
 // own types): every project needs something that says "draw a texture here"
@@ -31,6 +32,37 @@ class ARCANE_API Camera : public Component {
  public:
   float zoom = 1.0f;
   bool primary = true;
+};
+
+// Runtime state is transient; authored fields are registered and serialized.
+class ARCANE_API Camera2D : public Component {
+ public:
+  bool primary = true;
+  float zoom = 1.0f;
+  EntityId target = 0;
+  float smoothing = 0.0f;  // exponential rate per second; zero follows immediately
+  Vec2 deadzone{};         // half-size in world units
+  bool bounds_enabled = false;
+  Vec2 bounds_min{};
+  Vec2 bounds_max{};
+  bool pixel_snap = false;
+  float shake_amplitude = 0.0f;
+  float shake_duration = 0.0f;
+  int shake_seed = 1;
+
+  // Restart shake deterministically, including after authored settings change.
+  void start_shake();
+  void advance(const Scene& scene, float dt);
+  Vec2 view_center(int width, int height) const;
+  void on_start() override;
+
+ private:
+  Vec2 center_{};
+  Vec2 shake_offset_{};
+  float shake_remaining_ = 0.0f;
+  float shake_total_ = 0.0f;
+  std::uint32_t random_state_ = 1;
+  bool initialized_ = false;
 };
 
 // Registers Sprite and Camera into `registry` under the type names "Sprite"

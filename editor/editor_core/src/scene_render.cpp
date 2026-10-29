@@ -135,8 +135,17 @@ void restart_particles(Scene& scene) {
 }
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
-                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets) {
-  const CameraView cam = find_primary_camera(scene);
+                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera) {
+  CameraView cam = find_primary_camera(scene);
+  bool found = false;
+  if (runtime_camera) visit_scene_preorder(scene, [&](Node* node) {
+    auto* camera = static_cast<Camera2D*>(node->find_component("Camera2D"));
+    if (!found && camera && camera->primary) {
+      const Vec2 center = camera->view_center(width, height);
+      cam = {center.x, center.y, camera->zoom > 0.0f ? camera->zoom : 1.0f};
+      found = true;
+    }
+  });
   const float cam_x = cam.x, cam_y = cam.y, cam_zoom = cam.zoom;
 
   renderer.set_camera(cam_x, cam_y, cam_zoom);
