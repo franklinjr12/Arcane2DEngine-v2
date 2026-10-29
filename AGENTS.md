@@ -23,12 +23,17 @@ other tests do not require a window or audio device. Hidden player/editor runs
 still create a GL context and are not display-free simulation. On Windows:
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
 
-Native Windows/MSVC is UNTESTED for this nightly. Preserve shared GLFW and glad,
+Use `"Visual Studio 17 2022"` instead with VS 2022. Run from a Developer
+PowerShell, or use the CMake bundled with Visual Studio if `cmake` is not on
+PATH. JSON is checked out with LF endings (`.gitattributes`); canonical
+comparisons fail on CRLF copies. Native VS 2026 Debug CTest was verified on
+2026-10-29; other configurations and visual/audio behavior remain untested.
+Preserve shared GLFW and glad,
 MSVC-compatible flags and out-of-line special members for pimpl/incomplete-type
 owners; see `WINDOWS_FIX.md`.
 

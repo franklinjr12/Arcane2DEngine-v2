@@ -17,10 +17,13 @@ For FE15, open the arena in the editor, select Arena and inspect the registered 
 
 Windows / MSVC (PowerShell, from the repo root):
 ```
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
+Use `-G "Visual Studio 17 2022"` with VS 2022. JSON is forced to LF by `.gitattributes`; with
+`core.autocrlf=true` a CRLF checkout previously failed `test_migration`. Verified 2026-10-29 on
+VS 2026 (18.11) Debug: 38/38 CTest pass.
 Expected: all tests pass, in particular `test_canonical_json` and `test_migration` (the latter migrates
 both sample projects in a temp copy and compares against `tests/golden/*`).
 

@@ -3,6 +3,9 @@
 ###############################################################################
 * text=auto
 
+# Canonical JSON v2 is byte-exact with LF endings; never convert on checkout.
+*.json text eol=lf
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

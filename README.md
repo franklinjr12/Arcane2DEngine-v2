@@ -47,7 +47,7 @@ docs/                   decisions, PR body
   target from Linux
 
 ### Windows
-- Visual Studio 2022 17.10+ (MSVC v143, C++23) **or** MinGW-w64 GCC 14
+- Visual Studio 2026 or 2022 17.10+ (MSVC, C++23) **or** MinGW-w64 GCC 14
 - CMake 3.28+
 
 ## Dependencies
@@ -152,10 +152,15 @@ with mingw tonight.
 Developer PowerShell / Visual Studio:
 
 ```powershell
-cmake -S . -B build -G "Visual Studio 17 2022"
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure
 ```
+
+With VS 2022 use `-G "Visual Studio 17 2022"`. If `cmake` is not on PATH, use
+a Developer PowerShell or the CMake bundled with Visual Studio. JSON files
+must stay LF (enforced by `.gitattributes`); CRLF copies fail the canonical
+JSON tests.
 
 MinGW/Ninja:
 
