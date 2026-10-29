@@ -79,3 +79,12 @@ editor Inspector.
 ## One-way platforms
 
 `Collider2D.one_way` (boolean, default false; absent in older scenes) marks a static box collider as one-way: bodies land on it from above and pass through from below. `PlatformerController2D.down_action` (string, default `move_down`) and `drop_duration` (float seconds, default 0.5) let a grounded character hold down and press jump to drop through for that interval; the drop timer is runtime-only and never saved. All three are ordinary registered properties, so `prop.get` / `prop.set` read and write them and `tests/test_tooling_commands.cpp` round-trips them through a saved scene; landing, passing from below and dropping are covered headlessly by `tests/test_platformer.cpp`. Not done: a per-tile one-way flag (tilemap colliders are merged solid boxes) and slopes. The `arcane` CLI does not exist yet, so there is no CLI spelling beyond the registry commands.
+
+## `Tween` component properties
+
+`Tween` is an ordinary component (`"type": "Tween"`) animating one property of its own node in Play.
+Properties: `target` (string, default `"position.x"`), `from`, `to` (floats), `use_current_from` (bool; read
+`from` from the node when playback starts), `duration`, `delay` (seconds), `easing` (string, default
+`"linear"`), `loops` (int, 0 = forever), `yoyo` (bool), `autoplay` (bool, default true). Valid `target`
+and `easing` names are listed in `docs/commands.md`. Runtime progress is not saved. Files without a
+`Tween` component are unaffected.

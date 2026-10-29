@@ -57,6 +57,8 @@ FE18 check (prefabs): `ctest --test-dir .build-and-test/build-gcc -R test_prefab
 
 FE20 check (atlas packing): `ctest --test-dir .build-and-test/build-gcc -R test_atlas --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_atlas --output-on-failure`); expect it to pass. It packs generated PNGs through `atlas.pack`, checks no overlaps/padding/bounds, byte-identical repeat output, the metadata round trip, UV lookup and a clip built from regions. No GUI or `arcane` CLI exists for it, so nothing to click.
 
+FE21 check (tween/timers): `ctest --test-dir .build-and-test/build-gcc -R test_tween --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_tween --output-on-failure`); expect it to pass. It checks easing values, delay/loop/yoyo timing, completion on the 60th fixed step, cancellation when a node is destroyed, timers, and save/load/play of an authored `Tween` component. In the editor you can add a `Tween` component in the Inspector (target `position.x`, `to`, `duration`, `easing`) and click Play to see the node move; there is no `arcane` CLI, and `prop.set` on `Tween` properties is the only command path.
+
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
 **2. What you can visibly see**
@@ -208,3 +210,9 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - Format `arcane.atlas` v2 (pixel rects, derived UVs), deterministic shelf packer over `*.png` folders using stb_image/stb_image_write, PNG output byte-stable. Docs `docs/formats/atlas.md`, `commands.md`; schema `arcane.atlas`.
 - Commands: `atlas.pack`, `atlas.regions`, `atlas.make_clip` (`tooling/src/atlas_commands.cpp`, `register_atlas_commands`).
 - Tests: `test_atlas` (layout invariants over 40 sizes x 3 paddings, input-order independence, bounds/overlap, JSON strictness and round trip, folder packing, repeat-run bytes, clip UVs, argument refusal). Decision logged in `docs/decisions.md`.
+
+## FE21 — tween/easing and timers
+
+- `engine/include/arcane/tween.hpp`: 12 easing curves (`ease`, stable text names), pure `evaluate_tween` (delay, loops, yoyo), `TweenSystem` (free-standing tweens with apply/on-complete callbacks, node-property tweens, cancel by id or node), `Timers` (`after`/`every`, optionally node-bound) and the registered `Tween` component (docs/formats/scene.md).
+- Driven by the fixed update (caller passes the fixed dt); tweens/timers bound to a node are dropped silently when the node is destroyed or pending destruction. Decision logged in `docs/decisions.md`.
+- Gaps: HUD elements are not nodes, so HUD tweens use the free-standing `start()` with a lambda (no authored HUD tween); no `tween.*` CLI/GUI commands (AF4/AF5 absent); `Tween` target/easing are strings (typos make it inert). **UNTESTED on native Windows/MSVC.**

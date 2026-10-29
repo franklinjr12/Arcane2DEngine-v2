@@ -121,6 +121,7 @@ add_library(arcane_runtime SHARED
   engine/src/platformer.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
+  engine/src/tween.cpp
   engine/src/atlas.cpp
   engine/src/audio.cpp
   engine/src/hud.cpp
