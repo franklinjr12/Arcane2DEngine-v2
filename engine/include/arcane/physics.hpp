@@ -36,6 +36,18 @@ class ARCANE_API RigidBody2D : public Component {
   bool grounded = false;
   // Runtime-only: remaining time to ignore one-way platforms.
   float drop_through_time = 0.0f;
+  // Runtime-only: impulse queued by apply_impulse, consumed by the next PhysicsWorld::step.
+  Vec2 pending_impulse{};
+
+  // Overwrites the velocity (pixels/second); takes effect on the next step.
+  void set_velocity(Vec2 velocity) noexcept { linear_velocity = velocity; }
+  // Queues an instantaneous impulse in pixel-mass units (px * kg / s, kg = density * shape area in m^2). It is
+  // applied after the velocity push of the next step, so the velocity change is impulse / mass; impulses
+  // accumulate until then. Static bodies and bodies without a Collider2D (zero mass) are unaffected.
+  void apply_impulse(Vec2 impulse) noexcept {
+    pending_impulse.x += impulse.x;
+    pending_impulse.y += impulse.y;
+  }
 };
 
 // A collision shape attached to the same node as a RigidBody2D. A node with
