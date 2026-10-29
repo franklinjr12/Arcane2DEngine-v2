@@ -33,6 +33,7 @@ Schema: `schemas/arcane.scene.schema.json`. Rules shared with all files: `canoni
   subset (missing ones keep their default) and rejects unknown ones.
 - Property value encodings: `bool` → boolean; `int` → integer; `float` → number; `vec2` → `[x, y]`;
   `color` → `[r, g, b, a]`; `string` → string; `asset_id` / `entity_id` → unsigned 64-bit integer.
+- A node may carry a `prefab` link (`prefab.md`); scenes without any remain valid.
 - Optional on read (defaults): `parent_id` 0, `position` `[0, 0]`, `rotation_radians` 0, `scale`
   `[1, 1]`, `components` empty, `properties` empty, `next_id` derived.
 

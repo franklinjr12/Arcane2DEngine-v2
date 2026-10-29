@@ -50,6 +50,8 @@ AF9 prerequisite check: open a temporary copy of a sample in the editor, change 
 
 AF3 check: `ctest --test-dir .build-and-test/build-gcc -R test_tooling_commands --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_tooling_commands --output-on-failure`); expect it to pass. It sets and undoes typed properties on `sample_game`'s `Spinner` and on builtin `Camera2D`/`Sprite` in a temporary project; there is nothing to click or run by hand.
 
+FE18 check (prefabs): `ctest --test-dir .build-and-test/build-gcc -R test_prefab --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_prefab --output-on-failure`); expect it to pass. It saves a node subtree as `prefabs/rig.prefab.json` in a temporary project, instantiates it three ways through the registry commands, overrides/reverts properties, breaks and restores the link, reopens the project from disk, spawns 25 runtime instances and checks that malformed links are refused. There is no editor button or `arcane` CLI for prefabs (see risks), so nothing to click.
+
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
 **2. What you can visibly see**
@@ -68,6 +70,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Golden migrated files under `tests/golden/` (what a v2 project and scene look like).
 - Editor saves now write the canonical v2 format; old files still open.
 - FE16 adds `docs/acceptance-audit.md` (baseline section 17 and AI-agent-friendly criteria mapped to tests or GAP) and `test_foundation_acceptance` (Sprite + Camera + module Spinner saved, reopened, played, stopped).
+- FE18 adds prefab files (`docs/formats/prefab.md`, `schemas/arcane.prefab.schema.json`), a `prefab` link on scene nodes, `prefab.*` registry commands (`docs/commands.md`) and the runtime calls `load_prefab_file` / `instantiate_prefab` / `spawn_prefab`. Visible only as files and test output.
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -75,6 +78,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE18 is PARTIAL: data format, registry commands, runtime spawn and tests are done; the editor GUI has no prefab actions (editor edits still bypass commands, AF5) and there is no `arcane` CLI (AF4). Prefab edits do not propagate to existing instances; undoing a `prefab.remove` or redoing an `instantiate` creates new IDs. **UNTESTED on native Windows/MSVC.**
 - AF3 is PASS for its scope (registry, context, property commands) but nothing calls it yet: the editor does not route through it (AF5) and the `arcane` CLI (AF4) does not exist. Only property commands exist. Persistence writes the scene only and is optimistic about concurrent writers. **UNTESTED on native Windows/MSVC** (`tooling/` uses `std::expected`, `std::to_chars(float)`, `std::filesystem`; `ProjectContext` has an out-of-line destructor).
 - AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
 - AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
@@ -96,7 +100,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 
 ## Overnight wrap (2026-10-29 02:40 BRT)
 - Branch `engine-nightly-2026-10-28` HEAD `e464cfe`: gcc Debug build and CTest pass, 43/43 (headless and under `xvfb-run`). Clang ASan/UBSan and mingw were not re-run in this wrap; their last full results are in the job notes above.
-- Uncommitted FE18 prefab work (prefab link/override load and save, `engine/src/prefab.cpp`) did not compile (`arcane::Color` has no `operator==`). It was moved to WIP branch `engine-nightly-2026-10-28-wip-fe18` (not built, not tested), not committed to the job branch.
+- FE18 prefab WIP from that night was completed on `engine-nightly-2026-10-29` (see FE18 section).
 - The older `engine-nightly-2026-10-28-wip` branch (tip `613fadb`, preserved AF3 tooling) was left untouched.
 - Status: AF1, AF2, FE1-FE5, FE7-FE12B, FD1-FD3 and WINFIX PASS. AF3-AF11, FE13-FE15, FE17 and KI1 are PARTIAL or not complete. FE18 is PARTIAL (WIP branch only). FE20-FE23, AF12 and FE16 were not started.
 - Native Windows/MSVC remains UNTESTED (mingw cross-build only).
@@ -183,3 +187,11 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 ## FE16 — foundation acceptance audit
 
 `docs/acceptance-audit.md` lists each baseline section 17 bullet and AI-agent-friendly criterion with test evidence or GAP. Gap fixed: `test_foundation_acceptance`. Big gaps (CLI, command routing, display-free run, schema validation tests, Windows run) are listed as next jobs there.
+
+## FE18 — prefabs
+
+- Format: `arcane.prefab` v1 (one-root scene subtree, local IDs) and a `prefab` link on every instance node (`asset`, `instance_id`, `local_id`; explicit `overrides` list on the instance root). Old scenes load unchanged, no migration. Docs `docs/formats/prefab.md`, `scene.md`; schemas `arcane.prefab`, `arcane.scene` (additive).
+- Engine: `arcane/prefab.hpp` (`Prefab`, `instantiate_prefab`, `spawn_prefab`, override/revert/break). `Color` gained `operator==`. EntityId properties are remapped inside a copy and cleared when pointing outside.
+- Commands (`arcane_tooling`): `prefab.save/instantiate/remove/override/revert/break_link/relink/info`, with inverses; `property_to_json`/`property_from_json` shared with `prop.*`.
+- Tests: `test_prefab` (save/instantiate/override round trip through disk, ID uniqueness, reference remapping, break/relink, 25 runtime spawns, malformed link refusal, dry run).
+- Gaps: no GUI (AF5) or `arcane` CLI (AF4) spelling, no propagation of prefab edits, no nesting. **UNTESTED on native Windows/MSVC.**

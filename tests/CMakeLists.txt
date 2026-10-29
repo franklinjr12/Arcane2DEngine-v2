@@ -208,6 +208,13 @@ target_compile_definitions(test_tooling_commands PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_tooling_commands COMMAND test_tooling_commands)
 
+# Prefabs: save/instantiate/override/break-link commands, runtime spawn, link validation.
+add_executable(test_prefab test_prefab.cpp)
+target_link_libraries(test_prefab PRIVATE arcane_tooling)
+target_compile_definitions(test_prefab PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_prefab COMMAND test_prefab)
+
 # Registered module properties of the top-down slice through the registry.
 add_executable(test_topdown_commands test_topdown_commands.cpp)
 target_link_libraries(test_topdown_commands PRIVATE arcane_tooling)

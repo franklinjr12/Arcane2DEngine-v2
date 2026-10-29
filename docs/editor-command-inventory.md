@@ -55,3 +55,5 @@ an audit of the present editor, not an automated guarantee: registry, CLI,
 coverage manifest, routing and direct-write lint remain absent. Completion needs
 behavioral parity tests as well as a manifest; a manifest alone cannot discover
 new direct widget writes.
+
+- Prefabs (FE18): no editor action exists yet for save-as-prefab, instantiate, override, revert or break-link; they are `prefab.*` registry commands only. The GUI should call them (not a separate path) when AF5 routes the hierarchy and Inspector.

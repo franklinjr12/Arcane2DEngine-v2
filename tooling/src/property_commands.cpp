@@ -3,6 +3,7 @@
 #include <limits>
 
 #include "arcane_tooling/command.hpp"
+#include "property_json.hpp"
 
 namespace arcane::tooling {
 
@@ -21,8 +22,10 @@ Json float_json(float value) {
   return ec == std::errc() ? Json(std::stod(std::string(buffer, end))) : Json(static_cast<double>(value));
 }
 
-Json value_to_json(const PropertyDescriptor& property, const PropertyValue& value) {
-  switch (property.type) {
+}  // namespace
+
+Json property_to_json(PropertyType type, const PropertyValue& value) {
+  switch (type) {
     case PropertyType::Bool: return std::get<bool>(value);
     case PropertyType::Int: return std::get<int>(value);
     case PropertyType::Float: return float_json(std::get<float>(value));
@@ -39,6 +42,12 @@ Json value_to_json(const PropertyDescriptor& property, const PropertyValue& valu
     case PropertyType::EntityId: return std::get<AssetId>(value);
   }
   return nullptr;
+}
+
+namespace {
+
+Json value_to_json(const PropertyDescriptor& property, const PropertyValue& value) {
+  return property_to_json(property.type, value);
 }
 
 std::expected<float, ToolError> to_float(const Json& j, const ProjectContext& context, const std::string& path) {
@@ -64,15 +73,17 @@ std::expected<std::vector<float>, ToolError> float_array(const Json& j, std::siz
   return out;
 }
 
+}  // namespace
+
 // Converts and validates a typed JSON value before anything is touched.
-std::expected<PropertyValue, ToolError> json_to_value(const PropertyDescriptor& property, const Json& j,
-                                                      ProjectContext& context) {
-  const std::string type(to_string(property.type));
+std::expected<PropertyValue, ToolError> property_from_json(PropertyType property_type, const std::string& property_name,
+                                                         const Json& j, ProjectContext& context) {
+  const std::string type(to_string(property_type));
   auto wrong = [&](const char* expected) {
-    return std::unexpected(fail("VALUE_INVALID", "property '" + property.name + "' is " + type + ": expected " + expected,
+    return std::unexpected(fail("VALUE_INVALID", "property '" + property_name + "' is " + type + ": expected " + expected,
                                 context, "/value"));
   };
-  switch (property.type) {
+  switch (property_type) {
     case PropertyType::Bool:
       if (!j.is_boolean()) return wrong("true or false");
       return PropertyValue(j.get<bool>());
@@ -109,13 +120,20 @@ std::expected<PropertyValue, ToolError> json_to_value(const PropertyDescriptor& 
         return wrong("an unsigned integer");
       }
       const AssetId id = j.get<AssetId>();
-      if (property.type == PropertyType::EntityId && id != 0 && !context.scene().find_node(id)) {
+      if (property_type == PropertyType::EntityId && id != 0 && !context.scene().find_node(id)) {
         return std::unexpected(fail("NODE_NOT_FOUND", "no node with id " + std::to_string(id), context, "/value"));
       }
       return PropertyValue(id);
     }
   }
   return wrong("a supported type");
+}
+
+namespace {
+
+std::expected<PropertyValue, ToolError> json_to_value(const PropertyDescriptor& property, const Json& j,
+                                                      ProjectContext& context) {
+  return property_from_json(property.type, property.name, j, context);
 }
 
 // "component" is a component id (integer) or a type name that must be

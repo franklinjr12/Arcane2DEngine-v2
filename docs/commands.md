@@ -47,6 +47,21 @@ Component: an integer component id, or a type name attached exactly once.
 | `prop.get` | `node`, `component`, `name` | `{name, type, value}` |
 | `prop.set` (mutating) | `node`, `component`, `name`, `value` | `{changed, previous, value}` |
 | `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
+| `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
+| `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
+| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo re-instantiates with new IDs and the same overrides |
+| `prefab.override` (mutating) | `node`, `component?`, `property`, `value` | `{instance_id, local_id, property, value, overridden, changed}` |
+| `prefab.revert` (mutating) | `node`, `component?`, `property` | `{reverted, ...}`; no-op if not overridden |
+| `prefab.break_link` (mutating) | `node` | `{instance_id, nodes}`; inverse is `prefab.relink` |
+| `prefab.relink` (mutating) | `asset`, `instance_id`, `nodes:[{id,local_id}]`, `overrides?` | `{instance_id, nodes}` |
+| `prefab.info` | `node` | `{linked, asset, instance_id, local_id, overrides}` |
+
+Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in `.prefab.json`.
+`node` selectors for override/revert/break_link/remove/info may name any node of an instance.
+`overrides` entries are `{local_id, component?, property, value}` with prefab-local IDs; `name` and
+`position` on `prefab.instantiate` are shortcuts for root overrides. The root's `name`/`position`
+differing from the prefab are ordinary overrides. A stale redo of `prefab.instantiate` creates new
+IDs, so a history entry recorded before an undo/redo cycle may not find the old instance.
 
 `audio.backend` opens no audio device unless `probe_device` is true; without it
 the answer is always `null`. With it, a device is opened briefly and, if that

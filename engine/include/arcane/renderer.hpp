@@ -13,6 +13,7 @@ namespace arcane {
 
 struct Color {
   float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
+  friend bool operator==(const Color&, const Color&) = default;
 };
 
 // Normalized UV sub-rectangle within a texture: (u0, v0, u1, v1).
