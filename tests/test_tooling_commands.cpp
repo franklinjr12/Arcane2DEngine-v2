@@ -13,6 +13,7 @@
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/module.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/scene.hpp"
 #include "arcane_editor/project_session.hpp"
 #include "arcane_tooling/command.hpp"
@@ -53,6 +54,7 @@ struct TempProject {
       arcane::ComponentRegistry registry;
       arcane::register_builtin_components(registry);
       arcane::register_audio_components(registry);
+      arcane::register_physics_components(registry);
       module->api()->register_types(registry);
       auto session = arcane::editor::ProjectSession::create(dir, "Tooling", registry);
       ARCANE_ASSERT_TRUE(session.has_value());
@@ -61,6 +63,8 @@ struct TempProject {
       session->scene().add_component(node, "Camera2D", registry);
       session->scene().add_component(node, "Sprite", registry);
       session->scene().add_component(node, "AudioSource", registry);
+      session->scene().add_component(node, "Collider2D", registry);
+      session->scene().add_component(node, "PlatformerController2D", registry);
       ARCANE_ASSERT_TRUE(session->save(registry).has_value());
     }  // session and registry die before the module
   }
@@ -327,6 +331,26 @@ void test_audio_settings_and_backend() {
   ARCANE_ASSERT_TRUE(!registry.execute(*context, {"audio.backend", {{"probe_device", "yes"}}}).has_value());
 }
 
+// One-way platform settings are ordinary properties: set, persist, reload.
+void test_one_way_settings_round_trip() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Collider2D", "one_way") == false);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("Collider2D", "one_way", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("PlatformerController2D", "drop_duration", 0.25), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("PlatformerController2D", "down_action", "crouch"), persist).has_value());
+    ARCANE_ASSERT_TRUE(!registry.execute(*context, set("Collider2D", "one_way", "yes"), persist).has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Collider2D", "one_way") == true);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "PlatformerController2D", "drop_duration") == 0.25);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "PlatformerController2D", "down_action") == "crouch");
+  ARCANE_ASSERT_TRUE(slurp(project.scene()).find("\"one_way\": true") != std::string::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -338,5 +362,6 @@ int main() {
   test_context_lifetime_and_registry_listing();
   test_camera2d_settings_round_trip();
   test_audio_settings_and_backend();
+  test_one_way_settings_round_trip();
   return 0;
 }
