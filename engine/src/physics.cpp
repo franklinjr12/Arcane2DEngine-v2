@@ -2,6 +2,7 @@
 
 #include <box2d/box2d.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -49,6 +50,22 @@ void notify_contact(Scene& scene, b2ShapeId shape_a, b2ShapeId shape_b, bool beg
   }
 }
 
+// Shape user data marks one-way colliders; body user data is the scene node id.
+void one_way_pre_solve(b2ShapeId a, b2ShapeId b, b2Manifold* manifold, void* context) {
+  auto* scene = static_cast<Scene*>(context);
+  const bool a_one_way = b2Shape_GetUserData(a) != nullptr;
+  const bool b_one_way = b2Shape_GetUserData(b) != nullptr;
+  if (a_one_way == b_one_way) return;
+  const b2ShapeId other = a_one_way ? b : a;
+  Node* node = scene->find_node(user_data_to_node_id(b2Body_GetUserData(b2Shape_GetBody(other))));
+  auto* rigid = node ? dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D")) : nullptr;
+  const float up = a_one_way ? manifold->normal.y : -manifold->normal.y;
+  const b2Vec2 relative = b2Sub(b2Body_GetLinearVelocity(b2Shape_GetBody(other)),
+                                b2Body_GetLinearVelocity(b2Shape_GetBody(a_one_way ? a : b)));
+  if (up < 0.7f || relative.y > 0.01f || (rigid && rigid->drop_through_time > 0.0f))
+    manifold->pointCount = 0;
+}
+
 // True if any touching contact pushes up on `body` (manifold normal points from shape A to B, in y-up Box2D space).
 bool is_grounded(b2BodyId body) {
   constexpr float kMinUpwardNormal = 0.7f;
@@ -86,6 +103,7 @@ void register_physics_components(ComponentRegistry& registry) {
           make_property<Collider2D>("friction", PropertyType::Float, &Collider2D::friction),
           make_property<Collider2D>("restitution", PropertyType::Float, &Collider2D::restitution),
           make_property<Collider2D>("is_sensor", PropertyType::Bool, &Collider2D::is_sensor),
+          make_property<Collider2D>("one_way", PropertyType::Bool, &Collider2D::one_way),
       });
   register_platformer_components(registry);
 }
@@ -110,6 +128,7 @@ PhysicsWorld::PhysicsWorld(PhysicsWorld&&) noexcept = default;
 PhysicsWorld& PhysicsWorld::operator=(PhysicsWorld&&) noexcept = default;
 
 void PhysicsWorld::rebuild(Scene& scene) {
+  b2World_SetPreSolveCallback(impl_->world, one_way_pre_solve, nullptr, &scene);
   for (auto& [id, body] : impl_->bodies) {
     if (b2Body_IsValid(body)) b2DestroyBody(body);
   }
@@ -163,6 +182,8 @@ void PhysicsWorld::rebuild(Scene& scene) {
       shape_def.isSensor = collider->is_sensor;
       shape_def.enableSensorEvents = collider->is_sensor;
       shape_def.enableContactEvents = true;
+      shape_def.enablePreSolveEvents = collider->one_way;
+      shape_def.userData = collider->one_way ? collider : nullptr;
       const b2Vec2 offset_m = px_to_m(collider->offset);
 
       if (static_cast<ColliderShapeType>(collider->shape_type) == ColliderShapeType::Circle) {
@@ -185,6 +206,13 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
       Node* node = scene.find_node(node_id);
       auto* rigid = node ? dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D")) : nullptr;
       if (rigid) {
+        // Box2D recycles resting contacts without calling pre-solve; updating mass invalidates the cached
+        // manifolds (and wakes the body) so the one-way test runs again while dropping through.
+        if (rigid->drop_through_time > 0.0f) {
+          b2Body_UpdateMassFromShapes(body);
+          b2Body_SetAwake(body, true);
+        }
+        rigid->drop_through_time = std::max(0.0f, rigid->drop_through_time - fixed_dt);
         b2Body_SetLinearVelocity(body, px_to_m(rigid->linear_velocity));
         b2Body_SetGravityScale(body, rigid->gravity_scale);
       }

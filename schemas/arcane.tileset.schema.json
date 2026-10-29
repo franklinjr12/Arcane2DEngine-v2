@@ -1,0 +1,87 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.tileset.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "format": {
+      "const": "arcane.tileset"
+    },
+    "terrains": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "terrain": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tiles": {
+            "items": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 16,
+            "minItems": 16,
+            "type": "array"
+          }
+        },
+        "required": [
+          "terrain",
+          "tiles"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "texture": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "tile_count": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "tile_height": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "tile_width": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "tiles": {
+      "description": "index = tile id - 1; missing entries use defaults (not solid, terrain 0)",
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "solid": {
+            "type": "boolean"
+          },
+          "terrain": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "texture",
+    "tile_width",
+    "tile_height",
+    "columns",
+    "tile_count"
+  ],
+  "title": "Arcane tileset (v2)",
+  "type": "object"
+}

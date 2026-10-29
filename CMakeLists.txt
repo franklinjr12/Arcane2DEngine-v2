@@ -113,6 +113,8 @@ add_library(arcane_runtime SHARED
   engine/src/component_registry.cpp
   engine/src/property.cpp
   engine/src/project.cpp
+  engine/src/canonical_json.cpp
+  engine/src/migration.cpp
   engine/src/builtin_components.cpp
   engine/src/physics.cpp
   engine/src/platformer.cpp
@@ -126,7 +128,7 @@ add_library(arcane_runtime SHARED
   engine/src/particles.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
-  PRIVATE ${TP}/stb ${TP}/json)
+  PRIVATE ${TP}/stb ${TP}/json engine/src)
 # stb headers define unused static helpers; keep their warnings out of our build.
 target_include_directories(arcane_runtime SYSTEM PRIVATE ${TP}/stb)
 target_link_libraries(arcane_runtime
@@ -154,6 +156,7 @@ target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
   add_subdirectory(samples/platformer_slice_game)
+  add_subdirectory(samples/topdown_slice_game)
   add_subdirectory(player)
   add_subdirectory(editor/app)
 endif()

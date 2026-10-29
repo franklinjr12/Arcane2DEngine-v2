@@ -1,65 +1,118 @@
 #include "arcane/project.hpp"
 
 #include <format>
-#include <json.hpp>
+
+#include "arcane/migration.hpp"
+#include "canonical_json.hpp"
 
 namespace arcane {
 
 namespace {
-constexpr int kProjectFormatVersion = 1;
+
+using nlohmann::json;
+
+constexpr const char* kProjectFormat = "arcane.project";
+
+std::expected<ProjectFile, std::string> load_project(const std::string& text, bool strict_unknown) {
+  auto parsed = canonical::parse_strict(text);
+  if (!parsed) {
+    return std::unexpected(std::format("malformed project JSON: {}", parsed.error()));
+  }
+  try {
+    const json& root = *parsed;
+    const canonical::Dialect dialect = canonical::detect_dialect(root, kProjectFormat, "project");
+    const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
+    if (strict) {
+      if (dialect == canonical::Dialect::V2) {
+        canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud"},
+                                     "project");
+      } else {
+        canonical::require_only_keys(
+            root, {"format_version", "name", "main_scene", "module", "input_actions", "hud"}, "project");
+      }
+    }
+    if (!root.contains("name") || !root.contains("main_scene")) {
+      return std::unexpected(std::string("project JSON is missing 'name' or 'main_scene'"));
+    }
+
+    ProjectFile project;
+    project.name = canonical::as_string(root["name"], "project 'name'");
+    project.main_scene = canonical::as_string(root["main_scene"], "project 'main_scene'");
+    project.module = root.contains("module") ? canonical::as_string(root["module"], "project 'module'") : std::string();
+    if (strict) {
+      canonical::require_project_path(project.main_scene, false, "project 'main_scene'");
+      canonical::require_project_path(project.module, true, "project 'module'");
+    }
+    if (root.contains("input_actions")) {
+      auto input_actions = strict ? InputActionMap::load_from_json_strict(root["input_actions"].dump())
+                                  : InputActionMap::load_from_json(root["input_actions"].dump());
+      if (!input_actions) {
+        return std::unexpected(input_actions.error());
+      }
+      project.input_actions = std::move(*input_actions);
+    }
+    if (root.contains("hud")) {
+      auto hud = strict ? Hud::load_from_json_strict(root["hud"].dump()) : Hud::load_from_json(root["hud"].dump());
+      if (!hud) {
+        return std::unexpected(hud.error());
+      }
+      project.hud = std::move(*hud);
+    }
+    return project;
+  } catch (const canonical::SchemaError& ex) {
+    return std::unexpected(std::string(ex.what()));
+  }
+}
+
 }  // namespace
 
-std::string save_project_to_json(const ProjectFile& project) {
-  nlohmann::json root;
-  root["format_version"] = kProjectFormatVersion;
+std::expected<std::string, std::string> save_project_canonical_json(const ProjectFile& project) {
+  json root;
+  root["format"] = kProjectFormat;
+  root["version"] = 2;
   root["name"] = project.name;
   root["main_scene"] = project.main_scene;
   root["module"] = project.module;
-  root["input_actions"] = nlohmann::json::parse(project.input_actions.save_to_json());
-  root["hud"] = nlohmann::json::parse(project.hud.save_to_json());
-  return root.dump(2);
+  // Nested documents carry their own format/version (arcane.input, arcane.hud).
+  auto input_actions = project.input_actions.save_canonical_json();
+  if (!input_actions) return std::unexpected(input_actions.error());
+  auto hud = project.hud.save_canonical_json();
+  if (!hud) return std::unexpected(hud.error());
+  root["input_actions"] = *canonical::parse_strict(*input_actions);
+  root["hud"] = *canonical::parse_strict(*hud);
+  return canonical::dump(root);
+}
+
+std::string save_project_to_json(const ProjectFile& project) {
+  return save_project_canonical_json(project).value_or(std::string());
 }
 
 std::expected<ProjectFile, std::string> load_project_from_json(const std::string& text) {
-  nlohmann::json root;
-  try {
-    root = nlohmann::json::parse(text);
-  } catch (const nlohmann::json::parse_error& ex) {
-    return std::unexpected(std::format("malformed project JSON: {}", ex.what()));
-  }
+  return load_project(text, false);
+}
 
-  if (!root.contains("format_version") || !root["format_version"].is_number_integer()) {
-    return std::unexpected(std::string("project JSON is missing a numeric 'format_version' field"));
-  }
-  const int file_version = root["format_version"].get<int>();
-  if (file_version != kProjectFormatVersion) {
-    return std::unexpected(std::format(
-        "unsupported project format_version {} (this build only supports version {}; {} than supported)",
-        file_version, kProjectFormatVersion, file_version > kProjectFormatVersion ? "newer" : "older"));
-  }
-  if (!root.contains("name") || !root.contains("main_scene")) {
-    return std::unexpected(std::string("project JSON is missing 'name' or 'main_scene'"));
-  }
+std::expected<ProjectFile, std::string> load_project_from_json_strict(const std::string& text) {
+  return load_project(text, true);
+}
 
-  ProjectFile project;
-  project.name = root["name"].get<std::string>();
-  project.main_scene = root["main_scene"].get<std::string>();
-  project.module = root.value("module", std::string());
-  if (root.contains("input_actions")) {
-    auto input_actions = InputActionMap::load_from_json(root["input_actions"].dump());
-    if (!input_actions) {
-      return std::unexpected(input_actions.error());
-    }
-    project.input_actions = std::move(*input_actions);
+std::expected<std::string, std::string> migrate_project_json(const std::string& text) {
+  auto project = load_project_from_json_strict(text);
+  if (!project) {
+    return std::unexpected(project.error());
   }
-  if (root.contains("hud")) {
-    auto hud = Hud::load_from_json(root["hud"].dump());
-    if (!hud) {
-      return std::unexpected(hud.error());
-    }
-    project.hud = std::move(*hud);
+  auto migrated = save_project_canonical_json(*project);
+  if (!migrated) {
+    return std::unexpected(migrated.error());
   }
-  return project;
+  auto reloaded = load_project_from_json_strict(*migrated);
+  if (!reloaded) {
+    return std::unexpected("migrated project does not reload: " + reloaded.error());
+  }
+  auto again = save_project_canonical_json(*reloaded);
+  if (!again || *again != *migrated) {
+    return std::unexpected(std::string("migrated project is not idempotent"));
+  }
+  return migrated;
 }
 
 }  // namespace arcane

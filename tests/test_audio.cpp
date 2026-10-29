@@ -5,6 +5,27 @@
 
 namespace {
 
+int factory_calls = 0;
+std::expected<arcane::AudioSystem, std::string> failing_device_factory(bool null_backend) {
+  ++factory_calls;
+  if (!null_backend) return std::unexpected("simulated device failure");
+  return arcane::AudioSystem::create(true);
+}
+
+void test_selection_and_fallback_without_device() {
+  std::string diagnostic;
+  factory_calls = 0;
+  auto fallback = arcane::AudioSystem::create_preferred(false, diagnostic, failing_device_factory);
+  ARCANE_ASSERT_TRUE(fallback && fallback->is_null_backend());
+  ARCANE_ASSERT_TRUE(diagnostic == "simulated device failure");
+  ARCANE_ASSERT_TRUE(factory_calls == 2);
+  factory_calls = 0;
+  auto forced = arcane::AudioSystem::create_preferred(true, diagnostic, failing_device_factory);
+  ARCANE_ASSERT_TRUE(forced && forced->is_null_backend());
+  ARCANE_ASSERT_TRUE(diagnostic.empty());
+  ARCANE_ASSERT_TRUE(factory_calls == 1);
+}
+
 void test_null_backend_records_commands_without_a_device() {
   auto system = arcane::AudioSystem::create(/*null_backend=*/true);
   ARCANE_ASSERT_TRUE(system.has_value());
@@ -64,6 +85,7 @@ void test_register_audio_components_registers_audio_source() {
 }  // namespace
 
 int main() {
+  test_selection_and_fallback_without_device();
   test_null_backend_records_commands_without_a_device();
   test_bus_volume_get_set_defaults_to_full();
   test_active_audio_system_defaults_to_null_outside_play();

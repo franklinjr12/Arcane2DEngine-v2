@@ -1,0 +1,50 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.clip.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.clip"
+    },
+    "frames": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "duration_seconds": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "uv": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 4,
+            "type": "array"
+          }
+        },
+        "required": [
+          "uv"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "loop": {
+      "type": "boolean"
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "frames"
+  ],
+  "title": "Arcane animation clip (v2)",
+  "type": "object"
+}

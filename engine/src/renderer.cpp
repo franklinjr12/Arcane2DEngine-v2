@@ -9,6 +9,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdio>
 #include <cstring>
 #include <format>
 #include <vector>
@@ -149,10 +150,19 @@ std::expected<Texture, std::string> Texture::load_from_memory(std::span<const un
 
 std::expected<Texture, std::string> Texture::load_from_file(const std::filesystem::path& path,
                                                                TextureFilter filter) {
+  // Open the native path ourselves: stb's narrow filename API uses the
+  // Windows ANSI code page and cannot open arbitrary Unicode filenames.
+#ifdef _WIN32
+  FILE* file = _wfopen(path.c_str(), L"rb");
+#else
+  FILE* file = std::fopen(path.c_str(), "rb");
+#endif
+  if (!file) return std::unexpected("failed to open texture file");
   int width = 0, height = 0, channels = 0;
-  stbi_uc* pixels = stbi_load(path.string().c_str(), &width, &height, &channels, 4);
+  stbi_uc* pixels = stbi_load_from_file(file, &width, &height, &channels, 4);
+  std::fclose(file);
   if (!pixels) {
-    return std::unexpected(std::format("stb_image failed to load {}: {}", path.string(), stbi_failure_reason()));
+    return std::unexpected(std::format("stb_image decode failed: {}", stbi_failure_reason()));
   }
   auto result = load_from_pixels(std::span(pixels, static_cast<size_t>(width) * height * 4), width, height, filter);
   stbi_image_free(pixels);

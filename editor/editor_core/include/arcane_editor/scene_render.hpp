@@ -207,6 +207,6 @@ void restart_particles(Scene& scene);
 // space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
-                   const Hud* hud = nullptr, TilesetCache* tilesets = nullptr);
+                   const Hud* hud = nullptr, TilesetCache* tilesets = nullptr, bool runtime_camera = true);
 
 }  // namespace arcane::editor

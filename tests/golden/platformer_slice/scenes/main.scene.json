@@ -1,0 +1,581 @@
+{
+  "format": "arcane.scene",
+  "next_id": 31,
+  "nodes": [
+    {
+      "components": [
+        {
+          "id": 2,
+          "properties": {
+            "coin_value": 10,
+            "hurt_cooldown": 1.0,
+            "idle_clip": 4478366437428034728,
+            "pit_y": 700.0,
+            "run_clip": 6756191263469248021,
+            "win_x": 1300.0
+          },
+          "type": "SliceRules"
+        }
+      ],
+      "id": 1,
+      "name": "Level",
+      "parent_id": 0,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 4,
+          "properties": {
+            "primary": true,
+            "zoom": 1.0
+          },
+          "type": "Camera"
+        }
+      ],
+      "id": 3,
+      "name": "MainCamera",
+      "parent_id": 1,
+      "position": [
+        400.0,
+        300.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 6,
+          "properties": {
+            "height": 48.0,
+            "texture": 15591983102683395244,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 32.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 7,
+          "properties": {
+            "clip": 4478366437428034728,
+            "playing": true,
+            "speed": 1.0
+          },
+          "type": "AnimatedSprite"
+        },
+        {
+          "id": 8,
+          "properties": {
+            "body_type": 2,
+            "fixed_rotation": true,
+            "gravity_scale": 1.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 9,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 46.0,
+            "is_sensor": false,
+            "offset": [
+              0.0,
+              1.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 28.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 10,
+          "properties": {
+            "air_control": 0.6,
+            "coyote_time": 0.1,
+            "down_action": "move_down",
+            "drop_duration": 0.5,
+            "fall_gravity_scale": 1.6,
+            "jump_action": "jump",
+            "jump_buffer_time": 0.1,
+            "jump_cut": 0.5,
+            "jump_speed": 420.0,
+            "left_action": "move_left",
+            "max_fall_speed": 700.0,
+            "max_speed": 200.0,
+            "right_action": "move_right",
+            "run_acceleration": 1400.0,
+            "run_deceleration": 1800.0
+          },
+          "type": "PlatformerController2D"
+        }
+      ],
+      "id": 5,
+      "name": "Player",
+      "parent_id": 1,
+      "position": [
+        64.0,
+        340.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 12,
+          "properties": {
+            "collide": true,
+            "height": 2,
+            "layers": [
+              [
+                [
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1
+                ],
+                [
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  0,
+                  0,
+                  0,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2,
+                  2
+                ]
+              ]
+            ],
+            "solid_tiles": "1,2,3",
+            "tile_height": 32.0,
+            "tile_width": 32.0,
+            "tileset": 4271871672750809515,
+            "width": 40
+          },
+          "type": "Tilemap"
+        }
+      ],
+      "id": 11,
+      "name": "Ground",
+      "parent_id": 1,
+      "position": [
+        0.0,
+        400.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 14,
+          "properties": {
+            "collide": true,
+            "height": 1,
+            "layers": [
+              [
+                [
+                  3,
+                  3,
+                  3,
+                  3
+                ]
+              ]
+            ],
+            "solid_tiles": "1,2,3",
+            "tile_height": 32.0,
+            "tile_width": 32.0,
+            "tileset": 4271871672750809515,
+            "width": 4
+          },
+          "type": "Tilemap"
+        }
+      ],
+      "id": 13,
+      "name": "Platform",
+      "parent_id": 1,
+      "position": [
+        400.0,
+        300.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 16,
+          "properties": {
+            "height": 20.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 15,
+      "name": "Coin0",
+      "parent_id": 1,
+      "position": [
+        220.0,
+        372.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 18,
+          "properties": {
+            "height": 20.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 17,
+      "name": "Coin1",
+      "parent_id": 1,
+      "position": [
+        290.0,
+        372.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 20,
+          "properties": {
+            "height": 20.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 19,
+      "name": "Coin2",
+      "parent_id": 1,
+      "position": [
+        450.0,
+        270.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 22,
+          "properties": {
+            "height": 20.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 21,
+      "name": "Coin3",
+      "parent_id": 1,
+      "position": [
+        520.0,
+        270.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 24,
+          "properties": {
+            "height": 20.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 23,
+      "name": "Coin4",
+      "parent_id": 1,
+      "position": [
+        900.0,
+        372.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 26,
+          "properties": {
+            "height": 28.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              0.2,
+              0.2,
+              1.0
+            ],
+            "width": 28.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 25,
+      "name": "Spikes",
+      "parent_id": 1,
+      "position": [
+        620.0,
+        384.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 28,
+          "properties": {
+            "height": 64.0,
+            "texture": 1617945095526466553,
+            "tint": [
+              0.3,
+              1.0,
+              0.5,
+              1.0
+            ],
+            "width": 24.0
+          },
+          "type": "Sprite"
+        }
+      ],
+      "id": 27,
+      "name": "Goal",
+      "parent_id": 1,
+      "position": [
+        1150.0,
+        360.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 30,
+          "properties": {
+            "angle_max": 360.0,
+            "angle_min": 0.0,
+            "atlas_columns": 1,
+            "atlas_rows": 1,
+            "burst_count": 0,
+            "emitting": false,
+            "end_color": [
+              1.0,
+              0.4,
+              0.0,
+              0.0
+            ],
+            "end_size": 1.0,
+            "frame": 0,
+            "gravity": [
+              0.0,
+              200.0
+            ],
+            "lifetime_max": 0.6,
+            "lifetime_min": 0.3,
+            "max_particles": 64,
+            "rate": 0.0,
+            "seed": 3,
+            "speed_max": 120.0,
+            "speed_min": 40.0,
+            "start_color": [
+              1.0,
+              0.85,
+              0.2,
+              1.0
+            ],
+            "start_size": 5.0,
+            "texture": 0,
+            "world_space": true
+          },
+          "type": "ParticleEmitter"
+        }
+      ],
+      "id": 29,
+      "name": "PickupBurst",
+      "parent_id": 1,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "version": 2
+}

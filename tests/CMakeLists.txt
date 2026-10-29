@@ -1,12 +1,13 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_input test_animation test_audio test_hud test_text test_hud_input test_tilemap test_particles)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_audio test_hud test_text test_hud_input test_tilemap test_particles test_camera2d)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
 endforeach()
 target_include_directories(test_json PRIVATE ${TP}/json)
+target_include_directories(test_canonical_json PRIVATE ${TP}/json)
 
 add_executable(test_editor_state test_editor_state.cpp)
 target_link_libraries(test_editor_state PRIVATE arcane_editor_core)
@@ -126,6 +127,18 @@ if(ARCANE_BUILD_SAMPLES AND UNIX)
   set_tests_properties(test_export_platformer_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
+  add_test(NAME test_export_topdown_slice
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR}
+      ${CMAKE_SOURCE_DIR}/samples/topdown_slice $<TARGET_FILE:topdown_slice_game>)
+  set_tests_properties(test_export_topdown_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_player_topdown_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/topdown_slice --module $<TARGET_FILE:topdown_slice_game>
+    --frames 120 --hidden)
+  set_tests_properties(test_player_topdown_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
   add_test(NAME test_player_slice_frames COMMAND arcane_player
     --project ${CMAKE_SOURCE_DIR}/samples/platformer_slice --module $<TARGET_FILE:platformer_slice_game>
     --frames 120 --hidden)
@@ -149,6 +162,25 @@ if(ARCANE_BUILD_SAMPLES)
     ARCANE_SLICE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/platformer_slice"
     ARCANE_SLICE_MODULE_PATH="$<TARGET_FILE:platformer_slice_game>")
   add_test(NAME test_platformer_slice COMMAND test_platformer_slice)
+
+  add_executable(test_topdown_slice test_topdown_slice.cpp)
+  target_link_libraries(test_topdown_slice PRIVATE arcane_editor_core)
+  target_compile_definitions(test_topdown_slice PRIVATE
+    ARCANE_TOPDOWN_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/topdown_slice"
+    ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
+  add_test(NAME test_topdown_slice COMMAND test_topdown_slice)
+
+  # Legacy -> canonical v2 migration of both sample projects, with their modules.
+  add_executable(test_migration test_migration.cpp)
+  target_link_libraries(test_migration PRIVATE arcane_editor_core)
+  target_compile_definitions(test_migration PRIVATE
+    ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+    ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
+    ARCANE_SLICE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/platformer_slice"
+    ARCANE_SLICE_MODULE_PATH="$<TARGET_FILE:platformer_slice_game>"
+    ARCANE_SCHEMA_DIR="${CMAKE_SOURCE_DIR}/schemas"
+    ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+  add_test(NAME test_migration COMMAND test_migration)
 endif()
 
 # --- every public engine header must compile standalone ---------------------

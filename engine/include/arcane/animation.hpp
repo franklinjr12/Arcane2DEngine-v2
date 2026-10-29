@@ -43,10 +43,15 @@ ARCANE_API float clip_duration(const AnimationClip& clip) noexcept;
 // before indexing).
 ARCANE_API std::size_t select_frame_index(const AnimationClip& clip, float elapsed_seconds) noexcept;
 
-// format_version 1, matching Scene/InputActionMap's JSON conventions (see
-// docs/decisions.md).
+// Canonical clip v2 (`arcane.clip`, docs/formats/clip.md). The reader takes v2
+// (strict) and legacy format_version 1 (lenient about unknown fields).
+ARCANE_API std::expected<std::string, std::string> save_clip_canonical_json(const AnimationClip& clip);
+// Convenience wrapper; returns an empty string on failure.
 ARCANE_API std::string save_clip_to_json(const AnimationClip& clip);
 ARCANE_API std::expected<AnimationClip, std::string> load_clip_from_json(const std::string& text);
+// Legacy files are checked as strictly as v2 ones; used by migration.
+ARCANE_API std::expected<AnimationClip, std::string> load_clip_from_json_strict(const std::string& text);
+ARCANE_API std::expected<std::string, std::string> migrate_clip_json(const std::string& text);
 
 // Drives playback of an AnimationClip (referenced by AssetId, resolved the
 // same way Sprite::texture is -- by whichever TextureCache-equivalent cache

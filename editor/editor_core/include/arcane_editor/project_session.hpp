@@ -3,12 +3,15 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 #include "arcane/component_registry.hpp"
 #include "arcane/project.hpp"
 #include "arcane/scene.hpp"
 
 namespace arcane::editor {
+
+enum class SceneLoadPolicy { Compatible, Strict };
 
 // Owns the editor's view of an on-disk project: the parsed ProjectFile, the
 // currently loaded (authored) Scene, and a dirty flag. Wraps project.hpp's
@@ -18,7 +21,8 @@ namespace arcane::editor {
 class ProjectSession {
  public:
   static std::expected<ProjectSession, std::string> open(const std::filesystem::path& project_dir,
-                                                           const ComponentRegistry& registry);
+                                                           const ComponentRegistry& registry,
+                                                           SceneLoadPolicy policy = SceneLoadPolicy::Compatible);
 
   // Creates a brand-new project on disk: project.json + an empty main scene
   // under scenes/.
@@ -55,6 +59,12 @@ class ProjectSession {
   std::filesystem::path project_dir_;
   Scene scene_;
   bool dirty_ = false;
+  // Compatible loading may discard fields that this engine does not know.
+  // Keep the strict-load diagnostic so Save cannot silently erase them.
+  std::string unsafe_save_reason_;
+  std::optional<std::string> project_revision_;
+  std::optional<std::string> scene_revision_;
+  std::filesystem::path scene_revision_path_;
 };
 
 }  // namespace arcane::editor

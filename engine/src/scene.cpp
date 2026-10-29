@@ -1,3 +1,4 @@
+#include "arcane/builtin_components.hpp"
 #include "arcane/scene.hpp"
 
 #include <algorithm>
@@ -166,6 +167,10 @@ void Scene::update(float fixed_dt) {
       component->on_start();
     }
     component->on_update(fixed_dt);
+  }
+  for (Component* component : live) {
+    if (!component->node()->pending_destroy() && component->type_name() == "Camera2D")
+      static_cast<Camera2D*>(component)->advance(*this, fixed_dt);
   }
   flush_destroyed();
 }

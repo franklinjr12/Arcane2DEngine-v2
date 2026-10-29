@@ -63,18 +63,32 @@ class ARCANE_API Scene {
   // Only for restoring a scene from disk: see Scene::load_from_json.
   void set_next_id(NodeId value) noexcept { next_id_ = value; }
 
-  // Serializes this scene (format_version 1; see docs/decisions.md) to a
-  // JSON string, using `registry` to know which properties each attached
-  // component declares.
+  // Serializes this scene as canonical scene v2 (docs/formats/scene.md),
+  // using `registry` to know which properties each attached component
+  // declares. Fails on non-finite floats or invalid UTF-8 names.
+  std::expected<std::string, std::string> save_canonical_json(const ComponentRegistry& registry) const;
+
+  // Convenience wrapper over save_canonical_json; returns an empty string
+  // on failure (use save_canonical_json to learn why).
   std::string save_to_json(const ComponentRegistry& registry) const;
 
-  // Parses a scene previously produced by save_to_json. Fails (returning
-  // the error message) on a missing/unsupported format_version, malformed
-  // JSON, or a component whose registered type is not found in `registry`.
+  // Parses a scene file: canonical v2 (checked strictly: unknown fields,
+  // properties and wrong value types are errors) or legacy format_version 1
+  // (unknown properties on known types are ignored, as before). Fails on
+  // malformed JSON, a missing/unsupported/newer version, or a component
+  // whose registered type is not found in `registry`.
   static std::expected<Scene, std::string> load_from_json(const std::string& text, const ComponentRegistry& registry);
+
+  // Like load_from_json, but legacy files are checked as strictly as v2
+  // ones, so nothing in the file can be silently dropped. Used by migration.
+  static std::expected<Scene, std::string> load_from_json_strict(const std::string& text,
+                                                                 const ComponentRegistry& registry);
 
  private:
   std::uint64_t allocate_id() noexcept { return next_id_++; }
+
+  static std::expected<Scene, std::string> load_scene(const std::string& text, const ComponentRegistry& registry,
+                                                      bool strict_unknown);
 
   Node* create_node_with_id(NodeId id, std::string name, Node* parent);
   Component* add_component_with_id(Node* node, const std::string& type_name, ComponentId id,

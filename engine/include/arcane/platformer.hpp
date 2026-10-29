@@ -14,7 +14,7 @@ class ComponentRegistry;
 // RigidBody2D's linear_velocity / gravity_scale. Ground state comes from RigidBody2D::grounded, which
 // PhysicsWorld fills from Box2D contact normals, so it works against any collider, tilemaps included.
 // Units: pixels and seconds, y-down (up is negative y). Give the collider low friction so it does not stick to walls.
-// No-op without a sibling RigidBody2D or an active input map. One-way platforms are not supported yet.
+// No-op without a sibling RigidBody2D or an active input map.
 class ARCANE_API PlatformerController2D : public Component {
  public:
   PlatformerController2D();
@@ -33,6 +33,8 @@ class ARCANE_API PlatformerController2D : public Component {
   std::string left_action = "move_left";
   std::string right_action = "move_right";
   std::string jump_action = "jump";
+  std::string down_action = "move_down";
+  float drop_duration = 0.5f;
 
   void on_start() override;
   void on_update(float fixed_dt) override;

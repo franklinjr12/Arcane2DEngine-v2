@@ -15,7 +15,7 @@ namespace arcane {
 
 class ComponentRegistry;
 
-// A tileset is its own JSON asset (format_version 1): a texture laid out as a
+// A tileset is its own JSON asset (`arcane.tileset` v2; legacy format_version 1 still loads): a texture laid out as a
 // regular grid of equally sized tiles. Tile ids are 1-based (id 0 = empty
 // cell), counted left-to-right, top-to-bottom. UVs come from the grid
 // (columns x rows) alone, so no texture size is needed to compute them.
@@ -34,8 +34,15 @@ struct Tileset {
   ARCANE_API int tile_for_mask(int terrain, int mask) const noexcept;
 };
 
+// Canonical tileset v2 (`arcane.tileset`, docs/formats/tileset.md). The reader
+// takes v2 (strict) and legacy format_version 1 (lenient about unknown fields).
+ARCANE_API std::expected<std::string, std::string> save_tileset_canonical_json(const Tileset& tileset);
+// Convenience wrapper; returns an empty string on failure.
 ARCANE_API std::string save_tileset_to_json(const Tileset& tileset);
 ARCANE_API std::expected<Tileset, std::string> load_tileset_from_json(const std::string& text);
+// Legacy files are checked as strictly as v2 ones; used by migration.
+ARCANE_API std::expected<Tileset, std::string> load_tileset_from_json_strict(const std::string& text);
+ARCANE_API std::expected<std::string, std::string> migrate_tileset_json(const std::string& text);
 
 // UV rect of 1-based `tile_id`; the full texture for an invalid id/tileset.
 ARCANE_API UvRect tile_uv(const Tileset& tileset, int tile_id) noexcept;

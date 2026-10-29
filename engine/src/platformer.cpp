@@ -51,6 +51,16 @@ void PlatformerController2D::on_update(float fixed_dt) {
   const float rate = (direction != 0.0f ? run_acceleration : run_deceleration) * control;
   body->linear_velocity.x = move_toward(body->linear_velocity.x, direction * max_speed, rate * fixed_dt);
 
+  // Down and jump bypass one-way surfaces for a short interval.
+  if (input->held(down_action) && input->pressed(jump_action) && body->grounded) {
+    body->drop_through_time = std::max(0.0f, drop_duration);
+    body->grounded = false;
+    body->linear_velocity.y = std::max(body->linear_velocity.y, 1.0f);
+    buffer_timer_ = 0.0f;
+    coyote_timer_ = 0.0f;
+    jumping_ = false;
+  }
+
   // Jump (buffered press + coyote window) and variable height.
   if (buffer_timer_ > 0.0f && coyote_timer_ > 0.0f) {
     body->linear_velocity.y = -jump_speed;
@@ -84,6 +94,8 @@ void register_platformer_components(ComponentRegistry& registry) {
           make_property<C>("left_action", PropertyType::String, &C::left_action),
           make_property<C>("right_action", PropertyType::String, &C::right_action),
           make_property<C>("jump_action", PropertyType::String, &C::jump_action),
+          make_property<C>("down_action", PropertyType::String, &C::down_action),
+          make_property<C>("drop_duration", PropertyType::Float, &C::drop_duration),
       });
 }
 

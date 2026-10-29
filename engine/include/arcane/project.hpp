@@ -26,7 +26,15 @@ struct ProjectFile {
   Hud hud;
 };
 
+// Writes canonical project v2 (docs/formats/project.md).
+ARCANE_API std::expected<std::string, std::string> save_project_canonical_json(const ProjectFile& project);
+// Convenience wrapper; returns an empty string on failure.
 ARCANE_API std::string save_project_to_json(const ProjectFile& project);
+
+// Reads project v2 (strict) or legacy format_version 1 (lenient about
+// unknown top-level fields, as before).
 ARCANE_API std::expected<ProjectFile, std::string> load_project_from_json(const std::string& text);
+// Legacy files are checked as strictly as v2 ones; used by migration.
+ARCANE_API std::expected<ProjectFile, std::string> load_project_from_json_strict(const std::string& text);
 
 }  // namespace arcane

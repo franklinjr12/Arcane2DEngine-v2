@@ -14,7 +14,8 @@
 namespace arcane::editor {
 
 std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::filesystem::path& project_dir,
-                                                                  const std::string& module_override) {
+                                                                  const std::string& module_override,
+                                                                  SceneLoadPolicy policy) {
   ProjectRuntime runtime;
   register_builtin_components(runtime.registry_);
   register_physics_components(runtime.registry_);
@@ -48,7 +49,7 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
     runtime.module_->api()->on_load();
   }
 
-  auto session = ProjectSession::open(project_dir, runtime.registry_);
+  auto session = ProjectSession::open(project_dir, runtime.registry_, policy);
   if (!session) {
     return std::unexpected(session.error());
   }

@@ -8,11 +8,12 @@
 #include <json.hpp>
 
 #include "arcane/window.hpp"
+#include "canonical_json.hpp"
 
 namespace arcane {
 
 namespace {
-constexpr int kInputFormatVersion = 1;
+constexpr const char* kInputFormat = "arcane.input";
 
 const char* device_to_string(InputDevice device) {
   switch (device) {
@@ -297,9 +298,10 @@ std::vector<std::string> InputActionMap::find_conflicts(std::string_view action_
   return result;
 }
 
-std::string InputActionMap::save_to_json() const {
+std::expected<std::string, std::string> InputActionMap::save_canonical_json() const {
   nlohmann::json root;
-  root["format_version"] = kInputFormatVersion;
+  root["format"] = kInputFormat;
+  root["version"] = 2;
   nlohmann::json actions_json = nlohmann::json::array();
   for (const auto& action : actions_) {
     nlohmann::json action_json;
@@ -307,8 +309,9 @@ std::string InputActionMap::save_to_json() const {
     nlohmann::json bindings_json = nlohmann::json::array();
     for (const auto& binding : action.bindings) {
       nlohmann::json binding_json = {{"device", device_to_string(binding.device)}, {"code", binding.code}};
-      // Gamepad extras are written only when non-default, so files without
-      // them stay byte-identical to the original format.
+      // Optional fields are written only when they differ from the default
+      // (pad -1, player -1; axis fields for gamepad axes), so a binding that
+      // never set them stays minimal and reads back with the same defaults.
       const InputBinding defaults;
       if (binding.pad != defaults.pad) binding_json["pad"] = binding.pad;
       if (binding.device == InputDevice::GamepadAxis) {
@@ -323,46 +326,118 @@ std::string InputActionMap::save_to_json() const {
     actions_json.push_back(std::move(action_json));
   }
   root["actions"] = std::move(actions_json);
-  return root.dump(2);
+  return canonical::dump(root);
 }
 
-std::expected<InputActionMap, std::string> InputActionMap::load_from_json(const std::string& text) {
-  nlohmann::json root;
+std::string InputActionMap::save_to_json() const { return save_canonical_json().value_or(std::string()); }
+
+namespace {
+
+// Legacy (lenient) files clamp out-of-range values as before; strict reads
+// reject them so nothing changes silently.
+int ranged_int(const nlohmann::json& j, const char* key, int fallback, int lo, int hi, bool strict,
+               const std::string& where) {
+  if (!j.contains(key)) return fallback;
+  const int value = canonical::as_int(j[key], where + " '" + key + "'");
+  if (value < lo || value > hi) {
+    if (strict) canonical::fail(std::format("{} '{}': {} is outside {}..{}", where, key, value, lo, hi));
+    return std::clamp(value, lo, hi);
+  }
+  return value;
+}
+
+float ranged_float(const nlohmann::json& j, const char* key, float fallback, float lo, float hi, bool strict,
+                   const std::string& where) {
+  if (!j.contains(key)) return fallback;
+  const float value = canonical::as_float(j[key], where + " '" + key + "'");
+  if (value < lo || value > hi) {
+    if (strict) canonical::fail(std::format("{} '{}': {} is outside {}..{}", where, key, value, lo, hi));
+    return std::clamp(value, lo, hi);
+  }
+  return value;
+}
+
+std::expected<InputActionMap, std::string> load_input_map(const std::string& text, bool strict_unknown) {
+  auto parsed = canonical::parse_strict(text);
+  if (!parsed) return std::unexpected(std::format("malformed input map JSON: {}", parsed.error()));
   try {
-    root = nlohmann::json::parse(text);
-  } catch (const nlohmann::json::parse_error& ex) {
-    return std::unexpected(std::format("malformed input map JSON: {}", ex.what()));
-  }
-
-  if (!root.contains("format_version") || !root["format_version"].is_number_integer()) {
-    return std::unexpected(std::string("input map JSON is missing a numeric 'format_version' field"));
-  }
-  const int file_version = root["format_version"].get<int>();
-  if (file_version != kInputFormatVersion) {
-    return std::unexpected(std::format("unsupported input map format_version {} (this build only supports version {})",
-                                        file_version, kInputFormatVersion));
-  }
-
-  InputActionMap map;
-  for (const auto& action_json : root.value("actions", nlohmann::json::array())) {
-    InputAction action;
-    action.name = action_json.value("name", std::string());
-    for (const auto& binding_json : action_json.value("bindings", nlohmann::json::array())) {
-      auto device = device_from_string(binding_json.value("device", std::string()));
-      if (!device) return std::unexpected(device.error());
-      InputBinding binding;
-      binding.device = *device;
-      binding.code = binding_json.value("code", 0);
-      binding.pad = std::clamp(binding_json.value("pad", -1), -1, kMaxGamepads - 1);
-      binding.axis_sign = std::clamp(binding_json.value("axis_sign", 0), -1, 1);
-      binding.deadzone = std::clamp(binding_json.value("deadzone", binding.deadzone), 0.0f, 0.99f);
-      binding.threshold = std::clamp(binding_json.value("threshold", binding.threshold), 0.0f, 1.0f);
-      action.bindings.push_back(binding);
+    const nlohmann::json& root = *parsed;
+    canonical::require_object(root, "input map");
+    const canonical::Dialect dialect = canonical::detect_dialect(root, kInputFormat, "input map");
+    const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
+    if (strict) {
+      if (dialect == canonical::Dialect::V2) {
+        canonical::require_only_keys(root, {"format", "version", "actions"}, "input map");
+      } else {
+        canonical::require_only_keys(root, {"format_version", "actions"}, "input map");
+      }
     }
-    action.player = std::clamp(action_json.value("player", -1), -1, kMaxGamepads - 1);
-    map.set_action(std::move(action));
+    InputActionMap map;
+    if (!root.contains("actions")) return map;
+    if (!root["actions"].is_array()) return std::unexpected(std::string("input map: 'actions' must be an array"));
+    for (std::size_t a = 0; a < root["actions"].size(); ++a) {
+      const auto& action_json = root["actions"][a];
+      const std::string where = std::format("input action {}", a);
+      canonical::require_object(action_json, where);
+      if (strict) canonical::require_only_keys(action_json, {"name", "bindings", "player"}, where);
+      InputAction action;
+      if (action_json.contains("name")) action.name = canonical::as_string(action_json["name"], where + " 'name'");
+      if (strict) {
+        if (action.name.empty()) return std::unexpected(std::format("input map: {} has an empty name", where));
+        for (const auto& existing : map.actions()) {
+          if (existing.name == action.name) {
+            return std::unexpected(std::format("input map: duplicate action '{}'", action.name));
+          }
+        }
+      }
+      if (action_json.contains("bindings")) {
+        if (!action_json["bindings"].is_array()) {
+          return std::unexpected(std::format("input map: {} 'bindings' must be an array", where));
+        }
+        for (std::size_t b = 0; b < action_json["bindings"].size(); ++b) {
+          const auto& binding_json = action_json["bindings"][b];
+          const std::string bwhere = std::format("{} binding {}", where, b);
+          canonical::require_object(binding_json, bwhere);
+          if (strict) {
+            canonical::require_only_keys(binding_json, {"device", "code", "pad", "axis_sign", "deadzone", "threshold"},
+                                         bwhere);
+          }
+          auto device = device_from_string(
+              binding_json.contains("device") ? canonical::as_string(binding_json["device"], bwhere + " 'device'")
+                                              : std::string());
+          if (!device) return std::unexpected(device.error());
+          InputBinding binding;
+          binding.device = *device;
+          if (binding_json.contains("code")) binding.code = canonical::as_int(binding_json["code"], bwhere + " 'code'");
+          binding.pad = ranged_int(binding_json, "pad", -1, -1, kMaxGamepads - 1, strict, bwhere);
+          binding.axis_sign = ranged_int(binding_json, "axis_sign", 0, -1, 1, strict, bwhere);
+          binding.deadzone = ranged_float(binding_json, "deadzone", binding.deadzone, 0.0f, 0.99f, strict, bwhere);
+          binding.threshold = ranged_float(binding_json, "threshold", binding.threshold, 0.0f, 1.0f, strict, bwhere);
+          if (strict && binding.device != InputDevice::GamepadAxis &&
+              (binding_json.contains("axis_sign") || binding_json.contains("deadzone") ||
+               binding_json.contains("threshold"))) {
+            return std::unexpected(std::format("input map: {}: axis fields only apply to gamepad_axis", bwhere));
+          }
+          action.bindings.push_back(binding);
+        }
+      }
+      action.player = ranged_int(action_json, "player", -1, -1, kMaxGamepads - 1, strict, where);
+      map.set_action(std::move(action));
+    }
+    return map;
+  } catch (const canonical::SchemaError& ex) {
+    return std::unexpected(std::format("input map: {}", ex.what()));
   }
-  return map;
+}
+
+}  // namespace
+
+std::expected<InputActionMap, std::string> InputActionMap::load_from_json(const std::string& text) {
+  return load_input_map(text, false);
+}
+
+std::expected<InputActionMap, std::string> InputActionMap::load_from_json_strict(const std::string& text) {
+  return load_input_map(text, true);
 }
 
 std::vector<InputBinding> detect_active_inputs(const InputBackend& backend) {

@@ -34,6 +34,8 @@ class ARCANE_API RigidBody2D : public Component {
   // Runtime-only (not serialized): set by PhysicsWorld::step to true when the body rests on something below it
   // (a touching contact whose normal points mostly up). Used by PlatformerController2D.
   bool grounded = false;
+  // Runtime-only: remaining time to ignore one-way platforms.
+  float drop_through_time = 0.0f;
 };
 
 // A collision shape attached to the same node as a RigidBody2D. A node with
@@ -51,6 +53,8 @@ class ARCANE_API Collider2D : public Component {
   float friction = 0.6f;
   float restitution = 0.0f;
   bool is_sensor = false;
+  // One-way surfaces support bodies from above; intended for static, unrotated boxes.
+  bool one_way = false;
 };
 
 ARCANE_API void register_physics_components(ComponentRegistry& registry);

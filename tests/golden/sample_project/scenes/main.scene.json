@@ -1,0 +1,270 @@
+{
+  "format": "arcane.scene",
+  "next_id": 13,
+  "nodes": [
+    {
+      "components": [
+        {
+          "id": 2,
+          "properties": {
+            "primary": true,
+            "zoom": 1.0
+          },
+          "type": "Camera"
+        }
+      ],
+      "id": 1,
+      "name": "MainCamera",
+      "parent_id": 0,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 4,
+          "properties": {
+            "height": 48.0,
+            "texture": 13743565431654770875,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 32.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 6,
+          "properties": {
+            "body_type": 2,
+            "fixed_rotation": true,
+            "gravity_scale": 1.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 7,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 48.0,
+            "is_sensor": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 32.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 8,
+          "properties": {
+            "air_control": 0.6,
+            "coyote_time": 0.1,
+            "down_action": "move_down",
+            "drop_duration": 0.5,
+            "fall_gravity_scale": 1.6,
+            "jump_action": "jump",
+            "jump_buffer_time": 0.1,
+            "jump_cut": 0.5,
+            "jump_speed": 380.0,
+            "left_action": "move_left",
+            "max_fall_speed": 700.0,
+            "max_speed": 200.0,
+            "right_action": "move_right",
+            "run_acceleration": 1400.0,
+            "run_deceleration": 1800.0
+          },
+          "type": "PlatformerController2D"
+        }
+      ],
+      "id": 3,
+      "name": "Player",
+      "parent_id": 0,
+      "position": [
+        200.0,
+        120.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 10,
+          "properties": {
+            "collide": true,
+            "height": 3,
+            "layers": [
+              [
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  1,
+                  1,
+                  1,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0,
+                  0
+                ],
+                [
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1,
+                  1
+                ]
+              ]
+            ],
+            "solid_tiles": "1",
+            "tile_height": 32.0,
+            "tile_width": 32.0,
+            "tileset": 1501505004639199634,
+            "width": 20
+          },
+          "type": "Tilemap"
+        }
+      ],
+      "id": 9,
+      "name": "Ground",
+      "parent_id": 0,
+      "position": [
+        0.0,
+        200.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 12,
+          "properties": {
+            "angle_max": 290.0,
+            "angle_min": 250.0,
+            "atlas_columns": 1,
+            "atlas_rows": 1,
+            "burst_count": 0,
+            "emitting": true,
+            "end_color": [
+              1.0,
+              0.2,
+              0.0,
+              0.0
+            ],
+            "end_size": 1.0,
+            "frame": 0,
+            "gravity": [
+              0.0,
+              120.0
+            ],
+            "lifetime_max": 1.0,
+            "lifetime_min": 0.6,
+            "max_particles": 128,
+            "rate": 30.0,
+            "seed": 7,
+            "speed_max": 70.0,
+            "speed_min": 30.0,
+            "start_color": [
+              1.0,
+              0.8,
+              0.2,
+              1.0
+            ],
+            "start_size": 6.0,
+            "texture": 0,
+            "world_space": true
+          },
+          "type": "ParticleEmitter"
+        }
+      ],
+      "id": 11,
+      "name": "Sparks",
+      "parent_id": 0,
+      "position": [
+        200.0,
+        180.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "version": 2
+}

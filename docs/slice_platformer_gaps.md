@@ -23,7 +23,7 @@ Gaps found while building it (most important first). Each has the workaround use
    and the collider is not mirrored.
 8. **No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)
    assumes the 800-wide design view.
-9. **No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. No one-way platforms (FE5).
+9. **No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. One-way platforms: done in FE17 (`Collider2D::one_way`).
 10. **No animation state machine / events**; clip choice is hand-coded from velocity.
 11. **Player has no module render hook with scene/renderer access**, and `arcane_player` builds `TilesetCache` from
     `list_animation_clip_assets` (works only because both are `.json`): a dedicated tileset catalog is missing.

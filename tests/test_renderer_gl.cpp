@@ -3,6 +3,8 @@
 // display/driver is available, so headless CI without Xvfb still passes.
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 #include "arcane/hud.hpp"
@@ -28,6 +30,21 @@ int main() {
 
   auto renderer = arcane::SpriteRenderer::create();
   ARCANE_ASSERT_TRUE(renderer.has_value());
+
+  // Exercise native filesystem paths, including Windows paths outside the
+  // current ANSI code page. Close the file before loading and removing it.
+  const auto image_path = std::filesystem::temp_directory_path() / std::filesystem::path(u8"arcane_\u6d4b\u8bd5_texture.ppm");
+  {
+    std::ofstream image(image_path, std::ios::binary);
+    image << "P6\n1 1\n255\n";
+    const char pixel[] = {static_cast<char>(255), 0, 0};
+    image.write(pixel, sizeof(pixel));
+    ARCANE_ASSERT_TRUE(image.good());
+  }
+  auto file_texture = arcane::Texture::load_from_file(image_path);
+  std::filesystem::remove(image_path);
+  ARCANE_ASSERT_TRUE(file_texture.has_value());
+  ARCANE_ASSERT_TRUE(file_texture->width() == 1 && file_texture->height() == 1);
 
   std::vector<unsigned char> red_pixels(64 * 64 * 4);
   for (size_t i = 0; i < red_pixels.size(); i += 4) {

@@ -43,6 +43,12 @@ class ARCANE_API AudioSystem {
   // see docs/decisions.md.
   static std::expected<AudioSystem, std::string> create(bool null_backend);
 
+  // Prefer a device, falling back to the device-free backend on failure.
+  // The factory argument permits deterministic headless fallback tests.
+  using Factory = std::expected<AudioSystem, std::string> (*)(bool);
+  static std::expected<AudioSystem, std::string> create_preferred(
+      bool force_null, std::string& diagnostic, Factory factory = &AudioSystem::create);
+
   AudioSystem(AudioSystem&&) noexcept;
   AudioSystem& operator=(AudioSystem&&) noexcept;
   AudioSystem(const AudioSystem&) = delete;
@@ -55,9 +61,11 @@ class ARCANE_API AudioSystem {
   // arcane_editor/audio_wiring.hpp) and for gameplay-triggered one-shot SFX
   // via active_audio_system() below. There is no handle to later stop or
   // adjust this specific sound -- a looping AudioSource plays until the
-  // engine/scene tears down; see docs/decisions.md.
+  // stop_all() is called or the system tears down; see docs/decisions.md.
   void play(const std::filesystem::path& file, float volume = 1.0f, bool loop = false, AudioBus bus = AudioBus::Sfx);
 
+  // Stop and release all active sounds, including loops.
+  void stop_all() noexcept;
   void set_bus_volume(AudioBus bus, float volume) noexcept;
   float bus_volume(AudioBus bus) const noexcept;
 

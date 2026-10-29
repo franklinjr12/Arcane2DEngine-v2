@@ -46,7 +46,11 @@ inline constexpr float hud_font_em = 8.0f;
 // Size of `text` in layout units when drawn at `font_scale`.
 ARCANE_API void hud_text_size(const std::string& text, float font_scale, float& out_w, float& out_h) noexcept;
 
+// Every element carries a stable string `id` (unique within one Hud; button
+// ids are also what game code listens for). Elements built in code may leave
+// it empty: saving assigns "<kind>_<n>" ids (Hud::ensure_unique_ids).
 struct HudText {
+  std::string id;
   std::string text;
   HudAnchor anchor = HudAnchor::TopLeft;
   float offset_x = 0.0f, offset_y = 0.0f;
@@ -55,6 +59,11 @@ struct HudText {
 };
 
 struct HudImage {
+  std::string id;
+  // The persisted reference: a project texture asset id (0 = none). `texture`
+  // is the runtime pointer resolved from it (or set directly by game code);
+  // it is never saved.
+  std::uint64_t texture_asset = 0;
   const Texture* texture = nullptr;
   UvRect uv{};
   HudAnchor anchor = HudAnchor::TopLeft;
@@ -64,6 +73,7 @@ struct HudImage {
 };
 
 struct HudProgressBar {
+  std::string id;
   HudAnchor anchor = HudAnchor::TopLeft;
   float offset_x = 0.0f, offset_y = 0.0f;
   float width = 200.0f, height = 16.0f;
@@ -112,10 +122,19 @@ class ARCANE_API Hud {
   bool clicked(std::string_view id) const;
   const std::vector<std::string>& clicks() const noexcept { return clicks_; }
 
-  // Layout only (text, progress bars, buttons; images reference runtime
-  // textures and are not serialized). Runtime button state is not saved.
+  // Gives every element with an empty or repeated id a fresh "<kind>_<n>" id
+  // (text_1, image_1, bar_1, button_1, ... skipping ids in use), in order.
+  void ensure_unique_ids();
+
+  // Canonical `arcane.hud` v2 (docs/formats/hud.md): layout, ids and image
+  // asset references; runtime state (button state, focus, texture pointers)
+  // is not saved. Legacy format_version 1 still loads.
+  std::expected<std::string, std::string> save_canonical_json() const;
+  // Convenience wrapper; returns an empty string on failure.
   std::string save_to_json() const;
   static std::expected<Hud, std::string> load_from_json(const std::string& text);
+  // Legacy files are checked as strictly as v2 ones; used by migration.
+  static std::expected<Hud, std::string> load_from_json_strict(const std::string& text);
 
  private:
   friend class HudInput;
