@@ -7,8 +7,8 @@ as registry commands through `arcane_tooling::EditSession` with undo/redo,
 drag coalescing and save-point dirty tracking; `test_edit_session` lints
 `editor_main.cpp` for direct scene writes. **AF6B update:** tilemap layer add, viewport brush, erase, rectangle fill and terrain brush now run as
 `tilemap.*` commands through `EditSession` (one drag = one undo step via coalescing; Undo/Redo and Ctrl+Z use the
-command history). The tileset panel still edits a draft and saves the file directly; `tileset.*` commands cover
-the same operations for the CLI, so GUI/CLI parity there is not yet reached. The remaining direct paths are the tileset
+command history). The tileset panel still edits a draft in memory, but its Save now writes the file through
+`tileset.create` (overwrite), `tileset.set_tile` and `tileset.set_rule` (not undoable per field). The remaining direct paths are the tileset
 panel, clip/HUD/input (AF7) and project-level properties (AF8).
 
 Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.

@@ -293,4 +293,5 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - `TilePaintTool::terrain_cell` (cell-addressed core of the terrain brush) is shared by the GUI and `tilemap.terrain_paint`.
 - Editor: Tilemap panel brush/erase/rectangle/terrain/Add layer/Undo/Redo run through `EditSession` (the separate TilePaintTool undo stack is no longer used by the editor).
 - Tests: `test_tilemap_commands` (cells + exact inverses, CSV round trip and rejects, terrain neighbour updates, rule validation, stroke undo/redo via EditSession, topdown sample tilemap with its module). `scripts/build-and-test.sh`: gcc PASS, clang ASan/UBSan PASS, mingw build PASS.
-- Gaps: the Tileset panel still edits a draft and writes the file directly (CLI `tileset.*` covers the same operations; no GUI/CLI parity claim); tileset commands write at once (no `--dry-run`); the editor tile-paint GUI was not exercised by an automated test (only the command path it calls). UNTESTED on native Windows/MSVC.
+- Editor Tileset panel: Save now runs `tileset.create` (overwrite) + `set_tile` + `set_rule`; field edits before Save are an in-memory draft (no per-field undo).
+- Gaps: tileset commands write at once (no `--dry-run`); the editor tile-paint GUI was not exercised by an automated test (only the command path it calls). UNTESTED on native Windows/MSVC.

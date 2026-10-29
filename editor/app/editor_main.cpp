@@ -927,9 +927,28 @@ int main(int argc, char** argv) {
           ImGui::TreePop();
         }
         if (ImGui::Button("Save tileset")) {
-          std::ofstream out(tileset_path, std::ios::binary | std::ios::trunc);
-          out << arcane::save_tileset_to_json(tileset_draft); out.close();
-          tileset_message = out ? "Saved." : "Could not save tileset.";
+          // The draft is written by the same tileset.* commands the CLI uses: create (overwrite), then tile flags and rules.
+          using arcane::tooling::Json;
+          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
+          std::string failure;
+          auto step = [&](const char* command, Json call_args) {
+            if (!failure.empty()) return;
+            auto done = commands.execute(**context, {command, std::move(call_args)});
+            if (!done) failure = done.error().message;
+          };
+          step("tileset.create", {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
+                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
+                                  {"tile_count", tileset_draft.tile_count}, {"overwrite", true}});
+          for (std::size_t i = 0; i < tileset_draft.tiles.size(); ++i) {
+            const auto& tile = tileset_draft.tiles[i];
+            if (tile.solid || tile.terrain != 0) {
+              step("tileset.set_tile", {{"tileset", file}, {"tile", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
+            }
+          }
+          for (const auto& rule : tileset_draft.terrains) {
+            step("tileset.set_rule", {{"tileset", file}, {"terrain", rule.terrain}, {"tiles", rule.tiles}});
+          }
+          tileset_message = failure.empty() ? "Saved." : "Could not save tileset: " + failure;
           tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
           tilesets.refresh();
         }
