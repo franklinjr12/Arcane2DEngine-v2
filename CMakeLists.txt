@@ -110,6 +110,7 @@ add_library(arcane_runtime SHARED
   engine/src/node.cpp
   engine/src/scene.cpp
   engine/src/scene_io.cpp
+  engine/src/prefab.cpp
   engine/src/component_registry.cpp
   engine/src/property.cpp
   engine/src/project.cpp
