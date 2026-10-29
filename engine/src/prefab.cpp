@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <variant>
 
+#include "arcane/canonical_json.hpp"
 #include "canonical_json.hpp"
 
 namespace arcane {
@@ -67,14 +68,7 @@ bool type_matches(PropertyType type, const PropertyValue& value) {
   return false;
 }
 
-bool same_value(const PropertyValue& a, const PropertyValue& b) {
-  if (a.index() != b.index()) return false;
-  if (const auto* ca = std::get_if<Color>(&a)) {
-    const Color& cb = std::get<Color>(b);
-    return ca->r == cb.r && ca->g == cb.g && ca->b == cb.b && ca->a == cb.a;
-  }
-  return a == b;
-}
+bool same_value(const PropertyValue& a, const PropertyValue& b) { return a == b; }
 
 const PropertyDescriptor* find_descriptor(const ComponentRegistry& registry, const std::string& component,
                                           const std::string& property) {
@@ -215,6 +209,28 @@ std::expected<Node*, std::string> instantiate_prefab(Scene& scene, const Prefab&
   return root;
 }
 
+std::expected<Prefab, std::string> load_prefab_file(const std::filesystem::path& project_dir,
+                                                    const std::string& asset, const ComponentRegistry& registry) {
+  try {
+    canonical::require_project_path(asset, false, "prefab asset");
+  } catch (const std::exception& e) {
+    return std::unexpected(std::string(e.what()));
+  }
+  auto text = read_text_file(project_dir / std::filesystem::path(asset));
+  if (!text) return std::unexpected(text.error());
+  auto prefab = Prefab::from_json(*text, registry);
+  if (!prefab) return std::unexpected(std::format("{}: {}", asset, prefab.error()));
+  return prefab;
+}
+
+std::expected<Node*, std::string> spawn_prefab(Scene& scene, const std::filesystem::path& project_dir,
+                                               const std::string& asset, Node* parent,
+                                               const ComponentRegistry& registry) {
+  auto prefab = load_prefab_file(project_dir, asset, registry);
+  if (!prefab) return std::unexpected(prefab.error());
+  return instantiate_prefab(scene, *prefab, asset, parent, registry);
+}
+
 std::expected<void, std::string> set_prefab_override(Node& instance_root, const Prefab& prefab, NodeId local_id,
                                                      const std::string& component, const std::string& property,
                                                      const PropertyValue& value, const ComponentRegistry& registry) {
@@ -244,6 +260,17 @@ std::expected<void, std::string> set_prefab_override(Node& instance_root, const 
     instance_root.set_prefab_link(std::move(link));
   }
   return {};
+}
+
+std::expected<void, std::string> revert_prefab_override(Node& instance_root, const Prefab& prefab, NodeId local_id,
+                                                        const std::string& component, const std::string& property,
+                                                        const ComponentRegistry& registry) {
+  const Node* source = prefab.scene().find_node(local_id);
+  if (!source) return std::unexpected(std::format("prefab has no node with local id {}", local_id));
+  const auto base = read_value(*source, component, property, registry);
+  if (!base) return std::unexpected(base.error());
+  // Setting the prefab's own value writes it and drops the override record.
+  return set_prefab_override(instance_root, prefab, local_id, component, property, *base, registry);
 }
 
 bool clear_prefab_override(Node& instance_root, NodeId local_id, const std::string& component,

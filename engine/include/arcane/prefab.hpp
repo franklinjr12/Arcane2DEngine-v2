@@ -1,6 +1,7 @@
 #pragma once
 
 #include <expected>
+#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -35,6 +36,17 @@ class ARCANE_API Prefab {
   Scene scene_;
 };
 
+// Reads `asset` (a project-relative `*.prefab.json` path) below `project_dir`.
+ARCANE_API std::expected<Prefab, std::string> load_prefab_file(const std::filesystem::path& project_dir,
+                                                               const std::string& asset,
+                                                               const ComponentRegistry& registry);
+
+// Runtime spawn: loads the prefab and instantiates it once. To spawn many
+// copies load the prefab once and call instantiate_prefab per copy.
+ARCANE_API std::expected<Node*, std::string> spawn_prefab(Scene& scene, const std::filesystem::path& project_dir,
+                                                          const std::string& asset, Node* parent,
+                                                          const ComponentRegistry& registry);
+
 // Creates a fresh copy of `prefab` in `scene` under `parent` (nullptr = a
 // root) with new scene IDs, links every new node to `asset` (the
 // project-relative prefab path) and remaps EntityId properties between
@@ -53,6 +65,13 @@ ARCANE_API std::expected<void, std::string> set_prefab_override(Node& instance_r
                                                                 const std::string& property,
                                                                 const PropertyValue& value,
                                                                 const ComponentRegistry& registry);
+
+// Restores the prefab's value for one property and drops its override record.
+// Fails for the same reasons as set_prefab_override.
+ARCANE_API std::expected<void, std::string> revert_prefab_override(Node& instance_root, const Prefab& prefab,
+                                                                   NodeId local_id, const std::string& component,
+                                                                   const std::string& property,
+                                                                   const ComponentRegistry& registry);
 
 // Removes the override record (the instance keeps its current value).
 ARCANE_API bool clear_prefab_override(Node& instance_root, NodeId local_id, const std::string& component,

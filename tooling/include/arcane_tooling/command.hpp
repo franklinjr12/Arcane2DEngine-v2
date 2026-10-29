@@ -100,6 +100,9 @@ class CommandHistory {
 // Registers the property commands: prop.list, prop.get, prop.set.
 void register_property_commands(CommandRegistry& registry);
 
+// Registers prefab.save, instantiate, remove, override, revert, break_link, relink, info.
+void register_prefab_commands(CommandRegistry& registry);
+
 // Registers audio.backend (backend selection diagnostics; opens no device by default).
 void register_audio_commands(CommandRegistry& registry);
 

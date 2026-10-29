@@ -188,8 +188,9 @@ PrefabLink prefab_link_from_json(const json& j, const ComponentRegistry& registr
   link.asset = canonical::as_string(j["asset"], where + " prefab 'asset'");
   link.instance_id = canonical::as_uint(j["instance_id"], where + " prefab 'instance_id'");
   link.local_id = canonical::as_uint(j["local_id"], where + " prefab 'local_id'");
-  if (link.asset.empty() || link.instance_id == 0 || link.local_id == 0) {
-    canonical::fail(std::format("{} 'prefab': asset, instance_id and local_id must be set", where));
+  canonical::require_project_path(link.asset, false, where + " prefab 'asset'");
+  if (link.instance_id == 0 || link.local_id == 0) {
+    canonical::fail(std::format("{} 'prefab': instance_id and local_id must be set", where));
   }
   if (!j.contains("overrides")) return link;
   if (!j["overrides"].is_array()) canonical::fail(where + " prefab 'overrides' must be an array");
