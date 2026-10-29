@@ -1,0 +1,107 @@
+#pragma once
+
+#include <deque>
+#include <expected>
+#include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "arcane_tooling/context.hpp"
+#include "arcane_tooling/error.hpp"
+
+namespace arcane::tooling {
+
+// A command call: registered name plus JSON arguments.
+struct Invocation {
+  std::string command;
+  Json args = Json::object();
+};
+
+// What a command returns: the JSON result for the caller and, when it
+// changed something, the invocation that restores the previous state.
+// `inverse` is empty for reads and for no-op (idempotent) calls.
+struct CommandResult {
+  Json value = Json::object();
+  std::optional<Invocation> inverse;
+};
+
+using CommandFn = std::function<std::expected<CommandResult, ToolError>(ProjectContext&, const Json& args)>;
+
+// Static description of a command. `args_schema` is a small JSON-Schema
+// subset (type, properties, required, additionalProperties, minimum,
+// maximum, enum); a property without "type" accepts any JSON value (typed
+// by the command itself, e.g. a property value).
+struct CommandSpec {
+  std::string name;  // dotted, e.g. "prop.set"
+  std::string summary;
+  Json args_schema;
+  Json result_schema;
+  bool mutating = false;
+};
+
+struct ExecuteOptions {
+  bool persist = false;  // mutating commands: save to disk; roll back in memory if saving fails
+  bool dry_run = false;  // validate and run, then restore the previous state; nothing is saved
+};
+
+// Name -> command table shared by the CLI, batch runner and (later) the
+// editor. No ImGui or window dependencies.
+class CommandRegistry {
+ public:
+  void add(CommandSpec spec, CommandFn fn);
+
+  const CommandSpec* find(const std::string& name) const;
+  std::vector<const CommandSpec*> list() const;  // sorted by name
+
+  // Validates `args` against the schema, runs the command and applies
+  // `options`. On any error the in-memory project is as before the call.
+  std::expected<CommandResult, ToolError> execute(ProjectContext& context, const Invocation& call,
+                                                  const ExecuteOptions& options = {}) const;
+
+ private:
+  struct Entry {
+    CommandSpec spec;
+    CommandFn fn;
+  };
+  std::map<std::string, Entry> entries_;
+};
+
+// Checks `value` against the schema subset above; the error path is a
+// JSON pointer into `value` (e.g. "/node").
+std::expected<void, ToolError> validate_args(const Json& schema, const Json& value);
+
+// Undo/redo for edits made through commands (the GUI's model; the CLI
+// persists immediately and keeps no history). Entries hold the forward and
+// inverse invocations, so undo/redo are ordinary command executions.
+class CommandHistory {
+ public:
+  // Records a successful execution; clears the redo stack. Calls with no
+  // inverse (reads, no-ops) are ignored.
+  void record(const Invocation& forward, const CommandResult& result);
+
+  bool can_undo() const noexcept { return !undo_.empty(); }
+  bool can_redo() const noexcept { return !redo_.empty(); }
+  std::size_t undo_depth() const noexcept { return undo_.size(); }
+
+  std::expected<void, ToolError> undo(const CommandRegistry& registry, ProjectContext& context);
+  std::expected<void, ToolError> redo(const CommandRegistry& registry, ProjectContext& context);
+
+ private:
+  struct Entry {
+    Invocation forward;
+    Invocation inverse;
+  };
+  std::deque<Entry> undo_;
+  std::deque<Entry> redo_;
+};
+
+// Registers the property commands: prop.list, prop.get, prop.set.
+void register_property_commands(CommandRegistry& registry);
+
+// Node / component selectors shared by commands: "id:42" or
+// "path:/Root/Player" (must resolve to exactly one node).
+std::expected<Node*, ToolError> resolve_node(ProjectContext& context, const std::string& selector);
+
+}  // namespace arcane::tooling
