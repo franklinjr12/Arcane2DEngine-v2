@@ -46,7 +46,10 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 
 Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
 
+AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. No `arcane` CLI exists yet, so CLI checks cannot be run.
+
 **2. What you can visibly see**
+- AF9 prerequisite: saving reports external edits detected in the project or scene since opening or the last save.
 - AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
 - AF7 adds no visible feature: clip, HUD and input commands and panel routing remain blocked by incomplete command and undo foundations.
 - AF6 prerequisite work adds a strict project-opening API for future tooling; it has no new editor screen or CLI command. `test_editor_project` checks that strict loading refuses an unknown legacy module property without changing the file.
@@ -65,7 +68,8 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
-- AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard does not detect later external changes or make project and scene writes transactional.
+- AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
+- AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
 - AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
@@ -75,7 +79,7 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
 - `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
-- Saving a compatible legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Save now refuses unknown fields detected in the project and scene at open; it does not detect external changes after opening.
+- Saving a compatible legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Save now refuses unknown fields detected in the project and scene at open; it detects ordinary external changes before saving but cannot prevent a race after its check.
 
 ---
 
@@ -145,3 +149,7 @@ ProjectSession and module-aware ProjectRuntime can opt into strict legacy scene 
 ## AF8 prerequisite progress (partial)
 
 Compatible-loaded ProjectSession saves refuse unknown legacy project or scene data instead of silently discarding it. Headless tests exercise a real module property and a project field, preserving the original file and dirty state. The editor action inventory now classifies more widgets, but registry/CLI coverage and enforcement remain absent. `scripts/build-and-test.sh`: GCC Debug and Clang ASan/UBSan CTest passed; MinGW cross-build passed. **UNTESTED on native Windows/MSVC.**
+
+## AF9 prerequisite progress (partial)
+
+ProjectSession checks the bytes of both inputs before saving and rejects detected external changes, leaving the dirty flag set. This is not a lock and does not provide transactional multi-file writes. AF3–AF8 and AF9 command/CLI acceptance remain incomplete. **UNTESTED on native Windows/MSVC.**

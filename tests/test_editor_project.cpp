@@ -187,6 +187,32 @@ void test_compatible_project_unknown_fields_cannot_be_saved() {
   std::filesystem::remove_all(dir);
 }
 
+void test_save_rejects_external_edits() {
+  arcane::ComponentRegistry registry;
+  arcane::register_builtin_components(registry);
+  const auto dir = std::filesystem::temp_directory_path() / "arcane_test_external_edits";
+  std::filesystem::remove_all(dir);
+  auto created = arcane::editor::ProjectSession::create(dir, "test", registry);
+  ARCANE_ASSERT_TRUE(created.has_value());
+  auto opened = arcane::editor::ProjectSession::open(dir, registry);
+  ARCANE_ASSERT_TRUE(opened.has_value());
+  const auto scene_path = opened->main_scene_path();
+  const auto project_path = dir / "project.json";
+  { std::ofstream out(scene_path, std::ios::app); out << " "; }
+  opened->mark_dirty();
+  ARCANE_ASSERT_TRUE(!opened->save(registry).has_value());
+  ARCANE_ASSERT_TRUE(opened->dirty());
+  auto reopened = arcane::editor::ProjectSession::open(dir, registry);
+  ARCANE_ASSERT_TRUE(reopened.has_value());
+  { std::ofstream out(project_path, std::ios::app); out << " "; }
+  ARCANE_ASSERT_TRUE(!reopened->save(registry).has_value());
+  std::ifstream in(project_path);
+  const std::string contents((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  in.close();
+  ARCANE_ASSERT_TRUE(!contents.empty() && contents.back() == ' ');
+  std::filesystem::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -195,5 +221,6 @@ int main() {
   test_asset_catalog_ids_are_stable_and_listable();
   test_strict_runtime_rejects_unknown_legacy_module_property();
   test_compatible_project_unknown_fields_cannot_be_saved();
+  test_save_rejects_external_edits();
   return 0;
 }

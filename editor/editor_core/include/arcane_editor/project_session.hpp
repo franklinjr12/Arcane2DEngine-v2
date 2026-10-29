@@ -3,6 +3,7 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <optional>
 
 #include "arcane/component_registry.hpp"
 #include "arcane/project.hpp"
@@ -61,6 +62,9 @@ class ProjectSession {
   // Compatible loading may discard fields that this engine does not know.
   // Keep the strict-load diagnostic so Save cannot silently erase them.
   std::string unsafe_save_reason_;
+  std::optional<std::string> project_revision_;
+  std::optional<std::string> scene_revision_;
+  std::filesystem::path scene_revision_path_;
 };
 
 }  // namespace arcane::editor

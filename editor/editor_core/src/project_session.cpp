@@ -37,6 +37,9 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   if (!strict_project && session.unsafe_save_reason_.empty()) {
     session.unsafe_save_reason_ = "project.json: " + strict_project.error();
   }
+  session.project_revision_ = *project_text;
+  session.scene_revision_ = *scene_text;
+  session.scene_revision_path_ = session.main_scene_path();
   session.dirty_ = false;
   return session;
 }
@@ -79,16 +82,42 @@ std::expected<void, std::string> ProjectSession::save(const ComponentRegistry& r
     return std::unexpected(main_scene_path().string() + ": " + scene_text.error());
   }
 
+  // Check both inputs before either write. This detects edits since open or the
+  // last successful write; it is not a lock against a simultaneous writer.
+  auto check_revision = [](const std::filesystem::path& path,
+                           const std::optional<std::string>& revision) -> std::expected<void, std::string> {
+    std::error_code status_error;
+    const bool exists = std::filesystem::exists(path, status_error);
+    if (status_error) return std::unexpected(path.string() + ": " + status_error.message());
+    if (!revision) {
+      if (exists) return std::unexpected(path.string() + ": file appeared since opening project");
+      return {};
+    }
+    auto current = read_text_file(path);
+    if (!current) return std::unexpected(current.error());
+    if (*current != *revision) return std::unexpected(path.string() + ": file changed since opening project");
+    return {};
+  };
+  if (scene_revision_ && scene_revision_path_ != main_scene_path()) {
+    return std::unexpected("Main scene path changed since opening project; reopen before saving");
+  }
+  if (auto checked = check_revision(project_dir_ / "project.json", project_revision_); !checked) return checked;
+  if (auto checked = check_revision(main_scene_path(), scene_revision_); !checked) return checked;
+
   auto wrote_project = write_text_file_atomic(project_dir_ / "project.json", *project_text);
   if (!wrote_project) {
     return std::unexpected(wrote_project.error());
   }
+
+  project_revision_ = *project_text;
 
   auto wrote_scene = write_text_file_atomic(main_scene_path(), *scene_text);
   if (!wrote_scene) {
     return std::unexpected(wrote_scene.error());
   }
 
+  scene_revision_ = *scene_text;
+  scene_revision_path_ = main_scene_path();
   dirty_ = false;
   return {};
 }
