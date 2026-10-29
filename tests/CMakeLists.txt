@@ -201,3 +201,12 @@ target_link_libraries(test_tooling_commands PRIVATE arcane_tooling)
 target_compile_definitions(test_tooling_commands PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_tooling_commands COMMAND test_tooling_commands)
+
+# Registered module properties of the top-down slice through the registry.
+add_executable(test_topdown_commands test_topdown_commands.cpp)
+target_link_libraries(test_topdown_commands PRIVATE arcane_tooling)
+target_compile_definitions(test_topdown_commands PRIVATE
+  ARCANE_TOPDOWN_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/topdown_slice"
+  ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
+add_dependencies(test_topdown_commands topdown_slice_game)
+add_test(NAME test_topdown_commands COMMAND test_topdown_commands)
