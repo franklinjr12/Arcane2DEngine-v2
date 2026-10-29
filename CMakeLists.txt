@@ -153,6 +153,15 @@ target_include_directories(arcane_editor_core
   PRIVATE ${TP}/json)
 target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
 
+# --- authoring command registry (no GUI deps) ---------------------------------
+add_library(arcane_tooling STATIC
+  tooling/src/error.cpp
+  tooling/src/context.cpp
+  tooling/src/command.cpp
+  tooling/src/property_commands.cpp)
+target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
+target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
+
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)
   add_subdirectory(samples/platformer_slice_game)

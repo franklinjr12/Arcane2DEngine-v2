@@ -34,13 +34,20 @@ owners; see `WINDOWS_FIX.md`.
 
 ## Current authoring limitations
 
-The planned shared command registry and separate `arcane` CLI do not exist on
-this branch. There is no CLI quickstart, batch, generated command reference, or
-headless CLI run/export yet. Editor data mutations still bypass commands; see
-`docs/editor-command-inventory.md`. Do not claim command parity or invent CLI
-commands. The target contract is registry-backed GUI and CLI authoring and
-JSONL batches, with no MCP or JSON-RPC server. Implement missing prerequisites
-before building coverage gates around them.
+The shared command registry exists as the ImGui-free `arcane_tooling` library
+(`tooling/`, reference in `docs/commands.md`), but only property commands
+(`prop.list`, `prop.get`, `prop.set`) are registered. The separate `arcane` CLI
+does not exist on this branch: there is no CLI quickstart, batch, generated
+command reference, or headless CLI run/export yet. Editor data mutations still
+bypass commands; see `docs/editor-command-inventory.md`. Do not claim command
+parity or invent CLI commands. The target contract is registry-backed GUI and
+CLI authoring and JSONL batches, with no MCP or JSON-RPC server. Implement
+missing prerequisites before building coverage gates around them.
+
+New commands go in `tooling/src/`, are registered in a `register_*_commands`
+function, take a `ProjectContext&`, validate before mutating, and return the
+inverse invocation. Do not keep `Node*`/`Component*`/descriptors past the
+`ProjectContext` that produced them: the module is unloaded with the context.
 
 Editor and player can be run from `build-gcc/bin` with `--project` pointing to a
 project directory; `--module` overrides its native module path. The samples'
