@@ -121,7 +121,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
 - AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
-- KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
+- KI1B PASS: impulse/set-velocity API, clip reopen (editor "Open clip" button) and player clip hot-reload done; one-way platforms were already in (e464cfe, 718de87).
 - FE15 is partial: the missing `arcane` executable (registry `prop.*` now covers ArenaRules properties in C++ via `test_topdown_commands`) prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
 - FE14 is partial: the `arcane` CLI still does not exist, so audio settings (`prop.set` on `AudioSource`) and `audio.backend` diagnostics are registry commands reachable from C++/tests only. Real-device playback has not been manually verified.
 - FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
@@ -199,9 +199,9 @@ Canonical v2 project and scene with a registered native module, zero-gravity act
 
 FE15 validation: GCC Debug 43/43 CTest, Clang ASan/UBSan 43/43 CTest, MinGW cross-build passed; no MinGW executables were run.
 
-## KI1 — carry-over issues
+## KI1B — carry-over issues
 
-No KI1 implementation was made: AF3 and AF4 are partial and absent, and the required shared command registry must be completed first. Physics impulse, one-way platforms, clip reopening and player clip hot-reload remain open. See the KI1 job handoff. **UNTESTED on native Windows/MSVC.**
+`RigidBody2D::apply_impulse/set_velocity` (test_platformer), `draft_from_clip` reopen core with rejection of off-grid frames (test_clip_authoring) plus an "Open clip" button in the editor clip panel (compile-checked only, not clicked), and clip/image/tileset hot-reload in `arcane_player` (skipped during replays; not exercised by a test). To check on Windows: edit a clip JSON in the project assets while `arcane_player` runs and see the animation change within ~0.5 s. **UNTESTED on native Windows/MSVC.**
 
 ## AF5 — prerequisite and mutation inventory (partial)
 

@@ -186,6 +186,7 @@ int run_project(const Args& args) {
   arcane::FrameTimer frame_timer;
   arcane::Hud overlay_hud;
 
+  double asset_poll_accum = 0.0;
   int exit_code = 0;
   while (!window->should_close()) {
     if (args.frames.has_value() && frame_count >= *args.frames) break;
@@ -195,6 +196,18 @@ int run_project(const Args& args) {
     const double delta_seconds = std::chrono::duration<double>(now - previous_time).count();
     previous_time = now;
     frame_timer.tick(delta_seconds);
+    // Hot-reload edited clips and images twice a second (not during replays, which must be reproducible).
+    asset_poll_accum += delta_seconds;
+    if (!replay && asset_poll_accum >= 0.5) {
+      asset_poll_accum = 0.0;
+      const auto clip_assets = arcane::editor::list_animation_clip_assets(runtime->session().assets_dir());
+      textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
+      clips.set_assets(clip_assets);
+      tilesets.set_assets(clip_assets);
+      textures.refresh();
+      clips.refresh();
+      tilesets.refresh();
+    }
     const bool overlay_key_down = input_backend.is_down(arcane::InputDevice::Keyboard, arcane::kDebugOverlayKey);
     if (overlay_key_down && !overlay_key_was_down) overlay_visible = !overlay_visible;
     overlay_key_was_down = overlay_key_down;

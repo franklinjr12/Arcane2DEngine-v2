@@ -366,6 +366,22 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
 
   ImGui::InputText("Clip name", st.name, sizeof(st.name));
   ImGui::InputText("File", st.file_name, sizeof(st.file_name));
+  // Reopen: load the clip named in File into the draft using the grid set above (rejects frames off the grid).
+  if (ImGui::Button("Open clip")) {
+    const std::filesystem::path rel(st.file_name);
+    if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
+      st.status = "invalid file name";
+    } else if (auto loaded = arcane::editor::load_clip_file(assets_dir / rel); !loaded) {
+      st.status = loaded.error();
+    } else if (auto reopened = arcane::editor::draft_from_clip(*loaded, d.grid, tex->width(), tex->height()); !reopened) {
+      st.status = "cannot reopen on this grid: " + reopened.error();
+    } else {
+      d = std::move(*reopened);
+      std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
+      st.status = "opened " + rel.string();
+    }
+  }
+  ImGui::SameLine();
   if (ImGui::Button("Save clip")) {
     d.name = st.name;
     const std::filesystem::path rel(st.file_name);

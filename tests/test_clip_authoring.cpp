@@ -119,9 +119,41 @@ void test_cache_hot_reload_on_mtime_change() {
   std::filesystem::remove_all(dir);
 }
 
+void test_reopen_clip() {
+  ClipDraft draft;
+  draft.name = "walk";
+  draft.grid = {.columns = 4, .rows = 2};
+  draft.loop = false;
+  draft.cells = {5, 1, 1, 7};
+  draft.durations = {0.25f, 0.0f, 0.4f, 0.0f};
+  draft.fps = 8.0f;
+  const AnimationClip clip = build_clip(draft, 128, 64);
+  auto reopened = draft_from_clip(clip, draft.grid, 128, 64);
+  ARCANE_ASSERT_TRUE(reopened.has_value());
+  ARCANE_ASSERT_TRUE(reopened->cells == draft.cells && reopened->name == "walk" && !reopened->loop);
+  // Editing nothing and rebuilding reproduces the clip exactly (frame order, UVs, durations).
+  const AnimationClip again = build_clip(*reopened, 128, 64);
+  ARCANE_ASSERT_TRUE(again.frames.size() == clip.frames.size());
+  for (std::size_t i = 0; i < clip.frames.size(); ++i) {
+    ARCANE_ASSERT_TRUE(near(again.frames[i].uv.u0, clip.frames[i].uv.u0) && near(again.frames[i].uv.v1, clip.frames[i].uv.v1));
+    ARCANE_ASSERT_TRUE(near(again.frames[i].duration_seconds, clip.frames[i].duration_seconds));
+  }
+  // Arbitrary UVs or zero duration are rejected rather than silently snapped to a cell.
+  AnimationClip odd = clip;
+  odd.frames[2].uv = {0.1f, 0.1f, 0.2f, 0.2f};
+  const auto bad_uv = draft_from_clip(odd, draft.grid, 128, 64);
+  ARCANE_ASSERT_TRUE(!bad_uv.has_value() && bad_uv.error().find("frame 2") != std::string::npos);
+  AnimationClip zero = clip;
+  zero.frames[0].duration_seconds = 0.0f;
+  ARCANE_ASSERT_TRUE(!draft_from_clip(zero, draft.grid, 128, 64).has_value());
+  // A different grid does not match either.
+  ARCANE_ASSERT_TRUE(!draft_from_clip(clip, SheetGrid{.columns = 3, .rows = 3}, 128, 64).has_value());
+}
+
 }  // namespace
 
 int main() {
+  test_reopen_clip();
   test_grid_slicing();
   test_draft_editing_and_build();
   test_save_load_round_trip();
