@@ -63,6 +63,12 @@ struct SpriteDraw {
   UvRect uv{};
 };
 
+// Per-frame counters, reset by begin_frame (shown by the debug overlay).
+struct RenderStats {
+  int draw_calls = 0;  // GL draw calls issued
+  int sprites = 0;     // draw() calls accepted
+};
+
 // Small batched 2D sprite renderer: shader-based textured quads with an
 // orthographic camera. Draw calls are batched per contiguous run of the
 // same texture and flushed on texture change or end_frame().
@@ -90,6 +96,9 @@ class ARCANE_API SpriteRenderer {
   // Test helper: reads back a single pixel from the currently bound
   // framebuffer as RGBA in [0, 1]. Only meaningful right after end_frame().
   Color read_pixel(int x, int y) const;
+
+  // Counters of the current (or just finished) frame.
+  const RenderStats& stats() const noexcept;
 
  private:
   SpriteRenderer();

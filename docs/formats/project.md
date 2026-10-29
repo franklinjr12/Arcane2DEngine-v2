@@ -25,6 +25,7 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 | `hud` | object | nested `arcane.hud` v2 document, see `hud.md` |
 | `transition` | object | optional scene-switch fade, below; omitted when all defaults |
 | `save` | object | optional save-game settings, below; omitted when unset |
+| `debug` | object | optional debug overlay settings, below; omitted when default |
 
 ### `transition`
 
@@ -34,6 +35,16 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 
 `fade_out_seconds` / `fade_in_seconds` (number, 0..60, default 0.3) and `color` (RGBA, default opaque black)
 configure `SceneManager` (`arcane/scene_flow.hpp`). Edit with `transition.get` / `transition.set`.
+
+### `debug`
+
+```json
+"debug": { "overlay_font_scale": 2.0, "overlay_visible": true }
+```
+
+`overlay_visible` (boolean, default false) says whether the F3 debug overlay is shown at startup;
+`overlay_font_scale` (number, > 0 and <= 8, default 1.5) is its HUD font scale. Edit with `debug.get` /
+`debug.set`. Unknown fields are errors; the section is omitted when both values are the defaults. See `perf.md`.
 
 ### `save`
 

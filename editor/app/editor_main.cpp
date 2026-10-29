@@ -33,6 +33,7 @@
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
@@ -510,6 +511,8 @@ int main(int argc, char** argv) {
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
   long play_tick_count = 0;
+  bool overlay_visible = session.project().debug.overlay_visible;
+  arcane::FrameTimer frame_timer;
 
   while (!window->should_close()) {
     if (args.frames.has_value() && frame_count >= *args.frames) break;
@@ -984,6 +987,21 @@ int main(int argc, char** argv) {
       }
     }
     ImGui::End();
+
+    // Debug overlay (F3): the same numbers as the player's, from project.json "debug" at startup.
+    frame_timer.tick(delta_seconds);
+    if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) overlay_visible = !overlay_visible;
+    if (overlay_visible) {
+      const arcane::RenderStats& render_stats = renderer->stats();
+      const arcane::FrameStats stats{frame_timer.fps(), frame_timer.frame_ms(), render_stats.draw_calls,
+                                     render_stats.sprites, play_stop.physics_body_count(),
+                                     arcane::count_particles(*active_scene)};
+      ImGui::SetNextWindowBgAlpha(0.6f);
+      if (ImGui::Begin("Debug overlay (F3)", &overlay_visible, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(arcane::format_debug_overlay(stats).c_str());
+      }
+      ImGui::End();
+    }
 
     ImGui::Render();
 

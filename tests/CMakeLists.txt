@@ -234,3 +234,16 @@ add_test(NAME test_atlas COMMAND test_atlas)
 add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
 add_test(NAME test_scene_flow COMMAND test_scene_flow)
+
+# --- FE23 debug overlay data, debug.* / bench.run commands, headless benchmark -
+add_executable(test_debug test_debug.cpp)
+target_link_libraries(test_debug PRIVATE arcane_tooling)
+add_test(NAME test_debug COMMAND test_debug)
+
+# CLI smoke: the benchmark prints arcane.bench JSON; bad arguments exit 2 without a device or GUI.
+add_test(NAME bench_cli_smoke COMMAND arcane_bench --sprites 100 --emitters 2 --bodies 20 --frames 5)
+set_tests_properties(bench_cli_smoke PROPERTIES PASS_REGULAR_EXPRESSION "\"format\": \"arcane.bench\"")
+add_test(NAME bench_cli_bad_args COMMAND arcane_bench --frames 0)
+set_tests_properties(bench_cli_bad_args PROPERTIES WILL_FAIL TRUE)
+add_test(NAME bench_cli_bad_flag COMMAND arcane_bench --nope 1)
+set_tests_properties(bench_cli_bad_flag PROPERTIES WILL_FAIL TRUE)

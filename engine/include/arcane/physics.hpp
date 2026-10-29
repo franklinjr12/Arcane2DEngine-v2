@@ -87,6 +87,9 @@ class ARCANE_API PhysicsWorld {
   // stopped touching this step.
   void step(Scene& scene, float fixed_dt);
 
+  // Number of Box2D bodies currently in the world.
+  int body_count() const noexcept;
+
  private:
   struct Impl;
   std::unique_ptr<Impl> impl_;

@@ -113,6 +113,17 @@ void register_atlas_commands(CommandRegistry& registry);
 // (project.json settings and save files only; the scene is untouched).
 void register_flow_commands(CommandRegistry& registry);
 
+// Registers debug.get/debug.set (the overlay settings in project.json; writes at once).
+void register_debug_commands(CommandRegistry& registry);
+
+// Registers bench.run (headless benchmark; needs a project context only because every command takes one).
+void register_bench_commands(CommandRegistry& registry);
+
+// The headless benchmark behind bench.run and `arcane_bench`: validates `args` (sprites, emitters,
+// particles_per_emitter, bodies, frames; all optional integers) and returns the stable
+// `arcane.bench` v1 document {format, version, config, results}.
+std::expected<Json, ToolError> run_bench_json(const Json& args);
+
 // Node / component selectors shared by commands: "id:42" or
 // "path:/Root/Player" (must resolve to exactly one node).
 std::expected<Node*, ToolError> resolve_node(ProjectContext& context, const std::string& selector);

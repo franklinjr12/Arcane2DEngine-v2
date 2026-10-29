@@ -127,6 +127,8 @@ PhysicsWorld::~PhysicsWorld() = default;
 PhysicsWorld::PhysicsWorld(PhysicsWorld&&) noexcept = default;
 PhysicsWorld& PhysicsWorld::operator=(PhysicsWorld&&) noexcept = default;
 
+int PhysicsWorld::body_count() const noexcept { return static_cast<int>(impl_->bodies.size()); }
+
 void PhysicsWorld::rebuild(Scene& scene) {
   b2World_SetPreSolveCallback(impl_->world, one_way_pre_solve, nullptr, &scene);
   for (auto& [id, body] : impl_->bodies) {
