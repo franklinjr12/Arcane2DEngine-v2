@@ -19,6 +19,12 @@ target_compile_definitions(test_editor_project PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
 add_test(NAME test_editor_project COMMAND test_editor_project)
 
+add_executable(test_foundation_acceptance test_foundation_acceptance.cpp)
+target_link_libraries(test_foundation_acceptance PRIVATE arcane_editor_core)
+target_compile_definitions(test_foundation_acceptance PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_foundation_acceptance COMMAND test_foundation_acceptance)
+
 add_executable(test_editor_anim_audio test_editor_anim_audio.cpp)
 target_link_libraries(test_editor_anim_audio PRIVATE arcane_editor_core)
 add_test(NAME test_editor_anim_audio COMMAND test_editor_anim_audio)

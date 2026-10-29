@@ -67,6 +67,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - AF2: Tilemap layers are now rows of ids in the scene file (not a `;`/`,` string); tileset/clip files and the project's HUD/input are `arcane.*` version 2; HUD elements all have ids and images keep an asset id.
 - Golden migrated files under `tests/golden/` (what a v2 project and scene look like).
 - Editor saves now write the canonical v2 format; old files still open.
+- FE16 adds `docs/acceptance-audit.md` (baseline section 17 and AI-agent-friendly criteria mapped to tests or GAP) and `test_foundation_acceptance` (Sprite + Camera + module Spinner saved, reopened, played, stopped).
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
@@ -85,6 +86,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - FE15 is partial: the missing `arcane` executable (registry `prop.*` now covers ArenaRules properties in C++ via `test_topdown_commands`) prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
 - FE14 is partial: the `arcane` CLI still does not exist, so audio settings (`prop.set` on `AudioSource`) and `audio.backend` diagnostics are registry commands reachable from C++/tests only. Real-device playback has not been manually verified.
 - FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
+- FE16 is PARTIAL: the audit finds the CLI-based criteria (1, 3, 4 parity, 5) unmet because AF3 CLI/AF4-AF11 are incomplete; section 17 is met on Linux with Windows/MSVC UNTESTED. See `docs/acceptance-audit.md`.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
 - `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
@@ -177,3 +179,7 @@ Compatible-loaded ProjectSession saves refuse unknown legacy project or scene da
 ## AF9 prerequisite progress (partial)
 
 ProjectSession checks the bytes of both inputs before saving and rejects detected external changes, leaving the dirty flag set. This is not a lock and does not provide transactional multi-file writes. AF3–AF8 and AF9 command/CLI acceptance remain incomplete. **UNTESTED on native Windows/MSVC.**
+
+## FE16 — foundation acceptance audit
+
+`docs/acceptance-audit.md` lists each baseline section 17 bullet and AI-agent-friendly criterion with test evidence or GAP. Gap fixed: `test_foundation_acceptance`. Big gaps (CLI, command routing, display-free run, schema validation tests, Windows run) are listed as next jobs there.
