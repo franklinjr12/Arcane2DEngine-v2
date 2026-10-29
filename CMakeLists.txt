@@ -158,7 +158,8 @@ add_library(arcane_tooling STATIC
   tooling/src/error.cpp
   tooling/src/context.cpp
   tooling/src/command.cpp
-  tooling/src/property_commands.cpp)
+  tooling/src/property_commands.cpp
+  tooling/src/audio_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
 

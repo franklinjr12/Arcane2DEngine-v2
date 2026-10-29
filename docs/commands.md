@@ -46,6 +46,15 @@ Component: an integer component id, or a type name attached exactly once.
 | `prop.list` | `node`, `component` | `{component_id, type, properties:[{name,type,value}]}` |
 | `prop.get` | `node`, `component`, `name` | `{name, type, value}` |
 | `prop.set` (mutating) | `node`, `component`, `name`, `value` | `{changed, previous, value}` |
+| `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
+
+`audio.backend` opens no audio device unless `probe_device` is true; without it
+the answer is always `null`. With it, a device is opened briefly and, if that
+fails, `backend` is `null` and `diagnostic` holds the reason (the same fallback
+visible editor/player sessions use). Its failure code `AUDIO_UNAVAILABLE`
+(neither backend could start) has CLI exit status 1. Audio settings are the
+`AudioSource` properties (`clip`, `volume`, `loop`, `play_on_start`), edited
+with `prop.set`.
 
 Values use the scene encodings (`docs/formats/scene.md`): bool, 32-bit int,
 finite binary32 float, `[x,y]`, `[r,g,b,a]`, string, unsigned id. `entity_id`
