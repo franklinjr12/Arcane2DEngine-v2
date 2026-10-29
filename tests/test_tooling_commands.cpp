@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/module.hpp"
@@ -51,6 +52,7 @@ struct TempProject {
     {
       arcane::ComponentRegistry registry;
       arcane::register_builtin_components(registry);
+      arcane::register_audio_components(registry);
       module->api()->register_types(registry);
       auto session = arcane::editor::ProjectSession::create(dir, "Tooling", registry);
       ARCANE_ASSERT_TRUE(session.has_value());
@@ -58,6 +60,7 @@ struct TempProject {
       session->scene().add_component(node, "Spinner", registry);
       session->scene().add_component(node, "Camera2D", registry);
       session->scene().add_component(node, "Sprite", registry);
+      session->scene().add_component(node, "AudioSource", registry);
       ARCANE_ASSERT_TRUE(session->save(registry).has_value());
     }  // session and registry die before the module
   }
@@ -83,6 +86,7 @@ Json get(CommandRegistry& registry, ProjectContext& context, const char* compone
 CommandRegistry make_registry() {
   CommandRegistry registry;
   register_property_commands(registry);
+  register_audio_commands(registry);
   return registry;
 }
 
@@ -253,8 +257,9 @@ void test_context_lifetime_and_registry_listing() {
     ARCANE_ASSERT_TRUE(registry.execute(*context, set("Spinner", "label", "x" + std::to_string(i))).has_value());
   }
   const auto specs = registry.list();
-  ARCANE_ASSERT_TRUE(specs.size() == 3 && specs[0]->name == "prop.get" && specs[2]->name == "prop.set");
-  ARCANE_ASSERT_TRUE(specs[2]->mutating && !specs[0]->mutating);
+  ARCANE_ASSERT_TRUE(specs.size() == 4 && specs[0]->name == "audio.backend" && specs[1]->name == "prop.get" &&
+                     specs[3]->name == "prop.set");
+  ARCANE_ASSERT_TRUE(specs[3]->mutating && !specs[1]->mutating && !specs[0]->mutating);
 }
 
 // Every authored Camera2D setting goes through prop.set, persists, and a reopened project replays the same
@@ -297,6 +302,31 @@ void test_camera2d_settings_round_trip() {
   ARCANE_ASSERT_TRUE(!bad.has_value());
 }
 
+// Audio settings persist through prop.set; audio.backend never opens a device
+// unless asked, so the headless answer is the null backend.
+void test_audio_settings_and_backend() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "volume", 0.25), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "loop", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "play_on_start", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(!registry.execute(*context, set("AudioSource", "volume", "loud"), persist).has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "volume") == 0.25);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "loop") == true);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "play_on_start") == true);
+
+  auto backend = registry.execute(*context, {"audio.backend", Json::object()});
+  ARCANE_ASSERT_TRUE(backend.has_value());
+  ARCANE_ASSERT_TRUE(backend->value["backend"] == "null");
+  ARCANE_ASSERT_TRUE(backend->value["probed"] == false);
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"audio.backend", {{"probe_device", "yes"}}}).has_value());
+}
+
 }  // namespace
 
 int main() {
@@ -307,5 +337,6 @@ int main() {
   test_open_failures_write_nothing();
   test_context_lifetime_and_registry_listing();
   test_camera2d_settings_round_trip();
+  test_audio_settings_and_backend();
   return 0;
 }

@@ -100,6 +100,9 @@ class CommandHistory {
 // Registers the property commands: prop.list, prop.get, prop.set.
 void register_property_commands(CommandRegistry& registry);
 
+// Registers audio.backend (backend selection diagnostics; opens no device by default).
+void register_audio_commands(CommandRegistry& registry);
+
 // Node / component selectors shared by commands: "id:42" or
 // "path:/Root/Player" (must resolve to exactly one node).
 std::expected<Node*, ToolError> resolve_node(ProjectContext& context, const std::string& selector);
