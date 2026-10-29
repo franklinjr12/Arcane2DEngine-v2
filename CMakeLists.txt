@@ -173,6 +173,7 @@ add_library(arcane_tooling STATIC
   tooling/src/error.cpp
   tooling/src/context.cpp
   tooling/src/command.cpp
+  tooling/src/edit_session.cpp
   tooling/src/property_commands.cpp
   tooling/src/audio_commands.cpp
   tooling/src/atlas_commands.cpp

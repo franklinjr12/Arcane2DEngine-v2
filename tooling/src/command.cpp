@@ -139,18 +139,28 @@ std::expected<CommandResult, ToolError> CommandRegistry::execute(ProjectContext&
   return result;
 }
 
-void CommandHistory::record(const Invocation& forward, const CommandResult& result) {
+void CommandHistory::record(const Invocation& forward, const CommandResult& result, const std::string& coalesce_key,
+                            std::uint64_t next_id_before) {
   if (!result.inverse) return;
-  undo_.push_back(Entry{forward, *result.inverse});
+  // Merging rewrites the top entry, which would change what the save point means.
+  if (!coalesce_key.empty() && coalesce_key == open_key_ && !undo_.empty() && saved_ != undo_.size()) {
+    undo_.back().forward = forward;
+    return;
+  }
+  if (saved_ != kUnreachable && saved_ > undo_.size()) saved_ = kUnreachable;  // saved state lived in the redo stack
+  undo_.push_back(Entry{forward, *result.inverse, next_id_before});
   redo_.clear();
+  open_key_ = coalesce_key;
 }
 
 std::expected<void, ToolError> CommandHistory::undo(const CommandRegistry& registry, ProjectContext& context) {
   if (undo_.empty()) return std::unexpected(ToolError{"CONFLICT", "Nothing to undo", "", "", ""});
   auto done = registry.execute(context, undo_.back().inverse);
   if (!done) return std::unexpected(done.error());
+  if (undo_.back().next_id_before != 0) context.scene().set_next_id(undo_.back().next_id_before);
   redo_.push_back(std::move(undo_.back()));
   undo_.pop_back();
+  open_key_.clear();
   return {};
 }
 
@@ -160,6 +170,7 @@ std::expected<void, ToolError> CommandHistory::redo(const CommandRegistry& regis
   if (!done) return std::unexpected(done.error());
   undo_.push_back(std::move(redo_.back()));
   redo_.pop_back();
+  open_key_.clear();
   return {};
 }
 

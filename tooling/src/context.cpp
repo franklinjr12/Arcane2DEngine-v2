@@ -18,13 +18,14 @@ ProjectContext::ProjectContext(editor::ProjectRuntime&& runtime, std::string sce
 ProjectContext::~ProjectContext() = default;
 
 std::expected<std::unique_ptr<ProjectContext>, ToolError> ProjectContext::open(
-    const std::filesystem::path& project_dir, const std::string& module_override, const std::string& scene_override) {
+    const std::filesystem::path& project_dir, const std::string& module_override, const std::string& scene_override,
+    editor::SceneLoadPolicy policy) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(project_dir / "project.json", ec)) {
     return std::unexpected(ToolError{"PROJECT_NOT_FOUND", "No project.json in " + project_dir.string(), "", "",
                                      "Pass --project DIR pointing at a directory containing project.json"});
   }
-  auto runtime = editor::ProjectRuntime::open(project_dir, module_override, editor::SceneLoadPolicy::Strict);
+  auto runtime = editor::ProjectRuntime::open(project_dir, module_override, policy);
   if (!runtime) {
     const std::string& message = runtime.error();
     if (message.rfind(kModuleFailurePrefix, 0) == 0) {
