@@ -1,5 +1,6 @@
 #include "arcane_tooling/context.hpp"
 
+#include "arcane/atlas.hpp"
 #include "arcane/canonical_json.hpp"
 
 namespace arcane::tooling {
@@ -11,13 +12,13 @@ constexpr const char* kModuleFailurePrefix = "failed to load project module";
 
 }  // namespace
 
-ProjectContext::ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_text)
-    : runtime_(std::move(runtime)), loaded_scene_text_(std::move(scene_text)) {}
+ProjectContext::ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text)
+    : runtime_(std::move(runtime)), scene_file_(std::move(scene_file)), loaded_scene_text_(std::move(scene_text)) {}
 
 ProjectContext::~ProjectContext() = default;
 
 std::expected<std::unique_ptr<ProjectContext>, ToolError> ProjectContext::open(
-    const std::filesystem::path& project_dir, const std::string& module_override) {
+    const std::filesystem::path& project_dir, const std::string& module_override, const std::string& scene_override) {
   std::error_code ec;
   if (!std::filesystem::is_regular_file(project_dir / "project.json", ec)) {
     return std::unexpected(ToolError{"PROJECT_NOT_FOUND", "No project.json in " + project_dir.string(), "", "",
@@ -33,11 +34,30 @@ std::expected<std::unique_ptr<ProjectContext>, ToolError> ProjectContext::open(
     return std::unexpected(ToolError{"SCHEMA_INVALID", message, "", "",
                                      "Fix the file or migrate it to format v2 (unknown data is never dropped)"});
   }
-  auto scene_text = read_text_file(runtime->session().main_scene_path());
-  if (!scene_text) {
-    return std::unexpected(ToolError{"IO_ERROR", scene_text.error(), "", "", ""});
+  std::string scene_file = runtime->session().project().main_scene;
+  std::filesystem::path scene_path = runtime->session().main_scene_path();
+  if (!scene_override.empty() && scene_override != scene_file) {
+    if (!is_project_relative_path(scene_override)) {
+      return std::unexpected(ToolError{"ARGS_INVALID", "'" + scene_override + "' is not a project-relative '/' path", "",
+                                       "/scene", "Use a path like scenes/level1.scene.json"});
+    }
+    scene_file = scene_override;
+    scene_path = project_dir / scene_override;
   }
-  return std::unique_ptr<ProjectContext>(new ProjectContext(std::move(*runtime), std::move(*scene_text)));
+  auto scene_text = read_text_file(scene_path);
+  if (!scene_text) {
+    return std::unexpected(ToolError{"IO_ERROR", scene_text.error(), scene_file, "", "Create it with scene new"});
+  }
+  if (scene_file != runtime->session().project().main_scene) {
+    auto scene = Scene::load_from_json_strict(*scene_text, runtime->registry());
+    if (!scene) {
+      return std::unexpected(ToolError{"SCHEMA_INVALID", scene.error(), scene_file, "",
+                                       "Fix the file or migrate it to format v2 (unknown data is never dropped)"});
+    }
+    runtime->session().scene() = std::move(*scene);
+  }
+  return std::unique_ptr<ProjectContext>(
+      new ProjectContext(std::move(*runtime), std::move(scene_file), std::move(*scene_text)));
 }
 
 const std::filesystem::path& ProjectContext::project_dir() const noexcept {
@@ -45,10 +65,9 @@ const std::filesystem::path& ProjectContext::project_dir() const noexcept {
 }
 ComponentRegistry& ProjectContext::registry() noexcept { return runtime_.registry(); }
 Scene& ProjectContext::scene() noexcept { return runtime_.session().scene(); }
-std::string ProjectContext::scene_file() const { return runtime_.session().project().main_scene; }
 
 std::expected<void, ToolError> ProjectContext::save() {
-  const std::filesystem::path path = runtime_.session().main_scene_path();
+  const std::filesystem::path path = project_dir() / scene_file_;
   auto text = scene().save_canonical_json(registry());
   if (!text) {
     return std::unexpected(ToolError{"VALUE_INVALID", text.error(), scene_file(), "", ""});

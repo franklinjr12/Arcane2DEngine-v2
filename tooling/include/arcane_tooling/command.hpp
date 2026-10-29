@@ -39,6 +39,9 @@ struct CommandSpec {
   Json args_schema;
   Json result_schema;
   bool mutating = false;
+  // Writes files outside the open scene as it runs (atlas, save, project.json ...), ignoring
+  // persist/dry_run; the CLI refuses --dry-run for these. Set with mark_immediate_write.
+  bool immediate_write = false;
 };
 
 struct ExecuteOptions {
@@ -53,6 +56,7 @@ class CommandRegistry {
   void add(CommandSpec spec, CommandFn fn);
 
   const CommandSpec* find(const std::string& name) const;
+  void mark_immediate_write(const std::string& name);
   std::vector<const CommandSpec*> list() const;  // sorted by name
 
   // Validates `args` against the schema, runs the command and applies
@@ -96,6 +100,16 @@ class CommandHistory {
   std::deque<Entry> undo_;
   std::deque<Entry> redo_;
 };
+
+// Registers scene.tree/query/restore and node.info/find/add/remove/rename/reparent/duplicate/set_transform.
+void register_scene_commands(CommandRegistry& registry);
+
+// Registers component.types/list/add/remove.
+void register_component_commands(CommandRegistry& registry);
+
+// Registers every command above (used by the CLI and the tests) and marks the ones that write
+// files immediately.
+void register_all_commands(CommandRegistry& registry);
 
 // Registers the property commands: prop.list, prop.get, prop.set.
 void register_property_commands(CommandRegistry& registry);

@@ -88,6 +88,11 @@ const CommandSpec* CommandRegistry::find(const std::string& name) const {
   return it == entries_.end() ? nullptr : &it->second.spec;
 }
 
+void CommandRegistry::mark_immediate_write(const std::string& name) {
+  auto it = entries_.find(name);
+  if (it != entries_.end()) it->second.spec.immediate_write = true;
+}
+
 std::vector<const CommandSpec*> CommandRegistry::list() const {
   std::vector<const CommandSpec*> out;
   for (const auto& [name, entry] : entries_) out.push_back(&entry.spec);

@@ -2,13 +2,15 @@
 
 Every command is a name plus JSON arguments, run against an open
 `ProjectContext` through `CommandRegistry::execute`. The library has no GUI
-dependency. The `arcane` CLI (AF4) and the editor (AF5) are meant to call
-the same registry; neither does yet, so today the commands are reachable from
-C++ and `tests/test_tooling_commands.cpp` only.
+dependency. The `arcane` CLI (AF4B, `docs/cli-reference.md`) calls this registry; the
+editor (AF5) is meant to but does not yet. The CLI also has file-level
+commands that need no open scene (`project.*`, `scene.new`, `scene.list`,
+`validate`, `fmt`, `migrate`, `schema`, `docs`); they are listed only in the
+generated CLI reference.
 
 ## Project context
 
-`ProjectContext::open(dir, module_override)` registers builtin component
+`ProjectContext::open(dir, module_override, scene_override)` registers builtin component
 types, loads the project's native module (or `module_override`) and registers
 its types, then reads the main scene, in that order. The scene is read
 strictly: unknown component types or properties, or a missing module, fail the
@@ -36,6 +38,11 @@ the CLI persists immediately and keeps no history).
 
 ## Selectors
 
+Structural edits (`node.remove`, `reparent`, `component.remove`, `scene.restore`) return a `scene.restore` inverse
+holding the previous canonical scene, so node/component pointers from before such a call are invalid afterwards.
+IDs are never reused within a session because the counter is part of the scene text, but undoing an add/remove
+restores the counter too.
+
 Node: `id:42` or `path:/Root/Player` (each name must be unique at its level).
 Component: an integer component id, or a type name attached exactly once.
 
@@ -46,6 +53,21 @@ Component: an integer component id, or a type name attached exactly once.
 | `prop.list` | `node`, `component` | `{component_id, type, properties:[{name,type,value}]}` |
 | `prop.get` | `node`, `component`, `name` | `{name, type, value}` |
 | `prop.set` (mutating) | `node`, `component`, `name`, `value` | `{changed, previous, value}` |
+| `scene.tree` | `node?`, `depth?` | `{scene, nodes:[{id,name,components,children}]}` |
+| `scene.query` | none | `{scene, nodes, roots, components, component_types, next_id}` |
+| `scene.restore` (mutating, internal) | `text` | replaces the scene with canonical scene v2 text; the inverse of structural edits |
+| `node.info` | `node` | `{id,name,path,selector,parent,transform,components,children,prefab?}` |
+| `node.find` | `name?`, `name_contains?`, `component?`, `under?` | `{count, nodes:[{id,name,path,selector}]}` |
+| `node.add` (mutating) | `name`, `parent?`, `position?`, `rotation_radians?`, `scale?` | `{id,name,path,selector}`; inverse `node.remove` |
+| `node.remove` (mutating) | `node` | `{removed, nodes}`; refused for prefab-instance nodes and while an outside `entity_id` property references the subtree (`CONFLICT`) |
+| `node.rename` (mutating) | `node`, `name` | `{changed, previous, name}`; names must not contain `/` |
+| `node.reparent` (mutating) | `node`, `parent?` | moves the subtree to the end of the new parent (root if omitted); refuses cycles |
+| `node.duplicate` (mutating) | `node`, `name?` (default `<name>_copy`), `parent?` | deep copy with new ids and remapped internal `entity_id` references |
+| `node.set_transform` (mutating) | `node`, `position?`, `rotation_radians?`, `scale?` | `{changed, previous, transform}` |
+| `component.types` | none | registered types with property names |
+| `component.list` | `node` | `{node, components:[{id,type}]}` |
+| `component.add` (mutating) | `node`, `type` | `{component_id,type,node}`; default property values |
+| `component.remove` (mutating) | `node`, `component` | `{removed}`; calls the component's `on_destroy` |
 | `atlas.pack` | `folder`, `atlas`, `image?`, `padding?` (default 1), `max_size?` (default 2048) | `{atlas, image, width, height, padding, regions:[{name,x,y,w,h,uv}]}`; writes the PNG and `arcane.atlas` file at once (ignores `persist`/`dry_run`) |
 | `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
 | `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |

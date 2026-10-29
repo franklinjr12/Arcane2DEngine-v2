@@ -51,6 +51,21 @@ Component* Scene::add_component_with_id(Node* node, const std::string& type_name
   return raw;
 }
 
+bool Scene::remove_component(Component* component) {
+  if (!component || !component->node() || find_component(component->id()) != component) {
+    return false;
+  }
+  auto& list = component->node()->components_;
+  for (auto it = list.begin(); it != list.end(); ++it) {
+    if (it->get() != component) continue;
+    component->on_destroy();
+    components_by_id_.erase(component->id());
+    list.erase(it);
+    return true;
+  }
+  return false;
+}
+
 bool Scene::is_descendant_of(const Node* candidate, const Node* ancestor) const noexcept {
   for (const Node* cur = candidate; cur != nullptr; cur = cur->parent()) {
     if (cur == ancestor) {

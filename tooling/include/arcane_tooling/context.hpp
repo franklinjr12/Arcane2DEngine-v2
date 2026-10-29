@@ -27,8 +27,13 @@ class ProjectContext {
   // being loaded leniently and losing them on save. Fails with
   // PROJECT_NOT_FOUND, MODULE_LOAD_FAILED or SCHEMA_INVALID; nothing is left
   // loaded on failure.
+  //
+  // `scene_override`, if non-empty, is a project-relative '/' path of another
+  // scene file to edit instead of project.json's main scene (the main scene
+  // must still load). It is read strictly too, and save() writes that file.
   static std::expected<std::unique_ptr<ProjectContext>, ToolError> open(const std::filesystem::path& project_dir,
-                                                                        const std::string& module_override = {});
+                                                                        const std::string& module_override = {},
+                                                                        const std::string& scene_override = {});
 
   ~ProjectContext();
   ProjectContext(const ProjectContext&) = delete;
@@ -40,7 +45,7 @@ class ProjectContext {
   ComponentRegistry& registry() noexcept;
   Scene& scene() noexcept;
   // Project-relative path of the scene the commands edit.
-  std::string scene_file() const;
+  const std::string& scene_file() const noexcept { return scene_file_; }
 
   bool dirty() const noexcept { return dirty_; }
   void mark_dirty() noexcept { dirty_ = true; }
@@ -53,11 +58,12 @@ class ProjectContext {
   std::expected<void, ToolError> save();
 
  private:
-  ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_text);
+  ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text);
 
   // runtime_ owns the module, registry and scene; it is destroyed with the
   // context, scene and registry first, module last.
   editor::ProjectRuntime runtime_;
+  std::string scene_file_;
   std::string loaded_scene_text_;
   bool dirty_ = false;
 };

@@ -32,17 +32,27 @@ Native Windows/MSVC is UNTESTED for this nightly. Preserve shared GLFW and glad,
 MSVC-compatible flags and out-of-line special members for pimpl/incomplete-type
 owners; see `WINDOWS_FIX.md`.
 
-## Current authoring limitations
+## Authoring CLI and command registry
 
-The shared command registry exists as the ImGui-free `arcane_tooling` library
-(`tooling/`, reference in `docs/commands.md`), but only property commands
-(`prop.list`, `prop.get`, `prop.set`) are registered. The separate `arcane` CLI
-does not exist on this branch: there is no CLI quickstart, batch, generated
-command reference, or headless CLI run/export yet. Editor data mutations still
-bypass commands; see `docs/editor-command-inventory.md`. Do not claim command
-parity or invent CLI commands. The target contract is registry-backed GUI and
-CLI authoring and JSONL batches, with no MCP or JSON-RPC server. Implement
-missing prerequisites before building coverage gates around them.
+The shared command registry is the ImGui-free `arcane_tooling` library (`tooling/`, reference in
+`docs/commands.md`), and the `arcane` CLI (AF4B) exposes it: `build-gcc/bin/arcane --project DIR <group> <verb>
+[--name value]`, one JSON object on stdout, stable exit codes, `--dry-run`, selectors `id:N`/`path:/A/B`, and
+`arcane batch FILE|-` for JSONL scripts. Generated reference: `docs/cli-reference.md` (`arcane docs`;
+`test_cli` fails when it drifts, regenerate with `arcane docs > docs/cli-reference.md`). Quickstart:
+
+```sh
+arcane project new game --name Demo
+arcane --project game node add --name Player            # {"id":1,...}
+arcane --project game component add --node id:1 --type Sprite
+arcane --project game prop set --node id:1 --component Sprite --name width --value 32.0
+arcane --project game validate && arcane --project game fmt --check
+```
+
+Pass `--module PATH` to load a native game module from a build tree. Not covered by commands yet: tilemap/tileset
+editing, HUD, input maps, clip authoring beyond `atlas make-clip`, asset import, `run`/`export`/`render`/`test`;
+the editor still mutates data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity or
+invent commands. The contract remains registry-backed GUI and CLI authoring and JSONL batches, with no MCP or
+JSON-RPC server.
 
 Deterministic replay (`docs/formats/replay.md`): `arcane.replay` input recordings and `arcane.replay_trace`
 per-frame state hashes, commands `replay.save`/`replay.run`, `arcane_player --replay/--trace-out/--expect-trace/
@@ -50,8 +60,11 @@ per-frame state hashes, commands `replay.save`/`replay.run`, `arcane_player --re
 Determinism holds for the same build and platform only; golden images assume Mesa llvmpipe under Xvfb.
 
 New commands go in `tooling/src/`, are registered in a `register_*_commands`
-function, take a `ProjectContext&`, validate before mutating, and return the
-inverse invocation. Do not keep `Node*`/`Component*`/descriptors past the
+function (called from `register_all_commands`), take a `ProjectContext&`, validate
+before mutating, and return the inverse invocation; commands that write files
+outside the scene are listed in `register_all_commands` (no `--dry-run`). File-level
+commands that must work without an openable project live in `tooling/src/offline.cpp`.
+Regenerate `docs/cli-reference.md` in the same commit. Do not keep `Node*`/`Component*`/descriptors past the
 `ProjectContext` that produced them: the module is unloaded with the context.
 
 Editor and player can be run from `build-gcc/bin` with `--project` pointing to a
