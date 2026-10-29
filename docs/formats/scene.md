@@ -63,7 +63,7 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 
 `bounds_enabled`, `bounds_min`, and `bounds_max` define an explicit world rectangle, including tilemap extents if entered by the author. The viewport is clamped inside it; if the viewport is larger than an axis of the rectangle, that axis is centered. `pixel_snap` rounds the final center to screen-pixel increments at the current zoom. `shake_amplitude`, `shake_duration`, and integer `shake_seed` configure a deterministic, linearly decaying shake starting at Play; C++ can restart it with `start_shake()`. Camera tracking and shake advance on fixed scene ticks; transient state is not serialized. Clamp precedes pixel snapping, so snapping can move the view by at most half a screen pixel beyond a bound.
 
-The shared command registry and `arcane` CLI are not yet available (AF3/AF4 partial); there are no Camera2D CLI commands or CLI validation/round-trip yet. Until those jobs land, edit these registered values in the Inspector or canonical scene JSON.
+Every Camera2D property can be read and set with the shared `prop.get` / `prop.set` commands (`docs/commands.md`), which validate the value encoding before writing; `tests/test_tooling_commands.cpp` round-trips all settings, including a seeded shake that replays identically after reopening the project. Gap: the `arcane` CLI (AF4) and node/component creation commands do not exist yet, so adding a Camera2D to a scene still happens in the editor or by editing canonical scene JSON, and the editor Inspector does not yet route through the commands.
 
 ## AudioSource
 

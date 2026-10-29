@@ -144,9 +144,9 @@ AF3 is PARTIAL: its preserved WIP is not integrated and lacks property commands 
 
 ## FE13 Camera2D
 
-Registered canonical scene properties, fixed-tick following and deterministic shake, bounds and pixel snapping; see `docs/formats/scene.md`. AF3/AF4 are partial and absent: shared GUI commands, CLI creation/property/validation and CLI shake round-trip remain unimplemented. UNTESTED on native Windows/MSVC.
+Registered canonical scene properties, fixed-tick following and deterministic shake, bounds and pixel snapping; see `docs/formats/scene.md`. The AF3 registry is now present: every Camera2D setting is settable via `prop.set` (validated, persisted) and `test_tooling_commands` round-trips them, including a seeded shake that replays identically after reopening. Still missing: the `arcane` CLI (AF4), node/component creation commands and Inspector routing through commands. UNTESTED on native Windows/MSVC.
 
-FE13 verification: GCC Debug 40/40, Clang ASan/UBSan 40/40, MinGW cross-build passed; native Windows/MSVC and visual camera behavior are untested.
+FE13 verification (re-run with the command test): GCC Debug and Clang ASan/UBSan all passed, MinGW cross-build passed; native Windows/MSVC and visual camera behavior are untested.
 
 ## FE14 audio
 
