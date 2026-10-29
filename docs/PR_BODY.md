@@ -6,10 +6,15 @@ Linux:
 ```
 scripts/build-and-test.sh          # gcc Debug + clang ASan/UBSan + mingw cross-build; expect gcc PASS and clang PASS
 ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json|formats_v2|camera2d"   # expect all passed
+xvfb-run -a ctest --test-dir .build-and-test/build-gcc -R topdown --output-on-failure
+.build-and-test/build-gcc/bin/arcane_editor --project samples/topdown_slice
+.build-and-test/build-gcc/bin/arcane_player --project samples/topdown_slice
 .build-and-test/build-gcc/bin/arcane_editor --project samples/sample_project
 .build-and-test/build-gcc/bin/arcane_player --project samples/sample_project
 ```
 The editor opens the sample project; select a node, add Camera2D in the Inspector, and set its target node ID, zoom, bounds, or shake values. Save, click Play, and observe the camera follow and shake; click Stop to return to editing. The player opens the saved scene. Existing samples continue to load.
+For FE15, open the arena in the editor, select Arena and inspect the registered ArenaRules values; click Play and use WASD. The blue player moves in four directions and stops at the perimeter; the red enemy follows and contact lowers the health HUD and creates a burst. Stop returns to editing. The player command opens the same arena. Run `ctest --test-dir .build-and-test/build-gcc -R "topdown" --output-on-failure` under `xvfb-run -a` for the 600-step simulation, 120-frame player and packaged export checks.
+
 Windows / MSVC (PowerShell, from the repo root):
 ```
 cmake -S . -B build -G "Visual Studio 17 2022" -A x64
@@ -30,6 +35,8 @@ to restore the legacy copies.
 
 To launch the existing applications on Windows after the build:
 ```
+.\build\bin\arcane_editor.exe --project samples/topdown_slice
+.\build\bin\arcane_player.exe --project samples/topdown_slice
 .\build\bin\arcane_editor.exe --project samples/sample_project
 .\build\bin\arcane_player.exe --project samples/sample_project
 ```
@@ -40,6 +47,7 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
 
 **2. What you can visibly see**
+- FE15 adds a top-down arena with solid walls, chasing enemy, health HUD and hit particles, plus editable ArenaRules properties in scene JSON and the Inspector.
 - AudioSource playback is audible in visible editor Play and player sessions when a device opens; fallback is logged.
 - Camera2D appears in the Inspector; Play and player use its follow, bounds, zoom, shake and pixel snapping. Its settings appear in saved scene JSON.
 - Texture files with Unicode names can now be opened by the renderer on Windows; the regression test checks a Unicode filename.
@@ -50,10 +58,11 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 - No new GUI and no CLI yet (the `arcane` CLI is AF4).
 
 **3. Enough to merge**
-- Minimum: Windows/MSVC configure + build + `ctest` green (especially `test_camera2d`, `test_canonical_json`, `test_migration`), and review the FE13 CLI gap below.
+- Minimum: Windows/MSVC configure + build + `ctest` green, play the top-down arena as above, review the FE15 CLI gap in `docs/slice_topdown_gaps.md`, and review the partial-job limitations. Review the FE13 CLI gap below as well.
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE15 is partial: the missing AF3/AF4 CLI prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
 - FE14 is partial: AF3/AF4 are absent, so shared CLI audio settings and diagnostics are unavailable. Real-device playback has not been manually verified.
 - FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
@@ -107,3 +116,9 @@ FE13 verification: GCC Debug 40/40, Clang ASan/UBSan 40/40, MinGW cross-build pa
 ## FE14 audio
 
 Visible editor/player use miniaudio with a null fallback; hidden runs stay device-free. Streaming playback applies source gain, loop and bus gain. Tests exercise null selection and simulated fallback. CLI audio commands await AF3/AF4. **UNTESTED on native Windows/MSVC**, including audible playback.
+
+## FE15 — top-down validation slice
+
+Canonical v2 project and scene with a registered native module, zero-gravity actors, tilemap walls, direct enemy chase, health HUD and hit burst. `test_topdown_slice` covers strict text edit/round trip and 600 headless fixed steps; player/export smoke tests use a virtual display. See `docs/slice_topdown_gaps.md` for limitations. **UNTESTED on native Windows/MSVC.**
+
+FE15 validation: GCC Debug 43/43 CTest, Clang ASan/UBSan 43/43 CTest, MinGW cross-build passed; no MinGW executables were run.

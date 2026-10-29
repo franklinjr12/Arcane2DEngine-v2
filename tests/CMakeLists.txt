@@ -127,6 +127,18 @@ if(ARCANE_BUILD_SAMPLES AND UNIX)
   set_tests_properties(test_export_platformer_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
+  add_test(NAME test_export_topdown_slice
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_export_game.sh
+      ${CMAKE_SOURCE_DIR}/scripts/export-game.sh ${CMAKE_BINARY_DIR}
+      ${CMAKE_SOURCE_DIR}/samples/topdown_slice $<TARGET_FILE:topdown_slice_game>)
+  set_tests_properties(test_export_topdown_slice PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 300
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_player_topdown_frames COMMAND arcane_player
+    --project ${CMAKE_SOURCE_DIR}/samples/topdown_slice --module $<TARGET_FILE:topdown_slice_game>
+    --frames 120 --hidden)
+  set_tests_properties(test_player_topdown_frames PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
   add_test(NAME test_player_slice_frames COMMAND arcane_player
     --project ${CMAKE_SOURCE_DIR}/samples/platformer_slice --module $<TARGET_FILE:platformer_slice_game>
     --frames 120 --hidden)
@@ -150,6 +162,13 @@ if(ARCANE_BUILD_SAMPLES)
     ARCANE_SLICE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/platformer_slice"
     ARCANE_SLICE_MODULE_PATH="$<TARGET_FILE:platformer_slice_game>")
   add_test(NAME test_platformer_slice COMMAND test_platformer_slice)
+
+  add_executable(test_topdown_slice test_topdown_slice.cpp)
+  target_link_libraries(test_topdown_slice PRIVATE arcane_editor_core)
+  target_compile_definitions(test_topdown_slice PRIVATE
+    ARCANE_TOPDOWN_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/topdown_slice"
+    ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
+  add_test(NAME test_topdown_slice COMMAND test_topdown_slice)
 
   # Legacy -> canonical v2 migration of both sample projects, with their modules.
   add_executable(test_migration test_migration.cpp)

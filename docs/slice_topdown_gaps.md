@@ -1,0 +1,9 @@
+# Top-down validation slice: gaps
+
+`samples/topdown_slice` is a small arena, not a complete game. WASD moves the blue player, the red enemy follows, and proximity damages the player with a particle burst. The HUD shows remaining health. Registered `ArenaRules` properties in `scenes/main.scene.json` tune both speeds, hit radius, cooldown and damage; `gravity_scale` is zero on both actors. The arena uses a solid Tilemap perimeter. Assets are intentionally reused placeholder art.
+
+- AF3/AF4 are partial: no shared command registry or `arcane` executable exists. Creating, setting module properties, validating and formatting through CLI are unavailable. Edit v2 JSON directly; opening the project loads its module and validates the scene. The automated test modifies a registered property as text, strictly loads it, round-trips and rejects an unknown property.
+- AF10 is not implemented: no display-free CLI fixed-frame run or structured CLI export. The headless C++ test simulates 600 fixed ticks; the hidden player and `scripts/export-game.sh` still need a display (Xvfb is sufficient). The export script rewrites the module field with `sed`.
+- No reusable top-down controller or steering/navigation: movement and direct pursuit live in the game module. The enemy does not pathfind around walls, and the simple proximity hit ignores line of sight. There is no attack, death state, restart, or combat system in this slice.
+- Physics exposes contact callbacks but lacks collision layers, spatial queries, and an impulse API suitable for richer combat. Tilemap colliders are static and no navigation mesh is built from them.
+- No native Windows/MSVC or manual visual validation was performed. The automated GL/export checks use Xvfb and Mesa; they do not prove appearance or device input on Windows.

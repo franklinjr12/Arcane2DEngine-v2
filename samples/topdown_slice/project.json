@@ -1,0 +1,98 @@
+{
+  "format": "arcane.project",
+  "hud": {
+    "elements": [
+      {
+        "anchor": "top_left",
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_scale": 3.0,
+        "id": "health_text",
+        "offset": [
+          16.0,
+          16.0
+        ],
+        "text": "HEALTH 5",
+        "type": "text"
+      },
+      {
+        "anchor": "top_right",
+        "background": [
+          0.0,
+          0.0,
+          0.0,
+          0.6
+        ],
+        "fill": [
+          0.85,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "fraction": 1.0,
+        "id": "health_bar",
+        "offset": [
+          -16.0,
+          16.0
+        ],
+        "size": [
+          220.0,
+          20.0
+        ],
+        "type": "progress_bar"
+      }
+    ],
+    "format": "arcane.hud",
+    "version": 2
+  },
+  "input_actions": {
+    "actions": [
+      {
+        "bindings": [
+          {
+            "code": 65,
+            "device": "keyboard"
+          }
+        ],
+        "name": "left"
+      },
+      {
+        "bindings": [
+          {
+            "code": 68,
+            "device": "keyboard"
+          }
+        ],
+        "name": "right"
+      },
+      {
+        "bindings": [
+          {
+            "code": 87,
+            "device": "keyboard"
+          }
+        ],
+        "name": "up"
+      },
+      {
+        "bindings": [
+          {
+            "code": 83,
+            "device": "keyboard"
+          }
+        ],
+        "name": "down"
+      }
+    ],
+    "format": "arcane.input",
+    "version": 2
+  },
+  "main_scene": "scenes/main.scene.json",
+  "module": "topdown_slice_game.so",
+  "name": "topdown_slice",
+  "version": 2
+}
