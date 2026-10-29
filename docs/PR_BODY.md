@@ -88,6 +88,13 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 
 ---
 
+## Overnight wrap (2026-10-29 02:40 BRT)
+- Branch `engine-nightly-2026-10-28` HEAD `e464cfe`: gcc Debug build and CTest pass, 43/43 (headless and under `xvfb-run`). Clang ASan/UBSan and mingw were not re-run in this wrap; their last full results are in the job notes above.
+- Uncommitted FE18 prefab work (prefab link/override load and save, `engine/src/prefab.cpp`) did not compile (`arcane::Color` has no `operator==`). It was moved to WIP branch `engine-nightly-2026-10-28-wip-fe18` (not built, not tested), not committed to the job branch.
+- The older `engine-nightly-2026-10-28-wip` branch (tip `613fadb`, preserved AF3 tooling) was left untouched.
+- Status: AF1, AF2, FE1-FE5, FE7-FE12B, FD1-FD3 and WINFIX PASS. AF3-AF11, FE13-FE15, FE17 and KI1 are PARTIAL or not complete. FE18 is PARTIAL (WIP branch only). FE20-FE23, AF12 and FE16 were not started.
+- Native Windows/MSVC remains UNTESTED (mingw cross-build only).
+
 ## AF11 — documentation and inventory (partial)
 
 Added root agent guidance and reviewed editor actions. Registry-generated CLI reference and coverage gates, schema-example validation and the CLI workflow remain blocked by missing prerequisites. **UNTESTED on native Windows/MSVC.**
