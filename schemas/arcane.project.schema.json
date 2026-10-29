@@ -1,0 +1,49 @@
+{
+  "$defs": {
+    "project_path": {
+      "pattern": "^(?!/)(?![A-Za-z]:)([^/\\\\]+)(/[^/\\\\]+)*$",
+      "type": "string"
+    }
+  },
+  "$id": "https://arcane2d.local/schemas/arcane.project.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.project"
+    },
+    "hud": {
+      "type": "object"
+    },
+    "input_actions": {
+      "type": "object"
+    },
+    "main_scene": {
+      "$ref": "#/$defs/project_path"
+    },
+    "module": {
+      "oneOf": [
+        {
+          "const": ""
+        },
+        {
+          "$ref": "#/$defs/project_path"
+        }
+      ]
+    },
+    "name": {
+      "type": "string"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "name",
+    "main_scene"
+  ],
+  "title": "Arcane project file (v2)",
+  "type": "object"
+}

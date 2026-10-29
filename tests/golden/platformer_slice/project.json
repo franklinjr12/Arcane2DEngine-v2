@@ -1,0 +1,155 @@
+{
+  "format": "arcane.project",
+  "hud": {
+    "elements": [
+      {
+        "anchor": "top_left",
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_scale": 3.0,
+        "offset": [
+          16.0,
+          16.0
+        ],
+        "text": "SCORE 0",
+        "type": "text"
+      },
+      {
+        "anchor": "top_right",
+        "background": [
+          0.0,
+          0.0,
+          0.0,
+          0.6
+        ],
+        "fill": [
+          0.85,
+          0.2,
+          0.2,
+          1.0
+        ],
+        "fraction": 1.0,
+        "offset": [
+          -16.0,
+          16.0
+        ],
+        "size": [
+          220.0,
+          20.0
+        ],
+        "type": "progress_bar"
+      },
+      {
+        "anchor": "center",
+        "color": [
+          1.0,
+          0.9,
+          0.3,
+          1.0
+        ],
+        "font_scale": 5.0,
+        "offset": [
+          0.0,
+          -60.0
+        ],
+        "text": "",
+        "type": "text"
+      },
+      {
+        "anchor": "bottom_right",
+        "disabled": [
+          0.15,
+          0.15,
+          0.15,
+          0.5
+        ],
+        "enabled": true,
+        "font_scale": 2.0,
+        "hover": [
+          0.3,
+          0.3,
+          0.4,
+          0.95
+        ],
+        "id": "restart",
+        "label": "RESTART",
+        "normal": [
+          0.2,
+          0.2,
+          0.25,
+          0.9
+        ],
+        "offset": [
+          -16.0,
+          -16.0
+        ],
+        "pressed": [
+          0.1,
+          0.1,
+          0.15,
+          1.0
+        ],
+        "size": [
+          160.0,
+          40.0
+        ],
+        "text_color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "type": "button"
+      }
+    ],
+    "format_version": 1
+  },
+  "input_actions": {
+    "actions": [
+      {
+        "bindings": [
+          {
+            "code": 65,
+            "device": "keyboard"
+          },
+          {
+            "code": 263,
+            "device": "keyboard"
+          }
+        ],
+        "name": "move_left"
+      },
+      {
+        "bindings": [
+          {
+            "code": 68,
+            "device": "keyboard"
+          },
+          {
+            "code": 262,
+            "device": "keyboard"
+          }
+        ],
+        "name": "move_right"
+      },
+      {
+        "bindings": [
+          {
+            "code": 32,
+            "device": "keyboard"
+          }
+        ],
+        "name": "jump"
+      }
+    ],
+    "format_version": 1
+  },
+  "main_scene": "scenes/main.scene.json",
+  "module": "platformer_slice_game.so",
+  "name": "platformer_slice",
+  "version": 2
+}

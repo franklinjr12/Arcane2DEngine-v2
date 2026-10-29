@@ -1,41 +1,12 @@
 #include "arcane_editor/project_session.hpp"
 
-#include <format>
-#include <fstream>
-#include <sstream>
+#include "arcane/canonical_json.hpp"
 
 namespace arcane::editor {
 
-namespace {
-
-std::expected<std::string, std::string> read_file(const std::filesystem::path& path) {
-  std::ifstream in(path, std::ios::binary);
-  if (!in) {
-    return std::unexpected(std::format("failed to open '{}' for reading", path.string()));
-  }
-  std::ostringstream buffer;
-  buffer << in.rdbuf();
-  return buffer.str();
-}
-
-std::expected<void, std::string> write_file(const std::filesystem::path& path, const std::string& text) {
-  std::ofstream out(path, std::ios::binary | std::ios::trunc);
-  if (!out) {
-    return std::unexpected(std::format("failed to open '{}' for writing", path.string()));
-  }
-  out << text;
-  out.close();
-  if (!out) {
-    return std::unexpected(std::format("failed writing '{}'", path.string()));
-  }
-  return {};
-}
-
-}  // namespace
-
 std::expected<ProjectSession, std::string> ProjectSession::open(const std::filesystem::path& project_dir,
                                                                   const ComponentRegistry& registry) {
-  auto project_text = read_file(project_dir / "project.json");
+  auto project_text = read_text_file(project_dir / "project.json");
   if (!project_text) {
     return std::unexpected(project_text.error());
   }
@@ -48,7 +19,7 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   session.project_dir_ = project_dir;
   session.project_ = std::move(*project);
 
-  auto scene_text = read_file(session.main_scene_path());
+  auto scene_text = read_text_file(session.main_scene_path());
   if (!scene_text) {
     return std::unexpected(scene_text.error());
   }
@@ -85,12 +56,23 @@ std::expected<void, std::string> ProjectSession::save(const ComponentRegistry& r
   std::error_code ec;
   std::filesystem::create_directories(main_scene_path().parent_path(), ec);
 
-  auto wrote_project = write_file(project_dir_ / "project.json", save_project_to_json(project_));
+  // Serialize both documents before touching disk so a serialization error
+  // (e.g. a NaN property) never leaves a half-saved project.
+  auto project_text = save_project_canonical_json(project_);
+  if (!project_text) {
+    return std::unexpected("project.json: " + project_text.error());
+  }
+  auto scene_text = scene_.save_canonical_json(registry);
+  if (!scene_text) {
+    return std::unexpected(main_scene_path().string() + ": " + scene_text.error());
+  }
+
+  auto wrote_project = write_text_file_atomic(project_dir_ / "project.json", *project_text);
   if (!wrote_project) {
     return std::unexpected(wrote_project.error());
   }
 
-  auto wrote_scene = write_file(main_scene_path(), scene_.save_to_json(registry));
+  auto wrote_scene = write_text_file_atomic(main_scene_path(), *scene_text);
   if (!wrote_scene) {
     return std::unexpected(wrote_scene.error());
   }
