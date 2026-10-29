@@ -165,3 +165,9 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | 67 | Legacy HUD leniency | Legacy HUD loads used to ignore malformed colors/offsets silently; they now report an error for wrongly typed values (unknown keys are still ignored on plain legacy loads). Needed so migration can prove nothing is dropped. |
 | 68 | Legacy support window | All legacy v1 readers (project, scene, tileset, clip, HUD, input) are kept with no removal date; removal needs a separate decision from Franklin. |
 
+
+## FE12B — Windows hardening (delegated)
+
+| # | Topic | Decision |
+|---|---|---|
+| 69 | Texture paths | Open texture files with native wide paths on Windows and pass the open stream to stb; preserve existing decoder behavior and test a Unicode filename. Other narrow-path consumers remain a documented limitation pending a broader Unicode path policy. |
