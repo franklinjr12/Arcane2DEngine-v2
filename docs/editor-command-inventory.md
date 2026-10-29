@@ -36,3 +36,22 @@ Selection, viewport and panel choices, paint brush selection, preview toggles,
 play mode and unsaved panel drafts are transient editor state. A draft becomes
 an authored change when saved; it must then use the shared command path.
 This inventory is a starting point, not proof of exhaustive command coverage.
+
+## AF11 review
+
+A widget-by-widget review of `editor_main.cpp` also identifies **New tileset**
+(which creates a file), tileset texture selection and terrain-rule edits followed
+by **Save tileset**, clip grid/frame edits followed by **Save clip**, and tile
+paint Undo/Redo as authored operations requiring registry-backed equivalents.
+The input panel changes player assignment and binding device, code, pad, axis
+direction, deadzone and threshold as well as adding/removing actions and bindings.
+HUD creation, removal and field edits are authored; the panel currently offers
+button, text and bar creation, but no image creation. Hierarchy drag/drop is a
+reparent operation. The selected asset can change component asset properties.
+
+Camera/panel/selection controls, preview toggles, Play/Stop and unsaved draft
+fields are transient; saving a draft is an authored operation. This inventory is
+an audit of the present editor, not an automated guarantee: registry, CLI,
+coverage manifest, routing and direct-write lint remain absent. Completion needs
+behavioral parity tests as well as a manifest; a manifest alone cannot discover
+new direct widget writes.

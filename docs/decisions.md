@@ -182,3 +182,4 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | 75 | Save revision checks | Compare both project and scene contents with the last read or written bytes before saving, rejecting detected external changes while keeping the session dirty. This is an optimistic check, not a lock or a multi-file transaction. |
 
 | 76 | AF10 prerequisite boundary | Defer AF10 implementation until the incomplete AF3 command registry and AF4 CLI prerequisites are complete; record the missing headless run, test and structured export explicitly. This follows the nightly requirement to finish partial prerequisites before building on them. |
+| 77 | AF11 prerequisite boundary | Document current repository workflows and audit editor actions without fabricating CLI or generated registry documentation; AF11 coverage and workflow gates depend on the missing AF3–AF10 foundations and remain partial. |
