@@ -48,8 +48,8 @@ arcane --project game prop set --node id:1 --component Sprite --name width --val
 arcane --project game validate && arcane --project game fmt --check
 ```
 
-Pass `--module PATH` to load a native game module from a build tree. Not covered by commands yet: tilemap/tileset
-editing, HUD, input maps, clip authoring beyond `atlas make-clip`, asset import, `run`/`export`/`render`/`test`;
+Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
+Not covered by commands yet: the tileset panel's draft editing in the GUI, HUD, input maps, clip authoring beyond `atlas make-clip`, asset import, `run`/`export`/`render`/`test`;
 the editor still mutates data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity or
 invent commands. The contract remains registry-backed GUI and CLI authoring and JSONL batches, with no MCP or
 JSON-RPC server.

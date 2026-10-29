@@ -249,6 +249,16 @@ target_link_libraries(test_atlas PRIVATE arcane_tooling)
 target_include_directories(test_atlas SYSTEM PRIVATE ${TP}/stb)
 add_test(NAME test_atlas COMMAND test_atlas)
 
+# --- tilemap.* / tileset.* commands ---------------------------------------------
+add_executable(test_tilemap_commands test_tilemap_commands.cpp)
+target_link_libraries(test_tilemap_commands PRIVATE arcane_tooling)
+target_include_directories(test_tilemap_commands SYSTEM PRIVATE ${TP}/stb)
+target_compile_definitions(test_tilemap_commands PRIVATE
+  ARCANE_TOPDOWN_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/topdown_slice"
+  ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
+add_dependencies(test_tilemap_commands topdown_slice_game)
+add_test(NAME test_tilemap_commands COMMAND test_tilemap_commands)
+
 # --- FE22 scene transitions, save API, transition.* / save.* commands ---------
 add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)

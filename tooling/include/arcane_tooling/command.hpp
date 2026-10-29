@@ -26,6 +26,9 @@ struct Invocation {
 struct CommandResult {
   Json value = Json::object();
   std::optional<Invocation> inverse;
+  // What redo should run instead of the call itself, when the effect is better stated another way
+  // (tilemap edits: the exact tilemap.set_cells, which CommandHistory can merge within one stroke).
+  std::optional<Invocation> redo;
 };
 
 using CommandFn = std::function<std::expected<CommandResult, ToolError>(ProjectContext&, const Json& args)>;
@@ -154,6 +157,10 @@ void register_flow_commands(CommandRegistry& registry);
 
 // Registers debug.get/debug.set (the overlay settings in project.json; writes at once).
 void register_debug_commands(CommandRegistry& registry);
+
+// Registers tilemap.info/get/add_layer/set_cells/paint/erase/fill_rect/terrain_paint/dump_csv/import_csv (cells of a Tilemap in the scene)
+// and tileset.info/validate/create/set_tile/set_rule/remove_rule (tileset files under assets/, written at once).
+void register_tilemap_commands(CommandRegistry& registry);
 
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
