@@ -130,7 +130,7 @@ Added root agent guidance and reviewed editor actions. Registry-generated CLI re
 
 ## FE17 — one-way platforms
 
-`Collider2D.one_way` (static box; land from above, pass from below) and `PlatformerController2D.down_action` / `drop_duration` (hold down + jump to drop through). Canonical JSON gains `one_way`, `down_action`, `drop_duration` (golden scenes updated, additions only). Headless test `test_platformer` covers landing, drop-through and passing from below. Manual check: add a Collider2D to a static body in the editor, tick `one_way`, Play, jump up through it, land, press S+Space. Not done: tile-flag one-way, slopes, CLI commands (AF3/AF4 absent). **UNTESTED on native Windows/MSVC.**
+`Collider2D.one_way` (static box; land from above, pass from below) and `PlatformerController2D.down_action` / `drop_duration` (hold down + jump to drop through). Canonical JSON gains `one_way`, `down_action`, `drop_duration` (golden scenes updated, additions only). Headless test `test_platformer` covers landing, drop-through and passing from below. Manual check: add a Collider2D to a static body in the editor, tick `one_way`, Play, jump up through it, land, press S+Space. `one_way`, `down_action` and `drop_duration` are settable via `prop.set` (round-trip tested in `test_tooling_commands`; documented in `docs/formats/scene.md`). Not done: tile-flag one-way, slopes, the `arcane` CLI binary (does not exist). **UNTESTED on native Windows/MSVC.**
 
 ## Test results
 `scripts/build-and-test.sh`: gcc Debug PASS (39/39 tests; AF2 adds test_formats_v2), clang ASan/UBSan PASS (39/39), mingw-w64 cross-build PASS (build only, not run).
