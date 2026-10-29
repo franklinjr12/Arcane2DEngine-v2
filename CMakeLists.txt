@@ -131,7 +131,9 @@ add_library(arcane_runtime SHARED
   engine/src/font_data.cpp
   engine/src/tilemap.cpp
   engine/src/particles.cpp
-  engine/src/debug.cpp)
+  engine/src/debug.cpp
+  engine/src/replay.cpp
+  engine/src/screenshot.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json engine/src)
@@ -169,7 +171,8 @@ add_library(arcane_tooling STATIC
   tooling/src/atlas_commands.cpp
   tooling/src/flow_commands.cpp
   tooling/src/prefab_commands.cpp
-  tooling/src/bench_commands.cpp)
+  tooling/src/bench_commands.cpp
+  tooling/src/replay_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
 

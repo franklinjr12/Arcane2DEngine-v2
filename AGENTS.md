@@ -49,6 +49,11 @@ parity or invent CLI commands. The target contract is registry-backed GUI and
 CLI authoring and JSONL batches, with no MCP or JSON-RPC server. Implement
 missing prerequisites before building coverage gates around them.
 
+Deterministic replay (`docs/formats/replay.md`): `arcane.replay` input recordings and `arcane.replay_trace`
+per-frame state hashes, commands `replay.save`/`replay.run`, `arcane_player --replay/--trace-out/--expect-trace/
+--screenshot`, and PNG capture with golden comparison (`arcane/screenshot.hpp`, `tests/golden/render/`).
+Determinism holds for the same build and platform only; golden images assume Mesa llvmpipe under Xvfb.
+
 New commands go in `tooling/src/`, are registered in a `register_*_commands`
 function, take a `ProjectContext&`, validate before mutating, and return the
 inverse invocation. Do not keep `Node*`/`Component*`/descriptors past the
