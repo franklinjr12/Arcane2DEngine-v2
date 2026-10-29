@@ -123,8 +123,11 @@ int run_project(const Args& args) {
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
-  // Null backend by default (no audio device is ever opened); see docs/decisions.md.
-  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  std::string audio_diagnostic;
+  auto audio = arcane::AudioSystem::create_preferred(args.hidden, audio_diagnostic);
+  if (!audio_diagnostic.empty()) {
+    ARCANE_LOG_WARN(kLogCategory, "audio device unavailable; using null backend: {}", audio_diagnostic);
+  }
   if (!audio) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
     return 1;

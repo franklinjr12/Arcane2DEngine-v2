@@ -64,3 +64,13 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 `bounds_enabled`, `bounds_min`, and `bounds_max` define an explicit world rectangle, including tilemap extents if entered by the author. The viewport is clamped inside it; if the viewport is larger than an axis of the rectangle, that axis is centered. `pixel_snap` rounds the final center to screen-pixel increments at the current zoom. `shake_amplitude`, `shake_duration`, and integer `shake_seed` configure a deterministic, linearly decaying shake starting at Play; C++ can restart it with `start_shake()`. Camera tracking and shake advance on fixed scene ticks; transient state is not serialized. Clamp precedes pixel snapping, so snapping can move the view by at most half a screen pixel beyond a bound.
 
 The shared command registry and `arcane` CLI are not yet available (AF3/AF4 partial); there are no Camera2D CLI commands or CLI validation/round-trip yet. Until those jobs land, edit these registered values in the Inspector or canonical scene JSON.
+
+## AudioSource
+
+The registered `AudioSource` properties are `clip` (asset ID), `volume` (float),
+`loop` (boolean), and `play_on_start` (boolean). They are stored in the scene
+component properties and legacy scenes remain readable. At Play/start, the clip
+ID is resolved against project audio assets; looping sources use the music bus
+and other sources use the SFX bus. The shared CLI is not yet available (AF3/AF4
+are partial); these properties can currently be authored in scene JSON or the
+editor Inspector.

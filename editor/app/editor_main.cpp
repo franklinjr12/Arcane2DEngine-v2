@@ -477,9 +477,11 @@ int main(int argc, char** argv) {
   arcane::Vec2 viewport_origin{};  // top-left of the Viewport image in window coords (previous frame)
   int viewport_w = 1, viewport_h = 1;
 
-  // Null backend: the editor never opens an audio device, but play_on_start
-  // and one-shot calls are still recorded. See docs/decisions.md.
-  auto audio = arcane::AudioSystem::create(/*null_backend=*/true);
+  std::string audio_diagnostic;
+  auto audio = arcane::AudioSystem::create_preferred(args.hidden, audio_diagnostic);
+  if (!audio_diagnostic.empty()) {
+    ARCANE_LOG_WARN(kLogCategory, "audio device unavailable; using null backend: {}", audio_diagnostic);
+  }
   if (!audio) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
     return 1;
@@ -496,6 +498,7 @@ int main(int argc, char** argv) {
                                                 arcane::editor::list_audio_assets(session.assets_dir()));
   };
   auto end_play = [&] {
+    audio->stop_all();
     play_stop.stop();
     arcane::set_active_input_map(nullptr);
     arcane::set_active_audio_system(nullptr);

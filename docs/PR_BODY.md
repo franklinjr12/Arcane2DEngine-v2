@@ -37,7 +37,10 @@ Open the sample project in the editor, add Camera2D to a node via the Inspector,
 
 FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unicode filename; expect it to pass.
 
+Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
+
 **2. What you can visibly see**
+- AudioSource playback is audible in visible editor Play and player sessions when a device opens; fallback is logged.
 - Camera2D appears in the Inspector; Play and player use its follow, bounds, zoom, shake and pixel snapping. Its settings appear in saved scene JSON.
 - Texture files with Unicode names can now be opened by the renderer on Windows; the regression test checks a Unicode filename.
 - New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`, plus (AF2) `tileset.md`, `clip.md`, `hud.md`, `input.md`; JSON Schemas in `schemas/`.
@@ -51,6 +54,7 @@ FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unico
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- FE14 is partial: AF3/AF4 are absent, so shared CLI audio settings and diagnostics are unavailable. Real-device playback has not been manually verified.
 - FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
@@ -99,3 +103,7 @@ AF3 is PARTIAL: its preserved WIP is not integrated and lacks property commands 
 Registered canonical scene properties, fixed-tick following and deterministic shake, bounds and pixel snapping; see `docs/formats/scene.md`. AF3/AF4 are partial and absent: shared GUI commands, CLI creation/property/validation and CLI shake round-trip remain unimplemented. UNTESTED on native Windows/MSVC.
 
 FE13 verification: GCC Debug 40/40, Clang ASan/UBSan 40/40, MinGW cross-build passed; native Windows/MSVC and visual camera behavior are untested.
+
+## FE14 audio
+
+Visible editor/player use miniaudio with a null fallback; hidden runs stay device-free. Streaming playback applies source gain, loop and bus gain. Tests exercise null selection and simulated fallback. CLI audio commands await AF3/AF4. **UNTESTED on native Windows/MSVC**, including audible playback.
