@@ -82,7 +82,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
-- FE15 is partial: the missing AF3/AF4 CLI prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
+- FE15 is partial: the missing `arcane` executable (registry `prop.*` now covers ArenaRules properties in C++ via `test_topdown_commands`) prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
 - FE14 is partial: the `arcane` CLI still does not exist, so audio settings (`prop.set` on `AudioSource`) and `audio.backend` diagnostics are registry commands reachable from C++/tests only. Real-device playback has not been manually verified.
 - FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
 - **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
@@ -154,7 +154,7 @@ Visible editor/player use miniaudio with a null fallback; hidden runs stay devic
 
 ## FE15 — top-down validation slice
 
-Canonical v2 project and scene with a registered native module, zero-gravity actors, tilemap walls, direct enemy chase, health HUD and hit burst. `test_topdown_slice` covers strict text edit/round trip and 600 headless fixed steps; player/export smoke tests use a virtual display. See `docs/slice_topdown_gaps.md` for limitations. **UNTESTED on native Windows/MSVC.**
+Canonical v2 project and scene with a registered native module, zero-gravity actors, tilemap walls, direct enemy chase, health HUD and hit burst. `test_topdown_slice` covers strict text edit/round trip and 600 headless fixed steps; player/export smoke tests use a virtual display. `test_topdown_commands` lists/sets the registered `ArenaRules` properties through the shared registry (persist, dry run, rejection). See `docs/slice_topdown_gaps.md` for limitations. **UNTESTED on native Windows/MSVC.**
 
 FE15 validation: GCC Debug 43/43 CTest, Clang ASan/UBSan 43/43 CTest, MinGW cross-build passed; no MinGW executables were run.
 
