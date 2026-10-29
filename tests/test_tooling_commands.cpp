@@ -6,6 +6,8 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <utility>
+#include <vector>
 
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
@@ -255,6 +257,46 @@ void test_context_lifetime_and_registry_listing() {
   ARCANE_ASSERT_TRUE(specs[2]->mutating && !specs[0]->mutating);
 }
 
+// Every authored Camera2D setting goes through prop.set, persists, and a reopened project replays the same
+// deterministic shake as the in-memory camera.
+void test_camera2d_settings_round_trip() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    const std::pair<const char*, Json> settings[] = {
+        {"zoom", 2}, {"smoothing", 4}, {"deadzone", Json::array({3, 4})}, {"bounds_enabled", true},
+        {"bounds_min", Json::array({-500, -400})}, {"bounds_max", Json::array({500, 400})}, {"pixel_snap", true},
+        {"shake_amplitude", 8}, {"shake_duration", 1}, {"shake_seed", 42}};
+    for (const auto& [name, value] : settings) {
+      ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", name, value), persist).has_value());
+    }
+  }
+  auto replay = [&](ProjectContext& context) {
+    auto* camera = static_cast<arcane::Camera2D*>(context.scene().find_node(1)->find_component("Camera2D"));
+    context.scene().update(0.25f);  // starts components (and the shake), then advances one tick
+    std::vector<arcane::Vec2> centers;
+    for (int i = 0; i < 4; ++i) {
+      context.scene().update(0.25f);
+      centers.push_back(camera->view_center(100, 100));
+    }
+    return centers;
+  };
+  auto first_context = open(project);
+  auto second_context = open(project);
+  const auto first = replay(*first_context);
+  const auto second = replay(*second_context);
+  ARCANE_ASSERT_TRUE(first.size() == second.size());
+  for (std::size_t i = 0; i < first.size(); ++i)
+    ARCANE_ASSERT_TRUE(first[i].x == second[i].x && first[i].y == second[i].y);
+  ARCANE_ASSERT_TRUE(first[0].x != first[1].x || first[0].y != first[1].y);  // actually shaking
+  ARCANE_ASSERT_TRUE(get(registry, *first_context, "Camera2D", "shake_seed") == 42);
+  // Out-of-range values fail validation and change nothing.
+  auto bad = registry.execute(*first_context, set("Camera2D", "shake_seed", 1.5), persist);
+  ARCANE_ASSERT_TRUE(!bad.has_value());
+}
+
 }  // namespace
 
 int main() {
@@ -264,5 +306,6 @@ int main() {
   test_dry_run_and_conflict_roll_back();
   test_open_failures_write_nothing();
   test_context_lifetime_and_registry_listing();
+  test_camera2d_settings_round_trip();
   return 0;
 }
