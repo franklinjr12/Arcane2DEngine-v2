@@ -229,3 +229,8 @@ add_executable(test_atlas test_atlas.cpp)
 target_link_libraries(test_atlas PRIVATE arcane_tooling)
 target_include_directories(test_atlas SYSTEM PRIVATE ${TP}/stb)
 add_test(NAME test_atlas COMMAND test_atlas)
+
+# --- FE22 scene transitions, save API, transition.* / save.* commands ---------
+add_executable(test_scene_flow test_scene_flow.cpp)
+target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
+add_test(NAME test_scene_flow COMMAND test_scene_flow)
