@@ -194,3 +194,10 @@ foreach(h ${ARCANE_PUBLIC_HEADERS})
 endforeach()
 add_library(header_check OBJECT ${header_check_sources})
 target_link_libraries(header_check PRIVATE arcane_runtime)
+
+# --- authoring command registry: typed property commands over a real module -
+add_executable(test_tooling_commands test_tooling_commands.cpp)
+target_link_libraries(test_tooling_commands PRIVATE arcane_tooling)
+target_compile_definitions(test_tooling_commands PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_tooling_commands COMMAND test_tooling_commands)

@@ -51,9 +51,12 @@ Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, 
 
 AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. No `arcane` CLI exists yet, so CLI checks cannot be run.
 
+AF3 check: `ctest --test-dir .build-and-test/build-gcc -R test_tooling_commands --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_tooling_commands --output-on-failure`); expect it to pass. It sets and undoes typed properties on `sample_game`'s `Spinner` and on builtin `Camera2D`/`Sprite` in a temporary project; there is nothing to click or run by hand.
+
 AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
 
 **2. What you can visibly see**
+- AF3 adds the `arcane_tooling` library and `docs/commands.md` (command reference, error codes); no new GUI or CLI executable. Visible only through `test_tooling_commands`.
 - AF11 adds `AGENTS.md` with build, format and current authoring guidance, and expands the editor action inventory. No CLI or generated command reference is available.
 - AF9 prerequisite: saving reports external edits detected in the project or scene since opening or the last save.
 - AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
@@ -74,6 +77,7 @@ AF10: no `arcane run`, `test`, or `export` command is available yet; there is no
 - Optional: open + save both samples in the editor and run the player on the saved project.
 
 **4. Known risks**
+- AF3 is PASS for its scope (registry, context, property commands) but nothing calls it yet: the editor does not route through it (AF5) and the `arcane` CLI (AF4) does not exist. Only property commands exist. Persistence writes the scene only and is optimistic about concurrent writers. **UNTESTED on native Windows/MSVC** (`tooling/` uses `std::expected`, `std::to_chars(float)`, `std::filesystem`; `ProjectContext` has an out-of-line destructor).
 - AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
 - AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
 - AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
