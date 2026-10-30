@@ -1,0 +1,160 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.replay.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "events": {
+      "items": {
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "down": {
+                "type": "boolean"
+              },
+              "frame": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "enum": [
+                  "key",
+                  "mouse_button"
+                ]
+              }
+            },
+            "required": [
+              "frame",
+              "kind",
+              "code",
+              "down"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "integer"
+              },
+              "down": {
+                "type": "boolean"
+              },
+              "frame": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "pad_button"
+              },
+              "pad": {
+                "maximum": 3,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "frame",
+              "kind",
+              "pad",
+              "code",
+              "down"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "maximum": 5,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "frame": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "pad_axis"
+              },
+              "pad": {
+                "maximum": 3,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "value": {
+                "maximum": 1,
+                "minimum": -1,
+                "type": "number"
+              }
+            },
+            "required": [
+              "frame",
+              "kind",
+              "pad",
+              "code",
+              "value"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "frame": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "const": "mouse_move"
+              },
+              "x": {
+                "type": "number"
+              },
+              "y": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "frame",
+              "kind",
+              "x",
+              "y"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "type": "array"
+    },
+    "fixed_hz": {
+      "maximum": 1000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "format": {
+      "const": "arcane.replay"
+    },
+    "frames": {
+      "maximum": 1000000,
+      "minimum": 1,
+      "type": "integer"
+    },
+    "seed": {
+      "minimum": 0,
+      "type": "integer"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "frames"
+  ],
+  "title": "Arcane input replay (v1)",
+  "type": "object"
+}

@@ -41,6 +41,13 @@ struct ClipDraft {
 
 AnimationClip build_clip(const ClipDraft& draft, int sheet_width, int sheet_height);
 
+// Reopens an existing clip into a draft on `grid` (the caller supplies the grid; clip files do not store
+// it). Every frame must be exactly a grid cell (within 1/2 texel) and have a positive duration, otherwise
+// an error names the frame, so that build_clip(draft) reproduces the clip instead of silently altering it.
+// Durations are kept per frame; `fps` is set to the first frame's rate for newly added frames.
+std::expected<ClipDraft, std::string> draft_from_clip(const AnimationClip& clip, const SheetGrid& grid,
+                                                      int sheet_width, int sheet_height);
+
 std::expected<void, std::string> save_clip_file(const std::filesystem::path& path, const AnimationClip& clip);
 std::expected<AnimationClip, std::string> load_clip_file(const std::filesystem::path& path);
 

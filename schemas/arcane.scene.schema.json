@@ -1,5 +1,29 @@
 {
   "$defs": {
+    "override": {
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "type": "string"
+        },
+        "local_id": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "property": {
+          "type": "string"
+        },
+        "value": {
+          "description": "Encoded like the property it overrides (see docs/formats/scene.md); the type comes from the prefab node's component descriptor or the node field."
+        }
+      },
+      "required": [
+        "local_id",
+        "property",
+        "value"
+      ],
+      "type": "object"
+    },
     "vec2": {
       "items": {
         "type": "number"
@@ -61,6 +85,36 @@
           },
           "position": {
             "$ref": "#/$defs/vec2"
+          },
+          "prefab": {
+            "additionalProperties": false,
+            "description": "Marks the node as part of a prefab instance (docs/formats/prefab.md). overrides appear only on the instance root (instance_id == node id).",
+            "properties": {
+              "asset": {
+                "description": "Project-relative path of the *.prefab.json file.",
+                "type": "string"
+              },
+              "instance_id": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "local_id": {
+                "minimum": 1,
+                "type": "integer"
+              },
+              "overrides": {
+                "items": {
+                  "$ref": "#/$defs/override"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "asset",
+              "instance_id",
+              "local_id"
+            ],
+            "type": "object"
           },
           "rotation_radians": {
             "type": "number"
