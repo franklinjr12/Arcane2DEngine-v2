@@ -54,8 +54,7 @@ arcane --project game validate && arcane --project game fmt --check
 ```
 
 `arcane run`, `arcane test` and `arcane export` (AF10B) run display-free fixed frames on scene copies (no save), run `tests/NAME.replay.json` cases, and write a structured game folder; `arcane_player --headless` runs the same stepping without a window. Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
-Not covered by commands yet: the tileset panel's draft editing in the GUI (its Save is `tileset.*`), `render`,
-and the tileset/clip draft editing. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
+Not covered by commands yet: `render`, and the tileset and clip panels' draft editing plus New tileset and Open clip (their Saves are `tileset.*`/`clip.create`). The current GUI/CLI coverage table is `docs/editor-command-inventory.md`. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
 (`clip.create`, an immediate file write) are command-backed in the editor and CLI (`test_edit_session` checks parity); the editor still
 mutates some data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity beyond that or
 invent commands. The contract remains registry-backed GUI and CLI authoring and JSONL batches, with no MCP or
@@ -71,7 +70,8 @@ function (called from `register_all_commands`), take a `ProjectContext&`, valida
 before mutating, and return the inverse invocation; commands that write files
 outside the scene are listed in `register_all_commands` (no `--dry-run`). File-level
 commands that must work without an openable project live in `tooling/src/offline.cpp`.
-Regenerate `docs/cli-reference.md` in the same commit. Do not keep `Node*`/`Component*`/descriptors past the
+Regenerate `docs/cli-reference.md` in the same commit. Also add a row for each new command to `docs/commands.md` (`test_cli` checks that every
+registered command is mentioned there and that it names no unknown command). Do not keep `Node*`/`Component*`/descriptors past the
 `ProjectContext` that produced them: the module is unloaded with the context.
 
 Editor and player can be run from `build-gcc/bin` with `--project` pointing to a
@@ -95,6 +95,7 @@ unknown fields and properties, while compatible loading can accept legacy data.
 Editor save rejects detected unknown data and external edits, but is not a
 multi-file transaction or a lock. Keep sample projects readable without requiring
 manual migration; verify stable IDs, semantic round trips and canonical output.
+Schema changes must keep `test_schema_examples` passing; its examples live in `tests/golden/schema_examples/`.
 
 For changes, run the relevant tests and `scripts/build-and-test.sh` before
 committing. Do not mistake a MinGW cross-build for native Windows testing.
