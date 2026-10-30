@@ -220,6 +220,23 @@ you pass: clip files do not store their grid, so every frame must be exactly one
 and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
 undo restores the exact bytes.
 
+## Project commands
+
+`project.get` / `project.set` read and edit the project-level properties in `project.json` (`name`, `main_scene`,
+`module`). Like `hud.*` they edit the project in memory and mark it dirty; File > Save (or `--persist`) writes
+`project.json`. Nothing is reloaded: `main_scene` and `module` take effect the next time the project is opened.
+Registered by `register_project_commands`; see `tooling/src/project_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `project.get` | none | `{name, main_scene, module}` |
+| `project.set` (mutating) | `name?`, `main_scene?`, `module?` (at least one) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+
+`name` must be non-empty. `main_scene` must be a project-relative `/` path without `..` that ends in `.json`.
+`module` may be empty (no native module) or a project-relative path. Anything else is `VALUE_INVALID` (file
+`project.json`, path `/name`, `/main_scene` or `/module`) and nothing is changed, even if another argument was valid.
+Setting a value to what it already is is a no-op without an inverse.
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
