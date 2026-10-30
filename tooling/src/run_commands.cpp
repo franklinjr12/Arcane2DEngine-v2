@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <optional>
 
+#include "arcane/atlas.hpp"
 #include "arcane/audio.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/hud.hpp"

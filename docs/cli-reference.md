@@ -77,9 +77,9 @@ changed. With `--dry-run` the commands run cumulatively in memory and nothing is
 ## Coverage
 
 Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,
-replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
+replay, bench, audio probe, run, test, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
 tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics
-authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use
+authoring beyond properties, `export`, `render`. The editor does not use
 these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
@@ -883,6 +883,20 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 | `--frames` | integer | yes |  |
 | `--seed` | integer | no |  |
 
+### `arcane run`
+
+Display-free fixed-frame run of the main (or --scene) scene, calling the game module's on_update each step; no window, GL or audio device. With replay, frames/fixed_hz/seed come from the recording. trace_out writes an arcane.replay_trace (skipped by --dry-run).
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--fixed-hz` | integer | no |  |
+| `--frames` | integer | no |  |
+| `--replay` | string | no |  |
+| `--seed` | integer | no |  |
+| `--trace-out` | string | no |  |
+
 ### `arcane save config-get`
 
 Read the authored save settings (game id, current data version, per-user save folder) from project.json.
@@ -1024,6 +1038,17 @@ Read only.
 | `--command` | string | no |  |
 | `--component` | string | no |  |
 | `--type` | string | no |  |
+
+### `arcane test`
+
+Run the project's replay tests: every tests/NAME.replay.json is replayed with the module and compared to tests/NAME.trace.json, plus a smoke run; exit 4 if any case fails.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--filter` | string | no |  |
+| `--frames` | integer | no |  |
 
 ### `arcane tilemap add-layer`
 
