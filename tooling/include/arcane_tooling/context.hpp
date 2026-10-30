@@ -63,11 +63,13 @@ class ProjectContext {
   void clear_project_dirty() noexcept { project_dirty_ = false; }  // only after restoring the loaded state
 
   // Writes the scene file and, when project_dirty(), project.json. Everything is serialized
-  // before the first byte is written, project.json is written first, then the scene; each
-  // replace is atomic, but the pair is not a transaction (a failure of the second write leaves
-  // the new project.json behind). Fails with CONFLICT, writing nothing, if a file to be
+  // before the first byte is written, project.json is written first, then the scene; both
+  // go through one transactional write: all-or-nothing for ordinary failures (a failed commit
+  // restores the earlier file), but not crash-atomic: a kill between the two renames can leave a mix. Fails with CONFLICT, writing nothing, if a file to be
   // written no longer matches what was loaded or last saved by this context.
   std::expected<void, ToolError> save();
+  // Test hook: simulate a failure committing the Nth file in save() (-1 = none).
+  void set_fail_commit_index_for_testing(int index) noexcept { fail_commit_index_ = index; }
 
  private:
   ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text,
@@ -81,6 +83,7 @@ class ProjectContext {
   std::string loaded_project_text_;
   bool dirty_ = false;
   bool project_dirty_ = false;
+  int fail_commit_index_ = -1;
 };
 
 }  // namespace arcane::tooling

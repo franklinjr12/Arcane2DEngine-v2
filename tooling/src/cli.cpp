@@ -69,6 +69,14 @@ class Session {
     return Json{{"value", result->value}};
   }
 
+  // Writes the accumulated in-memory edits (scene and, when changed, project.json) as one transaction.
+  // Returns whether anything was written.
+  std::expected<bool, ToolError> commit() {
+    if (!context_ || !(context_->dirty() || context_->project_dirty())) return false;
+    if (auto saved = context_->save(); !saved) return std::unexpected(saved.error());
+    return true;
+  }
+
  private:
   Options options_;
   CommandRegistry& registry_;
@@ -253,7 +261,7 @@ const char* kUsage =
     "       arcane batch FILE|-       one JSON command per line: {\"command\":\"prop.set\",\"args\":{...}}\n"
     "       arcane docs               the generated command reference (docs/cli-reference.md)\n"
     "Prints one JSON object on stdout; exit status 0 ok, 2 usage, 3 file/project, 4 invalid, 5 conflict,\n"
-    "6 module, 7 unsupported.\n";
+    "6 module, 7 unsupported (including TRANSACTION_UNSUPPORTED in a batch).\n";
 
 int run_batch(Session& session, const std::string& source, std::istream& in, std::ostream& out, std::ostream& err) {
   std::string text;
@@ -268,7 +276,24 @@ int run_batch(Session& session, const std::string& source, std::istream& in, std
     ss << file.rdbuf();
     text = ss.str();
   }
+  struct Line {
+    int number;
+    std::string command;
+    Json args;
+  };
+  const bool pretty = session.options().pretty;
   Json results = Json::array();
+  auto stop = [&](int number, const ToolError& error) {
+    Json body = error_json(error);
+    body["failed_line"] = number > 0 ? Json(number) : Json(nullptr);
+    body["results"] = results;
+    out << render(body, pretty) << "\n";
+    err << "arcane: " << (number > 0 ? "line " + std::to_string(number) + ": " : std::string()) << error.code << ": " << error.message << "\n";
+    return exit_code(error);
+  };
+
+  // Pass 1: check every line before anything runs.
+  std::vector<Line> script;
   std::istringstream lines(text);
   std::string line;
   int number = 0;
@@ -276,32 +301,45 @@ int run_batch(Session& session, const std::string& source, std::istream& in, std
     ++number;
     if (!line.empty() && line.back() == '\r') line.pop_back();
     if (line.find_first_not_of(" \t") == std::string::npos) continue;
-    auto stop = [&](const ToolError& error) {
-      Json body = error_json(error);
-      body["failed_line"] = number;
-      body["results"] = results;
-      out << render(body, session.options().pretty) << "\n";
-      err << "arcane: line " << number << ": " << error.code << ": " << error.message << "\n";
-      return exit_code(error);
-    };
     Json call = Json::parse(line, nullptr, false);
     if (!call.is_object() || !call.contains("command") || !call["command"].is_string() ||
         (call.contains("args") && !call["args"].is_object())) {
-      return stop(ToolError{"ARGS_INVALID", "each line must be {\"command\": string, \"args\": object}", "", "", ""});
+      return stop(number, ToolError{"ARGS_INVALID", "each line must be {\"command\": string, \"args\": object}", "", "", ""});
     }
-    auto result = session.run(call["command"].get<std::string>(), call.value("args", Json::object()), session.options().dry_run);
-    if (!result) return stop(result.error());
+    const std::string name = call["command"].get<std::string>();
+    const bool offline = find_offline_command(name) != nullptr;
+    const CommandSpec* spec = session.find_spec(name);
+    if (!spec) {
+      return stop(number, ToolError{"UNKNOWN_COMMAND", "Unknown command '" + name + "'", "", "", "Run arcane docs for the command list"});
+    }
+    if ((offline && spec->mutating) || (!offline && spec->immediate_write)) {
+      return stop(number, ToolError{"TRANSACTION_UNSUPPORTED", "'" + name + "' writes files outside the batch transaction", "", "",
+                                    "Run it as its own arcane invocation"});
+    }
+    script.push_back({number, name, call.value("args", Json::object())});
+  }
+
+  // Pass 2: run in memory; nothing is written until every line succeeded.
+  for (const Line& item : script) {
+    auto result = session.run(item.command, item.args, /*memory_only=*/true);
+    if (!result) return stop(item.number, result.error());
     if (result->is_object() && result->contains("ok") && (*result)["ok"] == false) {
-      results.push_back({{"line", number}, {"ok", false}, {"result", *result}});
-      Json body = {{"ok", false}, {"failed_line", number}, {"results", results}};
-      out << render(body, session.options().pretty) << "\n";
+      results.push_back({{"line", item.number}, {"ok", false}, {"result", *result}});
+      Json body = {{"ok", false}, {"failed_line", item.number}, {"results", results}};
+      out << render(body, pretty) << "\n";
       return 4;
     }
-    results.push_back({{"line", number}, {"ok", true}, {"result", *result}});
+    results.push_back({{"line", item.number}, {"ok", true}, {"result", *result}});
   }
-  Json body = {{"ok", true}, {"executed", results.size()}, {"results", results}};
+  bool committed = false;
+  if (!session.options().dry_run) {
+    auto saved = session.commit();
+    if (!saved) return stop(0, saved.error());
+    committed = *saved;
+  }
+  Json body = {{"ok", true}, {"executed", results.size()}, {"committed", committed}, {"results", results}};
   if (session.options().dry_run) body["dry_run"] = true;
-  out << render(body, session.options().pretty) << "\n";
+  out << render(body, pretty) << "\n";
   return 0;
 }
 
@@ -424,7 +462,7 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "`COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED`; `validate` with problems; `fmt --check` with differences |\n"
         "| 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |\n"
         "| 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |\n"
-        "| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED` |\n\n"
+        "| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |\n\n"
         "## Selectors\n\n"
         "Node: `id:42` (preferred, stable) or `path:/Root/Player` (names must be unique at each level, otherwise\n"
         "`SELECTOR_AMBIGUOUS`). Component: its integer id, or a type name attached to the node exactly once.\n\n"
@@ -432,17 +470,29 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "Every scene command saves the scene file by writing a temporary file next to it and renaming it, after\n"
         "serializing and re-validating in memory; a failure leaves the old file. If the scene file changed on disk\n"
         "since it was read the command fails with `CONFLICT` (an edit check, not a lock). The CLI keeps no undo\n"
-        "history; use git. Atomicity is per command, not per batch.\n\n"
+        "history; use git. Atomicity is per command; `batch` is atomic for the whole script (see below).\n\n"
         "## Batch\n\n"
         "`arcane batch FILE|-` reads one JSON object per line, `{\"command\":\"prop.set\",\"args\":{...}}` (command\n"
-        "names use dots; blank lines are skipped), and runs them in order against one open project, saving after\n"
-        "each. It stops at the first failure and reports `failed_line`, the error and the results so far. With\n"
-        "`--dry-run` the commands run cumulatively in memory and nothing is saved.\n\n"
+        "names use dots; blank lines are skipped) and either commits every line or writes nothing:\n\n"
+        "1. Validate all: every line must have the right shape (`ARGS_INVALID`) and a known command\n"
+        "   (`UNKNOWN_COMMAND`). Commands that write files outside the transaction are refused with\n"
+        "   `TRANSACTION_UNSUPPORTED` (exit 7): the ones marked as writing files immediately (`clip.*`,\n"
+        "   `transition.set`, `atlas.pack`, `prefab.save`, ...) and file-level commands that change files\n"
+        "   (`scene.new`, `migrate`, `fmt`, `project.new`, ...). Nothing has run when this fails.\n"
+        "2. Run in memory: the lines run in order against one open project and the edits accumulate. Read-only\n"
+        "   file-level commands (`scene.list`, `validate`, ...) are allowed but see the files on disk, not the\n"
+        "   uncommitted edits. The first failing line stops the run; nothing is saved, and the reply has\n"
+        "   `failed_line`, the error and the results so far.\n"
+        "3. Commit: after every line succeeded, the changed files (the scene and, if a project-level command\n"
+        "   ran, `project.json`) are written in one transactional save. If that fails the reply has the error,\n"
+        "   `\"failed_line\": null` and the per-line `results`, with the files unchanged.\n\n"
+        "The success reply has `\"committed\"`: true when files were written, false for `--dry-run` or when nothing\n"
+        "changed. With `--dry-run` the commands run cumulatively in memory and nothing is saved.\n\n"
         "## Coverage\n\n"
         "Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,\n"
         "replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
         "tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics\n"
-        "authoring beyond properties, asset import, `run`, `export`, `render`, `test`. The editor does not use\n"
+        "authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use\n"
         "these commands for its edits yet (docs/editor-command-inventory.md).\n\n"
         "## Commands\n\n";
   std::map<std::string, const CommandSpec*> all;
