@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -1081,6 +1082,31 @@ int main(int argc, char** argv) {
       ImGui::BeginDisabled(!editable);
       draw_hud_editor(session.project().hud, arcane::editor::list_image_assets(session.assets_dir()),
                       [&](const arcane::tooling::Invocation& call, const std::string& key) { run_edit(call, key); });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Project Settings")) {
+      ImGui::BeginDisabled(!editable);
+      // Edits are project.set commands; a field shows the project value until it is being typed in, and one
+      // typing gesture (same coalesce key) is one undo step.
+      auto project_field = [&](const char* label, const char* key, const std::string& current) {
+        static std::map<std::string, std::string> buffers;
+        std::string& buffer = buffers[key];
+        if (buffer.empty() || !ImGui::IsAnyItemActive()) buffer = current;
+        char text[512] = {};
+        std::snprintf(text, sizeof(text), "%s", buffer.c_str());
+        if (ImGui::InputText(label, text, sizeof(text))) {
+          buffer = text;
+          run_edit({"project.set", {{key, buffer}}}, std::string("project.") + key);
+        }
+        if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      };
+      const auto& project = session.project();
+      project_field("Name", "name", project.name);
+      project_field("Main scene", "main_scene", project.main_scene);
+      project_field("Module", "module", project.module);
+      ImGui::TextDisabled("Main scene and module take effect on next open.");
       ImGui::EndDisabled();
     }
     ImGui::End();

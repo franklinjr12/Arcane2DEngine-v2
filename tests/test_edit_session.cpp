@@ -312,6 +312,61 @@ void test_hud_drag_coalesces_to_one_undo_step() {
   ARCANE_ASSERT_TRUE(!edits.can_undo());
 }
 
+void test_gui_project_settings_match_cli_model() {
+  TempProject gui_project("arcane_edit_session_proj_gui");
+  TempProject cli_project("arcane_edit_session_proj_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+  const auto get = [&](ProjectContext& context) { return registry.execute(context, {"project.get", Json::object()}, {}); };
+
+  auto before = get(*gui);
+  ARCANE_ASSERT_TRUE(ok(before));
+  const Json original = before->value;
+  ARCANE_ASSERT_TRUE(!edits.modified());
+
+  const Invocation rename{"project.set", {{"name", "Renamed"}}};
+  const Invocation scene{"project.set", {{"main_scene", "scenes/other.json"}}};
+  for (const Invocation& call : {rename, scene}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run(call)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, call, {})));
+  }
+  auto gui_after = get(*gui);
+  auto cli_after = get(*cli);
+  ARCANE_ASSERT_TRUE(ok(gui_after) && ok(cli_after));
+  ARCANE_ASSERT_TRUE(gui_after->value == cli_after->value);
+  ARCANE_ASSERT_TRUE(gui_after->value["name"] == "Renamed" && gui_after->value["main_scene"] == "scenes/other.json");
+  ARCANE_ASSERT_TRUE(edits.modified());
+
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(get(*gui)->value == original);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(get(*gui)->value == cli_after->value);
+  ARCANE_ASSERT_TRUE(edits.modified());
+}
+
+void test_project_name_typing_coalesces_to_one_undo_step() {
+  TempProject project("arcane_edit_session_proj_typing");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  const std::string original = context->session().project().name;
+  for (const char* typed : {"A", "Ab", "Abc"}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run({"project.set", {{"name", typed}}}, "project.name")));
+  }
+  edits.end_gesture();
+  ARCANE_ASSERT_TRUE(context->session().project().name == "Abc");
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(context->session().project().name == original);
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+}
+
 // Routed editor paths must not write the scene or project data directly any more (AF5B scene, AF6 tiles,
 // AF7B HUD, input map and clip Save). What still bypasses commands is listed in docs/editor-command-inventory.md.
 void test_editor_source_has_no_direct_scene_writes() {
@@ -323,7 +378,7 @@ void test_editor_source_has_no_direct_scene_writes() {
   for (const char* forbidden : {"->set_name(", "create_node(", "destroy_node(", "flush_destroyed(", "->reparent(",
                                  "add_component(", "descriptor.set(", "local_transform() =", "auto& transform = ", "sprite->texture",
                                  "->texture =", "->clip =", "->tileset =", "mutable_project()", "hud.add(", ".set_action(",
-                                 ".remove_action(", "save_clip_file(", "elements.erase("}) {
+                                 ".remove_action(", "save_clip_file(", "elements.erase(", ".main_scene =", ".module =", "project().name ="}) {
     if (source.find(forbidden) != std::string::npos) {
       std::fprintf(stderr, "editor_main.cpp writes the scene directly: %s\n", forbidden);
       ARCANE_ASSERT_TRUE(false);
@@ -341,6 +396,8 @@ int main() {
   test_failed_edit_changes_nothing();
   test_gui_hud_input_matches_cli_model();
   test_hud_drag_coalesces_to_one_undo_step();
+  test_gui_project_settings_match_cli_model();
+  test_project_name_typing_coalesces_to_one_undo_step();
   test_editor_source_has_no_direct_scene_writes();
   return 0;
 }
