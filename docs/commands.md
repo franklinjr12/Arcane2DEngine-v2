@@ -142,6 +142,25 @@ integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or
 problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
 `tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
 
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `tilemap.info` | `node` | size, cell size, layers and the tileset the map points at |
+| `tilemap.get` | `node`, `x`, `y`, `layer?` | the tile id at the cell (0 = empty) |
+| `tilemap.paint` (mutating) | `node`, `x`, `y`, `tile`, `layer?` | changed cells; inverse `tilemap.set_cells` |
+| `tilemap.erase` (mutating) | `node`, `x`, `y`, `layer?` | changed cells; clears the cell (tile 0) |
+| `tilemap.fill_rect` (mutating) | `node`, `x0`, `y0`, `x1`, `y1`, `tile`, `layer?` | changed cells; inclusive rectangle, corners in any order |
+| `tilemap.terrain_paint` (mutating) | `node`, `x`, `y`, `terrain`, `erase?`, `layer?` | changed cells including re-picked neighbours |
+| `tilemap.import_csv` (mutating) | `node`, `csv` or `file`, `x?`, `y?`, `layer?` | changed cells |
+| `tilemap.dump_csv` | `node`, `layer?`, `file?` | the CSV text; with `file` writes it at once (refuses `--dry-run`) |
+| `tilemap.set_cells` (mutating) | `node`, `cells` (`[{layer,x,y,tile}]`) | changed cells; the inverse of every cell edit |
+| `tilemap.add_layer` (mutating) | `node` | index of the new empty layer |
+| `tileset.create` | `tileset`, `texture`, `tile_width`, `tile_height`, `columns`, `tile_count`, `overwrite?` | writes the tileset file at once |
+| `tileset.info` | `tileset` | sheet layout, per-tile solid/terrain flags and terrain rules |
+| `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?` | writes the file at once |
+| `tileset.set_rule` | `tileset`, `terrain`, `tiles` (16 ids by neighbour mask) | adds or replaces the rule; writes the file at once |
+| `tileset.remove_rule` | `tileset`, `terrain` | removes the rule; writes the file at once |
+| `tileset.validate` | `tileset` | `ok:false` (exit 4) lists problems; never changes the file |
+
 ## HUD commands
 
 `hud.*` edit the HUD layout stored in `project.json` (`docs/formats/hud.md`), addressing elements by 0-based
@@ -232,6 +251,10 @@ Registered by `register_project_commands`; see `tooling/src/project_commands.cpp
 | --- | --- | --- |
 | `project.get` | none | `{name, main_scene, module}` |
 | `project.set` (mutating) | `name?`, `main_scene?`, `module?` (at least one) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+| `project.new` | `path`, `name?` | creates a project folder with `project.json`, an empty main scene and `assets/` (file-level, works without an openable project) |
+| `project.info` | none | name, main scene, module, format, scene count, transition/save/debug settings |
+| `project.settings_get` | none | `{name, main_scene, module}` read from `project.json` |
+| `project.settings_set` | `name?`, `main_scene?` (must exist), `module?` (empty clears) | writes `project.json` at once |
 
 `name` must be non-empty. `main_scene` must be a project-relative `/` path without `..` that ends in `.json`.
 `module` may be empty (no native module) or a project-relative path. Anything else is `VALUE_INVALID` (file

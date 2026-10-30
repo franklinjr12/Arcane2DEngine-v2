@@ -230,6 +230,7 @@ target_compile_definitions(test_cli PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
   ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
   ARCANE_CLI_REFERENCE_PATH="${CMAKE_SOURCE_DIR}/docs/cli-reference.md"
+  ARCANE_COMMANDS_DOC_PATH="${CMAKE_SOURCE_DIR}/docs/commands.md"
   ARCANE_CLI_PATH="$<TARGET_FILE:arcane>")
 add_dependencies(test_cli arcane)
 add_test(NAME test_cli COMMAND test_cli)
