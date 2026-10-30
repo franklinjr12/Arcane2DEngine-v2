@@ -17,4 +17,7 @@ std::expected<void, ToolError> offline_require_project(const OfflineEnv& env);
 // asset.list / asset.import / asset.reimport (asset_commands.cpp); appended by make_commands().
 std::vector<OfflineCommand> make_asset_commands();
 
+// run / test (run_commands.cpp); appended by make_commands().
+std::vector<OfflineCommand> make_run_commands();
+
 }  // namespace arcane::tooling

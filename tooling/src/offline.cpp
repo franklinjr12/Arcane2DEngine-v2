@@ -433,6 +433,7 @@ std::vector<OfflineCommand> make_commands() {
                 object_schema({{"format", {{"type", "string"}, {"enum", Json::array({"md", "json"})}}}}), {{"type", "object"}}, false},
                docs});
   for (auto& asset : make_asset_commands()) c.push_back(std::move(asset));
+  for (auto& run : make_run_commands()) c.push_back(std::move(run));
   return c;
 }
 

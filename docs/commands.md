@@ -265,6 +265,20 @@ written file. Their caches notice the change on the next file-time poll (about t
 skips it during `--replay`) and reload the asset. The id stays the same, so scene references keep resolving.
 Registered by `tooling/src/asset_commands.cpp`; tested by `test_asset_commands`.
 
+## Run and test
+
+`run` and `test` (`tooling/src/run_commands.cpp`) step a fresh copy of the main (or `--scene`) scene with the
+engine's `run_fixed_frames`, calling the game module's `on_update` before each step. They need no window, GL
+context or audio device, and the context scene is never advanced or saved. The trace equals
+`arcane_player --headless` for the same inputs.
+
+- `arcane run [--frames N] [--fixed_hz N] [--seed N] [--replay FILE] [--trace_out FILE]`: result
+  `{frames, fixed_hz, final_hash, nodes, module, trace_out}`. `--replay` supplies frames/fixed_hz/seed (passing
+  `--frames`/`--fixed_hz` as well is `ARGS_INVALID`). `--trace_out` writes an `arcane.replay_trace`; `--dry-run` skips it.
+- `arcane test [--filter TEXT] [--frames N]`: replays every `tests/NAME.replay.json` against `tests/NAME.trace.json`
+  and also smoke-runs `frames` frames. Result `{ok, passed, failed, cases, smoke}`; exit 4 when `ok` is false
+  (a mismatch reports `first_divergent_frame`; a missing trace fails the case).
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
