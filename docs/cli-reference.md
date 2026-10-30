@@ -39,7 +39,7 @@ diagnostic goes to stderr. `arcane docs` prints this reference as raw Markdown.
 | 4 | Schema, reference or validation error | `SCHEMA_INVALID`, `VALUE_INVALID`, `PROPERTY_UNKNOWN`, `NODE_NOT_FOUND`, `COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED`; `validate` with problems; `fmt --check` with differences |
 | 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |
 | 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |
-| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED` |
+| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |
 
 ## Selectors
 
@@ -51,14 +51,28 @@ Node: `id:42` (preferred, stable) or `path:/Root/Player` (names must be unique a
 Every scene command saves the scene file by writing a temporary file next to it and renaming it, after
 serializing and re-validating in memory; a failure leaves the old file. If the scene file changed on disk
 since it was read the command fails with `CONFLICT` (an edit check, not a lock). The CLI keeps no undo
-history; use git. Atomicity is per command, not per batch.
+history; use git. Atomicity is per command; `batch` is atomic for the whole script (see below).
 
 ## Batch
 
 `arcane batch FILE|-` reads one JSON object per line, `{"command":"prop.set","args":{...}}` (command
-names use dots; blank lines are skipped), and runs them in order against one open project, saving after
-each. It stops at the first failure and reports `failed_line`, the error and the results so far. With
-`--dry-run` the commands run cumulatively in memory and nothing is saved.
+names use dots; blank lines are skipped) and either commits every line or writes nothing:
+
+1. Validate all: every line must have the right shape (`ARGS_INVALID`) and a known command
+   (`UNKNOWN_COMMAND`). Commands that write files outside the transaction are refused with
+   `TRANSACTION_UNSUPPORTED` (exit 7): the ones marked as writing files immediately (`clip.*`,
+   `transition.set`, `atlas.pack`, `prefab.save`, ...) and file-level commands that change files
+   (`scene.new`, `migrate`, `fmt`, `project.new`, ...). Nothing has run when this fails.
+2. Run in memory: the lines run in order against one open project and the edits accumulate. Read-only
+   file-level commands (`scene.list`, `validate`, ...) are allowed but see the files on disk, not the
+   uncommitted edits. The first failing line stops the run; nothing is saved, and the reply has
+   `failed_line`, the error and the results so far.
+3. Commit: after every line succeeded, the changed files (the scene and, if a project-level command
+   ran, `project.json`) are written in one transactional save. If that fails the reply has the error,
+   `"failed_line": null` and the per-line `results`, with the files unchanged.
+
+The success reply has `"committed"`: true when files were written, false for `--dry-run` or when nothing
+changed. With `--dry-run` the commands run cumulatively in memory and nothing is saved.
 
 ## Coverage
 
