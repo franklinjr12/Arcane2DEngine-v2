@@ -20,7 +20,7 @@ This builds and tests GCC Debug and Clang ASan/UBSan with Xvfb when available,
 and cross-builds with MinGW if installed. Inspect its summary: the script
 reports MinGW failure as a warning. GL-labeled tests require a display or Xvfb;
 other tests do not require a window or audio device. Hidden player/editor runs
-still create a GL context and are not display-free simulation. On Windows:
+still create a GL context; for display-free fixed-frame runs use `arcane_player --headless` (or `arcane run`). On Windows:
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64
@@ -53,8 +53,8 @@ arcane --project game prop set --node id:1 --component Sprite --name width --val
 arcane --project game validate && arcane --project game fmt --check
 ```
 
-Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
-Not covered by commands yet: the tileset panel's draft editing in the GUI (its Save is `tileset.*`), `run`/`export`/`render`/`test`,
+`arcane run`, `arcane test` and `arcane export` (AF10B) run display-free fixed frames on scene copies (no save), run `tests/NAME.replay.json` cases, and write a structured game folder; `arcane_player --headless` runs the same stepping without a window. Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
+Not covered by commands yet: the tileset panel's draft editing in the GUI (its Save is `tileset.*`), `render`,
 and the tileset/clip draft editing. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
 (`clip.create`, an immediate file write) are command-backed in the editor and CLI (`test_edit_session` checks parity); the editor still
 mutates some data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity beyond that or

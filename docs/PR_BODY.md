@@ -83,7 +83,13 @@ $A docs | head                                              # the generated refe
 ```
 Errors print `{"ok":false,"error":{...}}` and exit with the status in the reference (`$A frobnicate; echo $?` gives 2).
 
-AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
+AF10B (headless run, test, export): `arcane run` (fixed-frame run on a scene copy, no save), `arcane test` (`tests/NAME.replay.json` against `tests/NAME.trace.json`, plus a smoke run; exit 4 on failure), `arcane export` (structured, canonical `project.json`, built in a temp dir and renamed into place), and `arcane_player --headless` (no window, GL or audio device; `--frames`/`--replay`, `--trace-out`/`--expect-trace`). Manual check, Linux, with `DISPLAY` unset:
+```sh
+build-gcc/bin/arcane --project P run --frames 60
+build-gcc/bin/arcane --project P test
+build-gcc/bin/arcane --project P export --out OUT
+OUT/arcane_player --headless --frames 30
+```
 
 AF6B (tilemap/tileset commands). Linux:
 ```
@@ -134,7 +140,7 @@ Editor (any platform): open a project with a Tilemap node, select it, tick "Pain
 - FE18 is PARTIAL: data format, registry commands, runtime spawn and tests are done; the editor GUI has no prefab actions (editor edits still bypass commands, AF5) and there is no `arcane` CLI (AF4). Prefab edits do not propagate to existing instances; undoing a `prefab.remove` or redoing an `instantiate` creates new IDs. **UNTESTED on native Windows/MSVC.**
 - AF3 is PASS for its scope (registry, context, property commands) but nothing calls it yet: the editor does not route through it (AF5) and the `arcane` CLI (AF4) does not exist. Only property commands exist. Persistence writes the scene only and is optimistic about concurrent writers. **UNTESTED on native Windows/MSVC** (`tooling/` uses `std::expected`, `std::to_chars(float)`, `std::filesystem`; `ProjectContext` has an out-of-line destructor).
 - AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
-- AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
+- AF10 (AF10B) is delivered for its scope: headless run, test and structured export work through the CLI, and `export-game.sh` uses `arcane export` instead of `sed`. Remaining gaps: `render` is still not a command; windowed play still needs a display; native Windows/MSVC is untested for these paths; golden images and determinism assume the same build and platform (Mesa llvmpipe under Xvfb).
 - AF9 is routed (AF9B): `arcane batch` is one staged transaction, project and scene saves are one transactional multi-file step, and `asset.list/import/reimport` exist with documented hot-reload semantics (atomic rename, mtime polling, path-derived ids) and failure-injection tests (`test_asset_commands`, save and batch tests). Still not crash-atomic (a kill mid-commit can leave a mix), the save revision check is optimistic (a concurrent writer can race after the check), and it is UNTESTED on native Windows.
 - AF8 is routed (AF8B): `project.get`/`project.set`, the Project Settings panel, and audio/physics/particle/module Inspector properties go through the registry with GUI/CLI parity and undo tests in `test_edit_session`. Remaining direct edits are tileset/clip drafts and Open clip; transition/save/debug settings have CLI commands but no editor widgets. The project and scene writes are one transactional step (rolled back on a failed commit, not crash-atomic).
 - AF7 is routed (AF7B): clip/HUD/input commands, HUD image editing and panel undo exist. Not done: draft editing in the clip and tileset panels is not command-backed, Open clip reads the file directly, and the exported player does not resolve HUD image assets.
