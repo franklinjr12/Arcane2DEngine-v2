@@ -77,9 +77,9 @@ changed. With `--dry-run` the commands run cumulatively in memory and nothing is
 ## Coverage
 
 Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,
-replay, bench, audio probe, run, test, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
+replay, bench, audio probe, run, test, export, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
 tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics
-authoring beyond properties, `export`, `render`. The editor does not use
+authoring beyond properties, `render`. The editor does not use
 these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
@@ -409,6 +409,19 @@ Read only.
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
 | `--format` | string | no |  |
+
+### `arcane export`
+
+Export a runnable game folder: OUT/<runtime files> + OUT/game/{project.json,scenes,assets,<module>}. runtime_dir's regular files (e.g. `cmake --install BUILD --prefix DIR --component game`) are copied flat into OUT; project.json is rewritten canonically with `module` set to the module file's name. Built in OUT.tmp-* and renamed, so a failure leaves OUT untouched. A non-empty OUT needs overwrite. validate (default true) opens the project strictly first.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--out` | string | yes | 1 |
+| `--overwrite` | boolean | no |  |
+| `--runtime-dir` | string | no |  |
+| `--validate` | boolean | no |  |
 
 ### `arcane fmt`
 

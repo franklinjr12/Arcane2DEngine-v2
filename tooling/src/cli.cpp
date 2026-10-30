@@ -490,9 +490,9 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "changed. With `--dry-run` the commands run cumulatively in memory and nothing is saved.\n\n"
         "## Coverage\n\n"
         "Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,\n"
-        "replay, bench, audio probe, run, test, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
+        "replay, bench, audio probe, run, test, export, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
         "tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics\n"
-        "authoring beyond properties, `export`, `render`. The editor does not use\n"
+        "authoring beyond properties, `render`. The editor does not use\n"
         "these commands for its edits yet (docs/editor-command-inventory.md).\n\n"
         "## Commands\n\n";
   std::map<std::string, const CommandSpec*> all;

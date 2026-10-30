@@ -392,6 +392,35 @@ void test_run_and_test() {
   ARCANE_ASSERT_TRUE(bad.code == 4 && bad.json["ok"] == false && bad.json["cases"][0]["first_divergent_frame"] == 0);
 }
 
+void test_export() {
+  Project p("arcane_cli_export");
+  ARCANE_ASSERT_TRUE(cli({"project", "new", p.dir.string()}).code == 0);
+  p.run({"node", "add", "--name", "Player"});
+  fs::create_directories(p.dir / "tests");
+  spit(p.dir / "tests" / "x.txt", "not exported");
+  const std::string out = (p.dir.parent_path() / "arcane_cli_export_out").string();
+  fs::remove_all(out);
+
+  auto dry = p.run({"--dry-run", "export", "--out", out});
+  ARCANE_ASSERT_TRUE(dry.code == 0 && !fs::exists(out) && dry.json["module"] == fs::path(ARCANE_SAMPLE_GAME_PATH).filename().string() &&
+                      dry.json["runtime_files"] == 0);
+  auto done = p.run({"export", out});
+  ARCANE_ASSERT_TRUE(done.code == 0 && done.json["files"] == dry.json["files"]);
+  ARCANE_ASSERT_TRUE(fs::is_regular_file(out + "/game/project.json") && fs::is_regular_file(out + "/game/scenes/main.scene.json") &&
+                      fs::is_regular_file(fs::path(out) / "game" / fs::path(ARCANE_SAMPLE_GAME_PATH).filename()));
+  ARCANE_ASSERT_TRUE(!fs::exists(out + "/game/tests"));
+
+  spit(out + "/keep.txt", "x");
+  ARCANE_ASSERT_TRUE(p.run({"export", out}).code == 5 && fs::exists(out + "/keep.txt"));  // CONFLICT, untouched
+  ARCANE_ASSERT_TRUE(p.run({"export", out, "--overwrite"}).code == 0 && !fs::exists(out + "/keep.txt"));
+  ARCANE_ASSERT_TRUE(p.run({"export", p.dir.string(), "--overwrite"}).code == 2);  // out overlaps the project
+
+  const std::string missing = out + "_missing";
+  auto bad = cli({"--project", p.dir.string(), "--module", (p.dir / "nope.so").string(), "export", missing});
+  ARCANE_ASSERT_TRUE(bad.code != 0 && !fs::exists(missing));
+  fs::remove_all(out);
+}
+
 int exit_status(int raw) {
 #ifdef _WIN32
   return raw;
@@ -434,6 +463,7 @@ int main() {
   test_validate_fmt_migrate();
   test_schema_and_docs();
   test_run_and_test();
+  test_export();
   test_executable();
   return 0;
 }

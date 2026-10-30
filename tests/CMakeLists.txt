@@ -311,6 +311,11 @@ if(ARCANE_BUILD_SAMPLES)
     ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${CMAKE_SOURCE_DIR}/samples/platformer_slice/replays/walk_jump.replay.json)
   set_tests_properties(test_headless_player PROPERTIES TIMEOUT 120)
+  # AF10B: author, run, test, export and run the export, all without a display.
+  add_test(NAME test_cli_e2e COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_e2e.sh
+    $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> $<TARGET_FILE:sample_game>
+    ${CMAKE_COMMAND} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/samples/sample_project)
+  set_tests_properties(test_cli_e2e PROPERTIES TIMEOUT 300)
 endif()
 
 # AF12 rendering evidence: readback + PNG + golden comparison (tolerance documented in the test).

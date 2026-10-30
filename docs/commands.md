@@ -279,6 +279,29 @@ context or audio device, and the context scene is never advanced or saved. The t
   and also smoke-runs `frames` frames. Result `{ok, passed, failed, cases, smoke}`; exit 4 when `ok` is false
   (a mismatch reports `first_divergent_frame`; a missing trace fails the case).
 
+## Export
+
+`arcane export OUT [--runtime_dir DIR] [--overwrite] [--validate false]` (`tooling/src/export_commands.cpp`; offline
+command, writes files, honors `--dry-run`) produces the layout of decision 30:
+`OUT/<runtime files>` + `OUT/game/{project.json,scenes,assets,<module file>}`.
+
+- `runtime_dir`: its regular files are copied flat into `OUT` (for example the result of
+  `cmake --install BUILD --prefix DIR --component game`: `arcane_player` and the engine libraries).
+- `validate` (default true) first opens the project strictly with `--module` honored and returns that error
+  (for example `MODULE_LOAD_FAILED`) if it does not open. `scripts/export-game.sh --mingw` passes `false` because a
+  native process cannot load a Windows `.dll`.
+- The module file is `--module` if given, else the project's `module` resolved against the project folder; a missing
+  file is `MODULE_LOAD_FAILED`. It is copied under its own file name and `project.json` is loaded strictly, given
+  that name as `module` (empty when there is none) and written with the canonical project writer. Only `scenes/` and
+  `assets/` are copied (never `tests/`, build output or the source-tree module copy); the main scene must be inside them.
+- A non-empty `OUT` is `CONFLICT` unless `overwrite`; an `OUT` that is, contains or lies inside the copied project
+  folders is `ARGS_INVALID`. The export is built in the sibling `OUT.tmp-*` and renamed into place (an old `OUT` is
+  renamed aside and removed afterwards), and a failure removes the temp folder and leaves `OUT` as it was.
+- Result `{out, game_dir, module, files, runtime_files}`: `files` are sorted OUT-relative `/` paths, `module` is the
+  file name or null. `--dry-run` returns the same manifest and writes nothing.
+
+Tested by `test_cli` (unit) and `test_cli_e2e` (author, run, test, export, reopen, run the export headless).
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
