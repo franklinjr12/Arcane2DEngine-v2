@@ -351,6 +351,72 @@ void test_one_way_settings_round_trip() {
   ARCANE_ASSERT_TRUE(slurp(project.scene()).find("\"one_way\": true") != std::string::npos);
 }
 
+// project.get / project.set: in-memory edit, saved with the project, inverse, validation, dry run.
+void test_project_get_set() {
+  TempProject project;
+  CommandRegistry registry;
+  register_project_commands(registry);
+  ExecuteOptions persist{.persist = true};
+  const fs::path file = project.dir / "project.json";
+  const std::string original = slurp(file);
+  spit(project.dir / "scenes" / "other.scene.json", slurp(project.scene()));  // reopening needs the new main_scene
+  Json before;
+  {
+    auto context = open(project);
+    auto got = registry.execute(*context, {"project.get", Json::object()});
+    ARCANE_ASSERT_TRUE(got.has_value());
+    before = got->value;
+    ARCANE_ASSERT_TRUE(before["name"] == "Tooling" && before["main_scene"].is_string() && before["module"].is_string());
+    ARCANE_ASSERT_TRUE(!got->inverse.has_value());
+
+    // Invalid input changes nothing, even next to a valid field.
+    const Json bad[] = {{{"name", ""}},
+                        {{"main_scene", "/abs/main.scene.json"}},
+                        {{"main_scene", "../main.scene.json"}},
+                        {{"main_scene", "scenes/main.scene.txt"}},
+                        {{"name", "Good"}, {"main_scene", "scenes/../x.json"}},
+                        {{"module", "../m.so"}},
+                        Json::object()};
+    for (const Json& args : bad) {
+      auto r = registry.execute(*context, {"project.set", args}, persist);
+      ARCANE_ASSERT_TRUE(!r.has_value() && r.error().code == "VALUE_INVALID");
+      ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+      ARCANE_ASSERT_TRUE(!context->dirty() && slurp(file) == original);
+    }
+
+    // Dry run leaves project.json and memory alone.
+    Json change = {{"name", "Renamed"}, {"main_scene", "scenes/other.scene.json"}};
+    auto dry = registry.execute(*context, {"project.set", change}, ExecuteOptions{.persist = true, .dry_run = true});
+    ARCANE_ASSERT_TRUE(dry.has_value() && dry->value["changed"] == true);
+    ARCANE_ASSERT_TRUE(slurp(file) == original);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+
+    auto set_result = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(set_result.has_value() && set_result->value["changed"] == true);
+    ARCANE_ASSERT_TRUE(set_result->value["previous"]["name"] == "Tooling" && set_result->inverse.has_value());
+    ARCANE_ASSERT_TRUE(set_result->value["project"]["main_scene"] == "scenes/other.scene.json");
+    // Same values again: no-op without inverse.
+    auto again = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(again.has_value() && again->value["changed"] == false && !again->inverse.has_value());
+  }
+  {
+    auto context = open(project);
+    auto got = registry.execute(*context, {"project.get", Json::object()});
+    ARCANE_ASSERT_TRUE(got->value["name"] == "Renamed" && got->value["main_scene"] == "scenes/other.scene.json");
+    ARCANE_ASSERT_TRUE(slurp(file).find("Renamed") != std::string::npos);
+    // Running the inverse restores the old values.
+    Json change = {{"name", "Again"}};
+    auto r = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(r.has_value() && r->inverse.has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, *r->inverse, persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value["name"] == "Renamed");
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.set", {{"name", "Tooling"}, {"main_scene", before["main_scene"]}}}, persist)
+                           .has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+}
+
 }  // namespace
 
 int main() {
@@ -363,5 +429,6 @@ int main() {
   test_camera2d_settings_round_trip();
   test_audio_settings_and_backend();
   test_one_way_settings_round_trip();
+  test_project_get_set();
   return 0;
 }

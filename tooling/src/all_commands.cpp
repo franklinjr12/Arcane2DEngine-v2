@@ -17,6 +17,7 @@ void register_all_commands(CommandRegistry& registry) {
   register_hud_commands(registry);
   register_input_commands(registry);
   register_clip_commands(registry);
+  register_project_commands(registry);
   // These write files as they run, outside persist/dry_run.
   for (const char* name : {"atlas.pack", "atlas.make_clip", "transition.set", "debug.set", "save.config_set", "save.set",
                            "save.remove", "save.migrate", "prefab.save", "replay.save", "replay.run", "tileset.create", "tileset.set_tile", "tileset.set_rule",

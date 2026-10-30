@@ -173,6 +173,9 @@ void register_input_commands(CommandRegistry& registry);
 // project, written at once; clip.restore is the inverse of the others). Sheet sizes are read from PNG files.
 void register_clip_commands(CommandRegistry& registry);
 
+// Registers project.get/project.set (name, main_scene, module in project.json, edited in memory; saved with the project).
+void register_project_commands(CommandRegistry& registry);
+
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 
