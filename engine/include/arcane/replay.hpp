@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -105,6 +106,22 @@ ARCANE_API std::expected<std::vector<std::uint64_t>, std::string> run_replay(Sce
                                                                            const ComponentRegistry& registry,
                                                                            InputActionMap& actions,
                                                                            const ReplayRecording& recording);
+
+// Display-free fixed-frame stepping. With `recording`, frames/fixed_hz/seed come from it and each frame feeds that
+// frame's recorded input; otherwise nothing is pressed. Each frame: before_step(dt) if set, scene.update(dt),
+// physics.step, then the state hash. Errors: frames outside 1..1000000, fixed_hz outside 1..1000.
+struct ARCANE_API FixedRunOptions {
+  int frames = 60;
+  int fixed_hz = 60;
+  int seed = 0;
+  const ReplayRecording* recording = nullptr;
+  std::function<void(float)> before_step;
+};
+
+ARCANE_API std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& scene,
+                                                                                 const ComponentRegistry& registry,
+                                                                                 InputActionMap& actions,
+                                                                                 const FixedRunOptions& options);
 
 // Index of the first frame where the two traces differ (a length mismatch counts at the shorter length);
 // nullopt when identical.

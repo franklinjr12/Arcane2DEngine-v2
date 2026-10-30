@@ -50,6 +50,9 @@ struct Args {
   std::string screenshot_file;
   std::string trace_out_file;
   std::string expect_trace_file;
+  // --headless (project mode only; needs --frames N or --replay FILE, incompatible with --screenshot): fixed-step
+  // run with no window, GL, renderer or audio device. Hashes match the windowed --replay trace for the same build.
+  bool headless = false;
 };
 
 Args parse_args(int argc, char** argv) {
@@ -58,6 +61,8 @@ Args parse_args(int argc, char** argv) {
     const std::string arg = argv[i];
     if (arg == "--frames" && i + 1 < argc) {
       args.frames = std::atoi(argv[++i]);
+    } else if (arg == "--headless") {
+      args.headless = true;
     } else if (arg == "--hidden") {
       args.hidden = true;
     } else if (arg == "--module" && i + 1 < argc) {
@@ -289,6 +294,81 @@ int run_project(const Args& args) {
   return exit_code;
 }
 
+// Display-free counterpart of run_project: same project/module/input map, fixed steps through
+// arcane::run_fixed_frames, audio on the null backend, nothing rendered.
+int run_project_headless(const Args& args) {
+  auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.project_module_override);
+  if (!runtime) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
+    return 1;
+  }
+  auto audio = arcane::AudioSystem::create(true);
+  if (!audio) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
+    return 1;
+  }
+  arcane::set_active_audio_system(&*audio);
+  arcane::Hud hud = runtime->session().project().hud;  // authored layout; gameplay may add more, never drawn
+  arcane::set_active_hud(&hud);
+
+  std::optional<arcane::ReplayRecording> recording;
+  if (!args.replay_file.empty()) {
+    auto text = arcane::read_text_file(args.replay_file);
+    auto loaded = text ? arcane::load_recording_json(*text) : std::unexpected(text.error());
+    if (!loaded) {
+      ARCANE_LOG_ERROR(kLogCategory, "cannot use replay '{}': {}", args.replay_file, loaded.error());
+      arcane::set_active_audio_system(nullptr);
+      arcane::set_active_hud(nullptr);
+      return 1;
+    }
+    recording = std::move(*loaded);
+  }
+
+  arcane::InputActionMap input_map = runtime->session().project().input_actions;
+  arcane::FixedRunOptions options;
+  if (recording) {
+    options.recording = &*recording;
+  } else {
+    options.frames = *args.frames;
+  }
+  if (runtime->module_api()) {
+    options.before_step = [&](float dt) { runtime->module_api()->on_update(dt); };
+  }
+  auto result = arcane::run_fixed_frames(runtime->session().scene(), runtime->registry(), input_map, options);
+  int exit_code = 0;
+  long frame_count = 0;
+  if (!result) {
+    ARCANE_LOG_ERROR(kLogCategory, "headless run failed: {}", result.error());
+    exit_code = 1;
+  } else {
+    frame_count = static_cast<long>(result->size());
+    const std::vector<std::uint64_t>& trace = *result;
+    if (!args.trace_out_file.empty()) {
+      auto text = arcane::save_trace_json(trace);
+      auto written = text ? arcane::write_text_file_atomic(args.trace_out_file, *text) : std::unexpected(text.error());
+      if (!written) {
+        ARCANE_LOG_ERROR(kLogCategory, "cannot write trace: {}", written.error());
+        exit_code = 1;
+      }
+    }
+    if (!args.expect_trace_file.empty()) {
+      auto text = arcane::read_text_file(args.expect_trace_file);
+      auto expected = text ? arcane::load_trace_json(*text) : std::unexpected(text.error());
+      if (!expected) {
+        ARCANE_LOG_ERROR(kLogCategory, "cannot use trace '{}': {}", args.expect_trace_file, expected.error());
+        exit_code = 1;
+      } else if (auto frame = arcane::first_divergent_frame(*expected, trace)) {
+        ARCANE_LOG_ERROR(kLogCategory, "replay diverged: first divergent frame is {}", *frame);
+        exit_code = 3;
+      }
+    }
+  }
+  arcane::set_active_audio_system(nullptr);
+  arcane::set_active_hud(nullptr);
+  ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
+  return exit_code;
+}
+
 // Directory holding the running executable, so an exported game finds its
 // project without depending on the current working directory.
 std::filesystem::path executable_dir() {
@@ -312,6 +392,21 @@ int main(int argc, char** argv) {
   if (args.project_dir.empty()) {
     const auto exported = executable_dir() / "game";
     if (std::filesystem::exists(exported / "project.json")) args.project_dir = exported.string();
+  }
+  if (args.headless) {
+    if (args.project_dir.empty()) {
+      ARCANE_LOG_ERROR(kLogCategory, "--headless needs --project (or an exported game/ next to the executable)");
+      return 2;
+    }
+    if (!args.frames.has_value() && args.replay_file.empty()) {
+      ARCANE_LOG_ERROR(kLogCategory, "--headless needs --frames N or --replay FILE");
+      return 2;
+    }
+    if (!args.screenshot_file.empty()) {
+      ARCANE_LOG_ERROR(kLogCategory, "--screenshot needs a window and cannot be combined with --headless");
+      return 2;
+    }
+    return run_project_headless(args);
   }
   if (!args.project_dir.empty()) {
     return run_project(args);
