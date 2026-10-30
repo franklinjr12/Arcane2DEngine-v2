@@ -182,7 +182,8 @@ add_library(arcane_tooling STATIC
   tooling/src/bench_commands.cpp
   tooling/src/replay_commands.cpp
   tooling/src/tilemap_commands.cpp
-  tooling/src/hud_commands.cpp)
+  tooling/src/hud_commands.cpp
+  tooling/src/input_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
 

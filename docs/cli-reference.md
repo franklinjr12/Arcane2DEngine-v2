@@ -268,6 +268,98 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--index` | integer | yes |  |
 | `--value` | json | yes |  |
 
+### `arcane input add-action`
+
+Add an empty input action `name` for `player` (-1 = any pad, default).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--name` | string | yes |  |
+| `--player` | integer | no |  |
+
+### `arcane input add-binding`
+
+Add a binding to an action (device keyboard|mouse_button|gamepad_button|gamepad_axis, code, pad -1..3, axis_sign -1..1, deadzone 0..0.99, threshold 0..1; axis fields only persist for gamepad_axis). `index` inserts (default append).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--axis-sign` | integer | no |  |
+| `--code` | integer | no |  |
+| `--deadzone` | number | no |  |
+| `--device` | string | no |  |
+| `--index` | integer | no |  |
+| `--pad` | integer | no |  |
+| `--threshold` | number | no |  |
+
+### `arcane input list`
+
+List the input actions (name, player, bindings with device/code/pad/axis_sign/deadzone/threshold).
+
+Read only.
+
+No arguments.
+
+### `arcane input remove-action`
+
+Remove the input action `action` with its bindings.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+
+### `arcane input remove-binding`
+
+Remove the binding at `index` of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--index` | integer | yes |  |
+
+### `arcane input restore-action`
+
+Recreate an input action exactly from an input.list entry `action` {name, player, bindings}, inserted at `index` (default append). Inverse of input.remove_action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | object | yes |  |
+| `--index` | integer | no |  |
+
+### `arcane input set-binding`
+
+Set one field (device, code, pad, axis_sign, deadzone, threshold) of the binding at `index` of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--field` | string | yes |  |
+| `--index` | integer | yes |  |
+| `--value` | json | yes |  |
+
+### `arcane input set-player`
+
+Set the player (gamepad number, -1 = any pad) of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--player` | integer | yes |  |
+
 ### `arcane migrate`
 
 Migrate every project file to canonical v2 atomically (all or nothing); idempotent; honors --dry-run.

@@ -18,7 +18,7 @@ open and nothing is written. The module stays loaded until the context is
 destroyed; the scene and registry are destroyed first. Do not keep node,
 component or descriptor pointers beyond the context.
 
-`save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*`),
+`save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*` and `input.*`),
 `project.json`. Both are serialized before anything is written, each file is replaced atomically (old file kept
 on failure) and project.json goes first; the pair is not a transaction. It fails with `CONFLICT`, writing
 nothing, if a file it would write changed on disk since it was read or last saved. Project-level commands edit
@@ -164,6 +164,30 @@ bar `width`, `height`, `fraction` (0..1), `fill`, `background`; button `label`, 
 `font_scale` > 0. Runtime-only state (`HudImage::texture`, button `state`/`focused`) is never exposed. An unknown
 field is `ARGS_INVALID` with the valid names in the hint, a bad value or index `VALUE_INVALID`; a rejected call changes
 nothing. Setting a field to its current value, or moving an element onto itself, is a no-op without an inverse.
+
+## Input commands
+
+`input.*` edit the input action map stored in `project.json` (`input_actions`, `docs/formats/input.md`). Actions are
+addressed by name, bindings by 0-based `index`. Registered by `register_input_commands`; see
+`tooling/src/input_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `input.list` | none | `{count, actions:[{name,player,bindings:[{device,code,pad,axis_sign,deadzone,threshold}]}]}` |
+| `input.add_action` (mutating) | `name`, `player?` (-1..3, default -1) | `{name,player}`; inverse `input.remove_action` |
+| `input.remove_action` (mutating) | `action` | `{name}`; inverse `input.restore_action` with the full action and its position |
+| `input.restore_action` (mutating) | `action` (object from `input.list`), `index?` (default append) | `{name,index}`; inverse `input.remove_action` |
+| `input.set_player` (mutating) | `action`, `player` | `{action,previous,player,changed}`; inverse `input.set_player` |
+| `input.add_binding` (mutating) | `action`, `device?`, `code?`, `pad?`, `axis_sign?`, `deadzone?`, `threshold?`, `index?` | `{index}`; inverse `input.remove_binding` |
+| `input.remove_binding` (mutating) | `action`, `index` | `{index}`; inverse `input.add_binding` with every field and the index |
+| `input.set_binding` (mutating) | `action`, `index`, `field`, `value` | `{action,index,field,previous,value,changed}`; inverse `input.set_binding` with the previous value |
+
+`device` is `keyboard`, `mouse_button`, `gamepad_button` or `gamepad_axis` (the persisted names; default `keyboard`).
+Ranges: `pad` -1..3 (-1 = the action's player), `axis_sign` -1..1, `deadzone` 0..0.99, `threshold` 0..1, `code` >= 0;
+the axis fields are only persisted for `gamepad_axis`. Action names are unique and non-empty. Action order is the
+persisted order; `input.restore_action` rebuilds the map to insert at `index`, so undo restores equal content and order.
+An unknown action or out-of-range index is `VALUE_INVALID` (hint: list with `input.list`); a rejected call changes
+nothing, and setting a field to its current value is a no-op without an inverse.
 
 ## Errors
 

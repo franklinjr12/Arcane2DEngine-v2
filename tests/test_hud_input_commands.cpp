@@ -230,11 +230,90 @@ void test_edit_session_undo_redo() {
   ARCANE_ASSERT_TRUE(list(registry, ctx)[0]["fraction"] == 0.25);
 }
 
+Json actions_of(CommandRegistry& r, ProjectContext& c) { return ok(r, c, "input.list", Json::object()).value["actions"]; }
+
+std::string project_text(ProjectContext& c) { return *c.session().project().input_actions.save_canonical_json(); }
+
+void test_input_commands() {
+  TempProject project("arcane_input_cmds");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto opened = ProjectContext::open(project.dir);
+  ARCANE_ASSERT_TRUE(opened.has_value());
+  ProjectContext& ctx = **opened;
+  const std::string empty = project_text(ctx);
+
+  auto jump = ok(registry, ctx, "input.add_action", {{"name", "jump"}});
+  ARCANE_ASSERT_TRUE(jump.inverse->command == "input.remove_action");
+  ok(registry, ctx, "input.add_action", {{"name", "fire"}, {"player", 1}});
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_action", {{"name", "jump"}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_action", {{"name", ""}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_action", {{"name", "x"}, {"player", 4}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(actions_of(registry, ctx).size() == 2);
+
+  auto key = ok(registry, ctx, "input.add_binding", {{"action", "jump"}, {"device", "keyboard"}, {"code", 32}});
+  ARCANE_ASSERT_TRUE(key.value["index"] == 0);
+  ok(registry, ctx, "input.add_binding",
+     {{"action", "jump"}, {"device", "gamepad_axis"}, {"code", 1}, {"axis_sign", -1}, {"deadzone", 0.25}, {"threshold", 0.75}});
+  ok(registry, ctx, "input.add_binding", {{"action", "jump"}, {"device", "mouse_button"}, {"code", 0}, {"index", 0}});
+  Json list = actions_of(registry, ctx);
+  ARCANE_ASSERT_TRUE(list[0]["bindings"].size() == 3 && list[0]["bindings"][0]["device"] == "mouse_button");
+  ARCANE_ASSERT_TRUE(list[0]["bindings"][2]["device"] == "gamepad_axis" && list[0]["bindings"][2]["deadzone"] == 0.25);
+  ARCANE_ASSERT_TRUE(list[1]["player"] == 1);
+
+  // Invalid arguments change nothing.
+  const std::string before = project_text(ctx);
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_binding", {{"action", "nope"}, {"device", "keyboard"}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_binding", {{"action", "jump"}, {"device", "touch"}}) == "ARGS_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_binding", {{"action", "jump"}, {"deadzone", 1.0}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.add_binding", {{"action", "jump"}, {"index", 9}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.remove_binding", {{"action", "jump"}, {"index", 3}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.set_binding", {{"action", "jump"}, {"index", 0}, {"field", "pad"}, {"value", 4}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.set_binding", {{"action", "jump"}, {"index", 2}, {"field", "axis_sign"}, {"value", 2}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.set_binding", {{"action", "jump"}, {"index", 2}, {"field", "bogus"}, {"value", 1}}) == "ARGS_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.set_player", {{"action", "jump"}, {"player", -2}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "input.remove_action", {{"action", "nope"}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+
+  // Every inverse restores the canonical text.
+  auto set = ok(registry, ctx, "input.set_binding", {{"action", "jump"}, {"index", 2}, {"field", "threshold"}, {"value", 0.5}});
+  ARCANE_ASSERT_TRUE(set.value["previous"] == 0.75 && project_text(ctx) != before);
+  undo_with(registry, ctx, set);
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+  auto dev = ok(registry, ctx, "input.set_binding", {{"action", "jump"}, {"index", 1}, {"field", "device"}, {"value", "gamepad_button"}});
+  undo_with(registry, ctx, dev);
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+  auto player = ok(registry, ctx, "input.set_player", {{"action", "jump"}, {"player", 2}});
+  ARCANE_ASSERT_TRUE(project_text(ctx) != before);
+  undo_with(registry, ctx, player);
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+  auto rb = ok(registry, ctx, "input.remove_binding", {{"action", "jump"}, {"index", 2}});
+  ARCANE_ASSERT_TRUE(rb.inverse->command == "input.add_binding" && rb.inverse->args["index"] == 2);
+  undo_with(registry, ctx, rb);
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+  auto ra = ok(registry, ctx, "input.remove_action", {{"action", "jump"}});
+  ARCANE_ASSERT_TRUE(ra.inverse->command == "input.restore_action" && actions_of(registry, ctx).size() == 1);
+  undo_with(registry, ctx, ra);
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before && actions_of(registry, ctx)[0]["name"] == "jump");
+
+  // dry_run restores; persist + reopen keeps the edits.
+  ok(registry, ctx, "input.remove_action", {{"action", "fire"}}, {.dry_run = true});
+  ARCANE_ASSERT_TRUE(project_text(ctx) == before);
+  ok(registry, ctx, "input.set_player", {{"action", "fire"}, {"player", 3}}, {.persist = true});
+  auto reopened = ProjectContext::open(project.dir);
+  ARCANE_ASSERT_TRUE(reopened.has_value());
+  Json again = actions_of(registry, **reopened);
+  ARCANE_ASSERT_TRUE(again.size() == 2 && again[1]["player"] == 3 && again[0]["bindings"].size() == 3);
+  ARCANE_ASSERT_TRUE(again[0]["bindings"][2]["axis_sign"] == -1 && again[0]["bindings"][2]["threshold"] == 0.75);
+  ARCANE_ASSERT_TRUE(!empty.empty());
+}
+
 }  // namespace
 
 int main() {
   test_add_set_remove_move();
   test_dry_run_persist_conflict();
   test_edit_session_undo_redo();
+  test_input_commands();
   return 0;
 }

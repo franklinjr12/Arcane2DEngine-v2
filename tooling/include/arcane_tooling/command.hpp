@@ -165,6 +165,10 @@ void register_tilemap_commands(CommandRegistry& registry);
 // Registers hud.list/add/remove/set/move (the HUD layout in project.json, edited in memory; saved with the project).
 void register_hud_commands(CommandRegistry& registry);
 
+// Registers input.list/add_action/remove_action/restore_action/set_player/add_binding/remove_binding/set_binding
+// (the input action map in project.json, edited in memory; saved with the project).
+void register_input_commands(CommandRegistry& registry);
+
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 
