@@ -234,6 +234,11 @@ target_compile_definitions(test_cli PRIVATE
 add_dependencies(test_cli arcane)
 add_test(NAME test_cli COMMAND test_cli)
 
+# asset.list/import/reimport on temporary projects (failure injection, hot reload of a reimported clip).
+add_executable(test_asset_commands test_asset_commands.cpp)
+target_link_libraries(test_asset_commands PRIVATE arcane_tooling)
+add_test(NAME test_asset_commands COMMAND test_asset_commands)
+
 # Registered module properties of the top-down slice through the registry.
 add_executable(test_topdown_commands test_topdown_commands.cpp)
 target_link_libraries(test_topdown_commands PRIVATE arcane_tooling)

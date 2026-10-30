@@ -167,6 +167,7 @@ embed_schemas(${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp ${CMAKE_CURRENT
 add_library(arcane_tooling STATIC
   ${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp
   tooling/src/offline.cpp
+  tooling/src/asset_commands.cpp
   tooling/src/cli.cpp
   tooling/src/all_commands.cpp
   tooling/src/scene_commands.cpp

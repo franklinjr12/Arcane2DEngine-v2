@@ -238,6 +238,33 @@ Registered by `register_project_commands`; see `tooling/src/project_commands.cpp
 `project.json`, path `/name`, `/main_scene` or `/module`) and nothing is changed, even if another argument was valid.
 Setting a value to what it already is is a no-op without an inverse.
 
+## Assets
+
+`asset.list`, `asset.import` and `asset.reimport` are file-level (offline) commands on `<project>/assets`; they need a
+`project.json` (`PROJECT_NOT_FOUND` otherwise) but open neither the scene nor the module. An asset id is
+`editor::asset_id_for_relative_path` of its path relative to `assets/`, so there is no import database or sidecar file.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `asset.list` | `kind?` = `image`/`clip`/`audio`/`all` (default) | `{assets:[{id, path, kind, bytes}]}` sorted by path |
+| `asset.import` (mutating) | `source`, `dest?` (relative to `assets/`, default the source file name), `overwrite?` | `{id, path, kind, bytes, replaced}` |
+| `asset.reimport` (mutating) | `path` (must exist), `source?` | `{id, path, kind, bytes, changed}` |
+
+The kind comes from the extension: image `.png .jpg .jpeg .bmp`, clip `.json`, audio `.wav .ogg .mp3 .flac`; anything
+else, a `dest` with `..`, a backslash, an absolute or drive path, or a source of another kind than `dest`/`path` is
+`ARGS_INVALID`. A missing or unreadable source, or a missing reimport `path`, is `IO_ERROR`. Content is checked by header
+only (PNG signature and non-zero IHDR size, JPEG `FF D8 FF`, BMP `BM`, WAV/Ogg/FLAC/MP3 magic; clips must load with the
+clip loader) and a failure is `VALUE_INVALID` naming the source. An existing `dest` is `CONFLICT` unless `overwrite`.
+`asset.reimport` without `source` re-validates the file in place (`changed:false`, a corrupt file is `VALUE_INVALID` and
+not modified); with `source` it atomically replaces the file and `changed` is whether the bytes differ. Every check runs
+before the first write, so a failure leaves the project untouched; `--dry-run` writes nothing. The two writing commands
+are rejected in `arcane batch` with `TRANSACTION_UNSUPPORTED`; `asset.list` is allowed.
+
+Hot reload: a write is an atomic rename (`write_text_file_atomic`), so a running editor or player never reads a half
+written file. Their caches notice the change on the next file-time poll (about twice a second in the editor and the player; the player
+skips it during `--replay`) and reload the asset. The id stays the same, so scene references keep resolving.
+Registered by `tooling/src/asset_commands.cpp`; tested by `test_asset_commands`.
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
