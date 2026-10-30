@@ -3,7 +3,9 @@
 // node and property edits undo/redo exactly, drags coalesce into one step,
 // the save point tracks dirty state, module properties work, HUD and input map
 // edits (AF7B) match the CLI model and undo exactly, and the editor source has
-// no direct scene or project writes left on the routed paths (lint).
+// no direct scene or project writes left on the routed paths (lint). AF8B adds
+// parity/undo for audio, physics, particle and module properties, module
+// edits surviving a reopen, and selection/Play/Stop staying out of the history.
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -12,7 +14,9 @@
 #include "arcane/builtin_components.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/module.hpp"
+#include "arcane/particles.hpp"
 #include "arcane/physics.hpp"
+#include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_session.hpp"
 #include "arcane_tooling/command.hpp"
 #include "arcane_tooling/edit_session.hpp"
@@ -34,12 +38,16 @@ struct TempProject {
     arcane::register_builtin_components(registry);
     arcane::register_audio_components(registry);
     arcane::register_physics_components(registry);
+    arcane::register_particle_components(registry);
     module->api()->register_types(registry);
     auto session = arcane::editor::ProjectSession::create(dir, "EditSession", registry);
     ARCANE_ASSERT_TRUE(session.has_value());
     arcane::Node* node = session->scene().create_node("Player");
     session->scene().add_component(node, "Spinner", registry);
     session->scene().add_component(node, "Sprite", registry);
+    for (const char* type : {"AudioSource", "RigidBody2D", "Collider2D", "ParticleEmitter"}) {
+      session->scene().add_component(node, type, registry);
+    }
     ARCANE_ASSERT_TRUE(session->save(registry).has_value());
   }
   ~TempProject() {
@@ -369,6 +377,101 @@ void test_project_name_typing_coalesces_to_one_undo_step() {
 
 // Routed editor paths must not write the scene or project data directly any more (AF5B scene, AF6 tiles,
 // AF7B HUD, input map and clip Save). What still bypasses commands is listed in docs/editor-command-inventory.md.
+void test_audio_physics_particle_props_match_cli() {
+  TempProject project("arcane_edit_session_apx");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(project);
+  auto cli = open(project);
+  EditSession edits(*gui, registry);
+  const std::string original = scene_text(*gui);
+
+  struct Case {
+    const char* type;
+    const char* name;
+    arcane::PropertyValue value;
+    Json json;
+  };
+  const std::vector<Case> cases = {
+      {"AudioSource", "volume", 0.25f, 0.25},
+      {"AudioSource", "loop", true, true},
+      {"AudioSource", "play_on_start", true, true},
+      {"RigidBody2D", "gravity_scale", 2.5f, 2.5},
+      {"Collider2D", "friction", 0.75f, 0.75},
+      {"ParticleEmitter", "rate", 12.5f, 12.5},
+  };
+  std::vector<std::string> states{original};
+  for (const Case& c : cases) {
+    ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*gui, c.type), descriptor(*gui, c.type, c.name), c.value)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(
+        *cli, {"prop.set", {{"node", "id:1"}, {"component", c.type}, {"name", c.name}, {"value", c.json}}}, {})));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == scene_text(*cli));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) != states.back());
+    states.push_back(scene_text(*gui));
+  }
+  for (std::size_t i = cases.size(); i > 0; --i) {
+    ARCANE_ASSERT_TRUE(ok(edits.undo()));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == states[i - 1]);
+  }
+  ARCANE_ASSERT_TRUE(scene_text(*gui) == original);
+  for (std::size_t i = 1; i <= cases.size(); ++i) {
+    ARCANE_ASSERT_TRUE(ok(edits.redo()));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == states[i]);
+  }
+}
+
+void test_module_property_undo_after_reopen() {
+  TempProject project("arcane_edit_session_module_reopen");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  std::string saved;
+  {
+    auto context = open(project);
+    EditSession edits(*context, registry);
+    ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*context, "Spinner"),
+                                             descriptor(*context, "Spinner", "speed_degrees_per_second"), 123.0f)));
+    ARCANE_ASSERT_TRUE(edits.modified());
+    ARCANE_ASSERT_TRUE(context->save().has_value());
+    edits.mark_saved();
+    saved = scene_text(*context);
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(scene_text(*context) == saved);
+  EditSession edits(*context, registry);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*context, "Spinner"),
+                                           descriptor(*context, "Spinner", "speed_degrees_per_second"), 7.0f)));
+  ARCANE_ASSERT_TRUE(scene_text(*context) != saved);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(scene_text(*context) == saved);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+}
+
+void test_view_state_is_not_authored() {
+  TempProject project("arcane_edit_session_view_state");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  const std::string original = scene_text(*context);
+
+  arcane::editor::Selection selection;
+  selection.select(1);
+  selection.clear();
+  selection.select(1);
+  arcane::editor::PlayStopController play;
+  ARCANE_ASSERT_TRUE(play.play(context->scene(), context->registry()));
+  play.tick(0.016f);
+  play.stop();
+
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+  ARCANE_ASSERT_TRUE(scene_text(*context) == original);
+  ARCANE_ASSERT_TRUE(!edits.undo());
+  ARCANE_ASSERT_TRUE(scene_text(*context) == original);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+}
+
 void test_editor_source_has_no_direct_scene_writes() {
   std::ifstream in(ARCANE_EDITOR_SOURCE_PATH);
   ARCANE_ASSERT_TRUE(in.good());
@@ -398,6 +501,9 @@ int main() {
   test_hud_drag_coalesces_to_one_undo_step();
   test_gui_project_settings_match_cli_model();
   test_project_name_typing_coalesces_to_one_undo_step();
+  test_audio_physics_particle_props_match_cli();
+  test_module_property_undo_after_reopen();
+  test_view_state_is_not_authored();
   test_editor_source_has_no_direct_scene_writes();
   return 0;
 }

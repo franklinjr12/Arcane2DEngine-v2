@@ -136,7 +136,7 @@ Editor (any platform): open a project with a Tilemap node, select it, tick "Pain
 - AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
 - AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
 - AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
-- AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
+- AF8 is routed (AF8B): `project.get`/`project.set`, the Project Settings panel, and audio/physics/particle/module Inspector properties go through the registry with GUI/CLI parity and undo tests in `test_edit_session`. Remaining direct edits are tileset/clip drafts and Open clip; transition/save/debug settings have CLI commands but no editor widgets. The save guard and revision check do not make project and scene writes transactional.
 - AF7 is routed (AF7B): clip/HUD/input commands, HUD image editing and panel undo exist. Not done: draft editing in the clip and tileset panels is not command-backed, Open clip reads the file directly, and the exported player does not resolve HUD image assets.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1B PASS: impulse/set-velocity API, clip reopen (editor "Open clip" button) and player clip hot-reload done; one-way platforms were already in (e464cfe, 718de87).
@@ -288,7 +288,7 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - The editor opens its project via `arcane_tooling::ProjectContext` (Compatible load policy for legacy samples) and routes New Node, Delete, hierarchy drag-reparent, node name/transform, Add Component, every Inspector property (builtin and module types) and asset assignment (Sprite/ParticleEmitter texture, AnimatedSprite/AudioSource clip, Tilemap tileset) through `node.*`, `component.add` and `prop.set` — the same commands as the `arcane` CLI.
 - New `arcane_tooling::EditSession` (`tooling/include/arcane_tooling/edit_session.hpp`): run/undo/redo over `CommandHistory`; Edit menu and Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z).
 - `CommandHistory` gained drag coalescing (`coalesce_key`/`end_gesture`), save-point tracking (`mark_saved`/`at_save_point`) and id-counter rewind on undo so redo re-creates the same node/component ids.
-- Not done (AF8): project-level properties still mutate data directly; tileset/clip draft editing before Save is transient; no editor UI for prefab commands; undo history is not cleared by non-command edits.
+- Not done (AF8): tileset/clip draft editing before Save is transient; no editor UI for prefab commands; undo history is not cleared by non-command edits.
 - UNTESTED on native Windows/MSVC.
 
 ## AF6B — tilemap and tileset commands
