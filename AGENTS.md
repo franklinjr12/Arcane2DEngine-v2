@@ -54,8 +54,7 @@ arcane --project game validate && arcane --project game fmt --check
 ```
 
 `arcane run`, `arcane test` and `arcane export` (AF10B) run display-free fixed frames on scene copies (no save), run `tests/NAME.replay.json` cases, and write a structured game folder; `arcane_player --headless` runs the same stepping without a window. Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
-Not covered by commands yet: the tileset panel's draft editing in the GUI (its Save is `tileset.*`), `render`,
-and the tileset/clip draft editing. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
+Not covered by commands yet: `render`, and the tileset and clip panels' draft editing plus New tileset and Open clip (their Saves are `tileset.*`/`clip.create`). The current GUI/CLI coverage table is `docs/editor-command-inventory.md`. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
 (`clip.create`, an immediate file write) are command-backed in the editor and CLI (`test_edit_session` checks parity); the editor still
 mutates some data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity beyond that or
 invent commands. The contract remains registry-backed GUI and CLI authoring and JSONL batches, with no MCP or
