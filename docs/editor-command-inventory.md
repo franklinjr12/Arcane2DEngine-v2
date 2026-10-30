@@ -1,8 +1,23 @@
 # Editor authoring command inventory
 
-AF5 is blocked on the unfinished AF3 registry and AF4 CLI. The following
-existing paths still mutate authored data directly; none has command coverage
-or command-routing lint yet. Locations refer to `editor/app/editor_main.cpp`.
+**AF5B update:** the core scene paths below (hierarchy create/delete/reparent,
+node name/transform, Add Component, Inspector properties incl. module types,
+asset assignment to Sprite/ParticleEmitter/AnimatedSprite/AudioSource/Tilemap) now run
+as registry commands through `arcane_tooling::EditSession` with undo/redo,
+drag coalescing and save-point dirty tracking; `test_edit_session` lints
+`editor_main.cpp` for direct scene writes. **AF6B update:** tilemap layer add, viewport brush, erase, rectangle fill and terrain brush now run as
+`tilemap.*` commands through `EditSession` (one drag = one undo step via coalescing; Undo/Redo and Ctrl+Z use the
+command history). The tileset panel still edits a draft in memory, but its Save now writes the file through
+`tileset.create` (overwrite), `tileset.set_tile` and `tileset.set_rule` (not undoable per field). **AF7B update:** the HUD panel (add button/text/bar/image, remove, every field incl. image texture asset, UV and tint),
+the Input Map panel (actions, player, bindings and every binding field) and clip **Save clip** now run as `hud.*`, `input.*`
+and `clip.create` (overwrite) commands. HUD and input edits are in-memory project data run through `EditSession`
+(undo/redo, drag coalescing, `*modified*`), written by File > Save; clip Save writes the file at once like the tileset Save.
+The panels read `session.project()` only; `test_edit_session` lints `editor_main.cpp` for `mutable_project()`, `hud.add(`,
+`.set_action(`, `.remove_action(`, `save_clip_file(` and `elements.erase(`. What remains direct: the tileset panel's draft editing
+before Save, the clip panel's draft editing and **Open clip** (a read through `load_clip_file`; the draft is transient), and
+project-level properties (AF8).
+
+Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
 
 - Core scene (AF5): hierarchy creates, deletes and reparents nodes; Inspector
   changes node name and local transform, adds components and calls registered
@@ -13,7 +28,7 @@ or command-routing lint yet. Locations refer to `editor/app/editor_main.cpp`.
   rectangle and terrain operations mutate Tilemap through TilePaintTool. Its
   separate stroke undo/redo is not a generic command history. The tileset panel
   edits a draft and writes the tileset file directly.
-- Clip, HUD and input (AF7): the clip panel saves files through
+- Clip, HUD and input (AF7, before AF7B): the clip panel saved files through
   `save_clip_file`; HUD widgets edit project HUD elements; Input Map widgets
   add, change and remove actions and bindings.
 - Remaining data actions (AF8): audit asset assignment and registered audio,
@@ -55,3 +70,5 @@ an audit of the present editor, not an automated guarantee: registry, CLI,
 coverage manifest, routing and direct-write lint remain absent. Completion needs
 behavioral parity tests as well as a manifest; a manifest alone cannot discover
 new direct widget writes.
+
+- Prefabs (FE18): no editor action exists yet for save-as-prefab, instantiate, override, revert or break-link; they are `prefab.*` registry commands only. The GUI should call them (not a separate path) when AF5 routes the hierarchy and Inspector.

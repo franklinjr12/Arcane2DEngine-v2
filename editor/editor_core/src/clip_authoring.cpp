@@ -1,6 +1,7 @@
 #include "arcane_editor/clip_authoring.hpp"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <sstream>
 #include <system_error>
@@ -62,6 +63,39 @@ AnimationClip build_clip(const ClipDraft& draft, int sheet_width, int sheet_heig
     clip.frames.push_back({.uv = uv, .duration_seconds = custom > 0.0f ? custom : default_duration});
   }
   return clip;
+}
+
+std::expected<ClipDraft, std::string> draft_from_clip(const AnimationClip& clip, const SheetGrid& grid,
+                                                      int sheet_width, int sheet_height) {
+  if (grid.columns <= 0 || grid.rows <= 0 || sheet_width <= 0 || sheet_height <= 0) {
+    return std::unexpected("invalid grid or sheet size");
+  }
+  ClipDraft draft;
+  draft.name = clip.name;
+  draft.grid = grid;
+  draft.loop = clip.loop;
+  const float tol_u = 0.5f / static_cast<float>(sheet_width);
+  const float tol_v = 0.5f / static_cast<float>(sheet_height);
+  const int cell_count = grid.columns * grid.rows;
+  for (std::size_t i = 0; i < clip.frames.size(); ++i) {
+    const AnimationFrame& frame = clip.frames[i];
+    if (!(frame.duration_seconds > 0.0f)) {
+      return std::unexpected("frame " + std::to_string(i) + " has a non-positive duration");
+    }
+    int match = -1;
+    for (int cell = 0; cell < cell_count && match < 0; ++cell) {
+      const UvRect uv = grid_cell_uv(grid, sheet_width, sheet_height, cell);
+      if (std::abs(uv.u0 - frame.uv.u0) <= tol_u && std::abs(uv.u1 - frame.uv.u1) <= tol_u &&
+          std::abs(uv.v0 - frame.uv.v0) <= tol_v && std::abs(uv.v1 - frame.uv.v1) <= tol_v) {
+        match = cell;
+      }
+    }
+    if (match < 0) return std::unexpected("frame " + std::to_string(i) + " does not match a grid cell");
+    draft.cells.push_back(match);
+    draft.durations.push_back(frame.duration_seconds);
+  }
+  if (!draft.durations.empty()) draft.fps = 1.0f / draft.durations.front();
+  return draft;
 }
 
 std::expected<void, std::string> save_clip_file(const std::filesystem::path& path, const AnimationClip& clip) {

@@ -127,6 +127,8 @@ PhysicsWorld::~PhysicsWorld() = default;
 PhysicsWorld::PhysicsWorld(PhysicsWorld&&) noexcept = default;
 PhysicsWorld& PhysicsWorld::operator=(PhysicsWorld&&) noexcept = default;
 
+int PhysicsWorld::body_count() const noexcept { return static_cast<int>(impl_->bodies.size()); }
+
 void PhysicsWorld::rebuild(Scene& scene) {
   b2World_SetPreSolveCallback(impl_->world, one_way_pre_solve, nullptr, &scene);
   for (auto& [id, body] : impl_->bodies) {
@@ -215,6 +217,10 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
         rigid->drop_through_time = std::max(0.0f, rigid->drop_through_time - fixed_dt);
         b2Body_SetLinearVelocity(body, px_to_m(rigid->linear_velocity));
         b2Body_SetGravityScale(body, rigid->gravity_scale);
+        if (type == b2_dynamicBody && (rigid->pending_impulse.x != 0.0f || rigid->pending_impulse.y != 0.0f)) {
+          b2Body_ApplyLinearImpulseToCenter(body, px_to_m(rigid->pending_impulse), true);
+        }
+        rigid->pending_impulse = {};
       }
     }
   }
