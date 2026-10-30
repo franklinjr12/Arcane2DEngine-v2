@@ -17,6 +17,14 @@ The panels read `session.project()` only; `test_edit_session` lints `editor_main
 before Save, the clip panel's draft editing and **Open clip** (a read through `load_clip_file`; the draft is transient), and
 project-level properties (AF8).
 
+**AF8B update:** Project Settings (name, main scene, module) now runs through `project.set` via `EditSession`. Audio, physics,
+particle and module Inspector properties and asset assignment run through `prop.set`; `test_edit_session` checks GUI/CLI scene
+parity and undo/redo for AudioSource, RigidBody2D, Collider2D and ParticleEmitter properties, and that a Spinner (module) edit
+persists across reopen and undoes. View-only state (selection, Play/Stop, preview toggles, the F3 debug overlay toggle, panel
+drafts before Save) is not authored data and stays out of the history (tested for selection and Play/Stop). Still direct:
+tileset/clip draft editing before Save and Open clip. Transition, save and debug settings have CLI commands (`transition.set`,
+`save.config_set`, `debug.set`; immediate writes) but no editor widgets.
+
 Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
 
 - Core scene (AF5): hierarchy creates, deletes and reparents nodes; Inspector
