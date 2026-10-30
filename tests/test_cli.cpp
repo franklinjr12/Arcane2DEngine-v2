@@ -8,6 +8,8 @@
 #endif
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <set>
 #include <sstream>
 
 #include "arcane/canonical_json.hpp"
@@ -321,6 +323,42 @@ void test_validate_fmt_migrate() {
   fs::remove_all(dir, ec);
 }
 
+// docs/commands.md is hand-written: every registered or offline command must be mentioned, and it must not
+// name a command that does not exist.
+void test_commands_doc_coverage() {
+  const std::string doc = slurp(ARCANE_COMMANDS_DOC_PATH);
+  ARCANE_ASSERT_TRUE(!doc.empty());
+  CommandRegistry registry;
+  register_all_commands(registry);
+  std::set<std::string> names;
+  for (const CommandSpec* spec : registry.list()) names.insert(spec->name);
+  for (const auto& c : offline_commands()) names.insert(c.spec.name);
+  std::set<std::string> groups;
+  for (const auto& n : names) {
+    const auto dot = n.find('.');
+    if (dot != std::string::npos) groups.insert(n.substr(0, dot));
+  }
+  for (const auto& n : names) {
+    const bool found = n.find('.') != std::string::npos
+                           ? doc.find("`" + n + "`") != std::string::npos
+                           : doc.find("`" + n + "`") != std::string::npos || doc.find("`arcane " + n) != std::string::npos;
+    if (!found) {
+      std::fprintf(stderr, "docs/commands.md does not mention %s\n", n.c_str());
+      ARCANE_ASSERT_TRUE(false);
+    }
+  }
+  const std::regex token("`([a-z_]+)\\.([a-z_]+)`");
+  for (auto it = std::sregex_iterator(doc.begin(), doc.end(), token); it != std::sregex_iterator(); ++it) {
+    const std::string group = (*it)[1], full = (*it)[0].str().substr(1, (*it)[0].length() - 2);
+    const std::string ext = (*it)[2];
+    if (ext == "json" || ext == "png" || ext == "md") continue;  // file names
+    if (full == "save.data_version") continue;  // a project.json field, not a command
+    if (!groups.count(group) || names.count(full)) continue;
+    std::fprintf(stderr, "docs/commands.md names unknown command %s\n", full.c_str());
+    ARCANE_ASSERT_TRUE(false);
+  }
+}
+
 void test_schema_and_docs() {
   auto list = cli({"schema"});
   ARCANE_ASSERT_TRUE(list.code == 0 && list.raw.find("\"scene\"") != std::string::npos);
@@ -462,6 +500,7 @@ int main() {
   test_scenes_and_batch();
   test_validate_fmt_migrate();
   test_schema_and_docs();
+  test_commands_doc_coverage();
   test_run_and_test();
   test_export();
   test_executable();

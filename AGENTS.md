@@ -71,7 +71,8 @@ function (called from `register_all_commands`), take a `ProjectContext&`, valida
 before mutating, and return the inverse invocation; commands that write files
 outside the scene are listed in `register_all_commands` (no `--dry-run`). File-level
 commands that must work without an openable project live in `tooling/src/offline.cpp`.
-Regenerate `docs/cli-reference.md` in the same commit. Do not keep `Node*`/`Component*`/descriptors past the
+Regenerate `docs/cli-reference.md` in the same commit. Also add a row for each new command to `docs/commands.md` (`test_cli` checks that every
+registered command is mentioned there and that it names no unknown command). Do not keep `Node*`/`Component*`/descriptors past the
 `ProjectContext` that produced them: the module is unloaded with the context.
 
 Editor and player can be run from `build-gcc/bin` with `--project` pointing to a
