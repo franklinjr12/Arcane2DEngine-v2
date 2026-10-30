@@ -1,14 +1,16 @@
 // Headless tests for the editor's command-backed edit path (AF5B): the GUI
 // helper (EditSession) must give the same scene as the CLI/registry calls,
 // node and property edits undo/redo exactly, drags coalesce into one step,
-// the save point tracks dirty state, module properties work, and the editor
-// source has no direct scene writes left on the routed paths (lint).
+// the save point tracks dirty state, module properties work, HUD and input map
+// edits (AF7B) match the CLI model and undo exactly, and the editor source has
+// no direct scene or project writes left on the routed paths (lint).
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/module.hpp"
 #include "arcane/physics.hpp"
 #include "arcane_editor/project_session.hpp"
@@ -216,8 +218,102 @@ void test_failed_edit_changes_nothing() {
   ARCANE_ASSERT_TRUE(!edits.can_undo() && !edits.modified());
 }
 
-// Routed editor paths must not write the scene directly any more (AF5B). Tile painting,
-// clips, HUD and input maps are AF6/AF7 and listed in docs/editor-command-inventory.md.
+std::string read_file(const fs::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
+}
+
+// The HUD and input map calls the editor panels make, in panel order (a drag sends several hud.set).
+std::vector<Invocation> hud_input_calls() {
+  return {{"hud.add", {{"type", "button"}}},
+          {"hud.add", {{"type", "text"}}},
+          {"hud.add", {{"type", "image"}}},
+          {"hud.add", {{"type", "bar"}}},
+          {"hud.set", {{"index", 0}, {"field", "label"}, {"value", "Go"}}},
+          {"hud.set", {{"index", 1}, {"field", "color"}, {"value", {0.5, 0.25, 1.0, 1.0}}}},
+          {"hud.set", {{"index", 2}, {"field", "uv"}, {"value", {0.0, 0.0, 0.5, 0.5}}}},
+          {"hud.set", {{"index", 2}, {"field", "tint"}, {"value", {1.0, 0.5, 0.5, 1.0}}}},
+          {"hud.set", {{"index", 2}, {"field", "anchor"}, {"value", "BottomRight"}}},
+          {"hud.set", {{"index", 2}, {"field", "width"}, {"value", 64.0}}},
+          {"hud.remove", {{"index", 3}}},
+          {"input.add_action", {{"name", "jump"}}},
+          {"input.add_action", {{"name", "fire"}, {"player", 1}}},
+          {"input.add_binding", {{"action", "jump"}, {"device", "keyboard"}, {"code", 32}}},
+          {"input.add_binding", {{"action", "jump"}, {"device", "gamepad_axis"}}},
+          {"input.set_binding", {{"action", "jump"}, {"index", 1}, {"field", "deadzone"}, {"value", 0.25}}},
+          {"input.set_binding", {{"action", "jump"}, {"index", 1}, {"field", "axis_sign"}, {"value", -1}}},
+          {"input.set_player", {{"action", "jump"}, {"player", 2}}},
+          {"input.remove_binding", {{"action", "jump"}, {"index", 0}}},
+          {"input.remove_action", {{"action", "fire"}}}};
+}
+
+// AF7B: the editor's HUD and Input Map panels edit project.json data in memory through EditSession; the CLI model
+// persists each command. Both must write the same canonical project.json, and undo must restore the original.
+void test_gui_hud_input_matches_cli_model() {
+  TempProject gui_project("arcane_edit_session_hud_gui");
+  TempProject cli_project("arcane_edit_session_hud_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  const std::string original = read_file(gui_project.dir / "project.json");
+  ARCANE_ASSERT_TRUE(original == read_file(cli_project.dir / "project.json"));
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+
+  for (const Invocation& call : hud_input_calls()) {
+    ARCANE_ASSERT_TRUE(ok(edits.run(call)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, call, {.persist = true})));
+  }
+  ARCANE_ASSERT_TRUE(edits.modified());
+  ARCANE_ASSERT_TRUE(gui->project_dirty());
+  ARCANE_ASSERT_TRUE(ok(gui->save()));  // the in-memory edits reach disk only on save
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == read_file(cli_project.dir / "project.json"));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") != original);
+
+  // Undo/redo cover project data too: undoing everything restores the original canonical project.json.
+  const std::string edited = read_file(gui_project.dir / "project.json");
+  while (edits.can_undo()) ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(gui->save()));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == original);
+  while (edits.can_redo()) ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(ok(gui->save()));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == edited);
+}
+
+void test_hud_drag_coalesces_to_one_undo_step() {
+  TempProject project("arcane_edit_session_hud_drag");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  ARCANE_ASSERT_TRUE(ok(edits.run({"hud.add", {{"type", "bar"}}})));
+  edits.end_gesture();
+
+  // One drag of the bar fraction: many frames, one key.
+  for (double v : {0.9, 0.7, 0.5, 0.3}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run({"hud.set", {{"index", 0}, {"field", "fraction"}, {"value", v}}}, "hud.set:0:fraction")));
+  }
+  edits.end_gesture();
+  // A drag of another field is its own step.
+  ARCANE_ASSERT_TRUE(ok(edits.run({"hud.set", {{"index", 0}, {"field", "width"}, {"value", 100.0}}}, "hud.set:0:width")));
+  edits.end_gesture();
+
+  const auto& bar = std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]);
+  ARCANE_ASSERT_TRUE(bar.width == 100.0f && bar.fraction == 0.3f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // width
+  ARCANE_ASSERT_TRUE(std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]).width == 200.0f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // the whole fraction drag
+  ARCANE_ASSERT_TRUE(std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]).fraction == 1.0f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // the add
+  ARCANE_ASSERT_TRUE(context->session().project().hud.elements().empty());
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+}
+
+// Routed editor paths must not write the scene or project data directly any more (AF5B scene, AF6 tiles,
+// AF7B HUD, input map and clip Save). What still bypasses commands is listed in docs/editor-command-inventory.md.
 void test_editor_source_has_no_direct_scene_writes() {
   std::ifstream in(ARCANE_EDITOR_SOURCE_PATH);
   ARCANE_ASSERT_TRUE(in.good());
@@ -226,7 +322,8 @@ void test_editor_source_has_no_direct_scene_writes() {
   const std::string source = ss.str();
   for (const char* forbidden : {"->set_name(", "create_node(", "destroy_node(", "flush_destroyed(", "->reparent(",
                                  "add_component(", "descriptor.set(", "local_transform() =", "auto& transform = ", "sprite->texture",
-                                 "->texture =", "->clip =", "->tileset ="}) {
+                                 "->texture =", "->clip =", "->tileset =", "mutable_project()", "hud.add(", ".set_action(",
+                                 ".remove_action(", "save_clip_file(", "elements.erase("}) {
     if (source.find(forbidden) != std::string::npos) {
       std::fprintf(stderr, "editor_main.cpp writes the scene directly: %s\n", forbidden);
       ARCANE_ASSERT_TRUE(false);
@@ -242,6 +339,8 @@ int main() {
   test_drag_coalescing();
   test_save_point_dirty_tracking();
   test_failed_edit_changes_nothing();
+  test_gui_hud_input_matches_cli_model();
+  test_hud_drag_coalesces_to_one_undo_step();
   test_editor_source_has_no_direct_scene_writes();
   return 0;
 }

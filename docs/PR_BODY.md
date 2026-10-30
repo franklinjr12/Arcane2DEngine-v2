@@ -17,7 +17,9 @@ For FE15, open the arena in the editor, select Arena and inspect the registered 
 
 FE23 check (debug overlay + benchmark): `.build-and-test/build-gcc/bin/arcane_bench --frames 60` (Windows: `.\build\bin\arcane_bench.exe --frames 60`) prints an `arcane.bench` JSON document with `live_particles` 1000 and `physics_bodies` 201; `arcane_bench --frames 0` prints an error and exits with status 2. `ctest --test-dir .build-and-test/build-gcc -R "test_debug|bench_cli" --output-on-failure`; expect 4 passed. In the player or editor on a project, press **F3**: a six-line overlay (FPS, frame ms, draw calls, sprites, bodies, particles) appears or disappears. To start with it shown, add `"debug": {"overlay_visible": true}` to `project.json`. Baseline numbers: `docs/perf.md`.
 
-AF5B check (editor edits are commands with undo): in `arcane_editor --project samples/sample_project`, select a node, drag its Position, rename it, add a component, drag a property, press Ctrl+Z repeatedly (Edit menu > Undo/Redo also work; not while Paint mode is on or text is being typed). Each drag is ONE undo step; New Node/Delete/drag-reparent/asset assignment are undoable too. The toolbar shows `*modified*` until File > Save; undoing back to the saved state clears it. Expected CTest: `test_edit_session` passes (GUI-vs-CLI parity, undo/redo, drag coalescing, save point, lint that `editor_main.cpp` no longer writes the scene directly). Tile painting, clips, HUD and input maps still write directly (AF6/AF7).
+AF5B check (editor edits are commands with undo): in `arcane_editor --project samples/sample_project`, select a node, drag its Position, rename it, add a component, drag a property, press Ctrl+Z repeatedly (Edit menu > Undo/Redo also work; not while Paint mode is on or text is being typed). Each drag is ONE undo step; New Node/Delete/drag-reparent/asset assignment are undoable too. The toolbar shows `*modified*` until File > Save; undoing back to the saved state clears it. Expected CTest: `test_edit_session` passes (GUI-vs-CLI parity, undo/redo, drag coalescing, save point, lint that `editor_main.cpp` no longer writes the scene directly). (Tile painting became commands in AF6B and clips, HUD and input maps in AF7B.)
+
+AF7B check (HUD, input map and clip panels are commands): in `arcane_editor --project <copy of samples/sample_project>`, open the HUD window, press `+ Image`, pick a texture, drag UV/Tint/Offset, add a Button and Text, and edit their fields; open Input Map, add an action, add a binding, change its device/code, remove it. Each drag is one undo step and Ctrl+Z / Edit > Undo rewinds HUD and input edits; `*modified*` shows until File > Save and `project.json` then holds them. Press Play: the image draws. In Animation Clip pick a sheet, set the grid, Add frames and press Save clip: the file appears under `assets/` (the same bytes `arcane --project DIR clip create ...` writes). Expected CTests: `test_hud_input_commands`, `test_clip_commands` and `test_edit_session` (GUI-vs-CLI project.json parity for the same hud/input sequence, undo restores the original, one drag = one undo step, lint against direct project writes) pass.
 
 Windows / MSVC (PowerShell, from the repo root):
 ```
@@ -101,7 +103,7 @@ Editor (any platform): open a project with a Tilemap node, select it, tick "Pain
 - AF11 adds `AGENTS.md` with build, format and current authoring guidance, and expands the editor action inventory. No CLI or generated command reference is available.
 - AF9 prerequisite: saving reports external edits detected in the project or scene since opening or the last save.
 - AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
-- AF7 adds no visible feature: clip, HUD and input commands and panel routing remain blocked by incomplete command and undo foundations.
+- AF7B: the HUD, Input Map and Animation Clip panels run `hud.*`, `input.*` and `clip.create` commands (HUD/input edits are undoable; see the AF7B check).
 - AF6 prerequisite work adds a strict project-opening API for future tooling; it has no new editor screen or CLI command. `test_editor_project` checks that strict loading refuses an unknown legacy module property without changing the file.
 - FE15 adds a top-down arena with solid walls, chasing enemy, health HUD and hit particles, plus editable ArenaRules properties in scene JSON and the Inspector.
 - AudioSource playback is audible in visible editor Play and player sessions when a device opens; fallback is logged.
@@ -135,7 +137,7 @@ Editor (any platform): open a project with a Tilemap node, select it, tick "Pain
 - AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
 - AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
 - AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
-- AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
+- AF7 is routed (AF7B): clip/HUD/input commands, HUD image editing and panel undo exist. Not done: draft editing in the clip and tileset panels is not command-backed, Open clip reads the file directly, and the exported player does not resolve HUD image assets.
 - AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
 - KI1B PASS: impulse/set-velocity API, clip reopen (editor "Open clip" button) and player clip hot-reload done; one-way platforms were already in (e464cfe, 718de87).
 - FE15 is partial: the missing `arcane` executable (registry `prop.*` now covers ArenaRules properties in C++ via `test_topdown_commands`) prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
@@ -178,7 +180,7 @@ Added root agent guidance and reviewed editor actions. Registry-generated CLI re
 - Scene v2 `Tilemap.layers` is structured rows; old text form still reads and migrates (strictly).
 - `migrate_project` also migrates tileset/clip files (found by content, never renamed).
 - Schemas for the four new kinds, docs/formats, decisions 61–68, tests `test_formats_v2` + extended `test_migration` with goldens.
-- Not done (later jobs): resolving `HudImage::texture_asset` to a texture at Play (AF7); `solid_tiles` stays a string.
+- Resolving `HudImage::texture_asset` at Play is done in the editor only (AF7B), not in the exported player; `solid_tiles` stays a string.
 
 ## FE17 — one-way platforms
 
@@ -286,7 +288,7 @@ ProjectSession checks the bytes of both inputs before saving and rejects detecte
 - The editor opens its project via `arcane_tooling::ProjectContext` (Compatible load policy for legacy samples) and routes New Node, Delete, hierarchy drag-reparent, node name/transform, Add Component, every Inspector property (builtin and module types) and asset assignment (Sprite/ParticleEmitter texture, AnimatedSprite/AudioSource clip, Tilemap tileset) through `node.*`, `component.add` and `prop.set` — the same commands as the `arcane` CLI.
 - New `arcane_tooling::EditSession` (`tooling/include/arcane_tooling/edit_session.hpp`): run/undo/redo over `CommandHistory`; Edit menu and Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z).
 - `CommandHistory` gained drag coalescing (`coalesce_key`/`end_gesture`), save-point tracking (`mark_saved`/`at_save_point`) and id-counter rewind on undo so redo re-creates the same node/component ids.
-- Not done (AF6/AF7/AF8): tile paint, tileset/clip panels, HUD, input map still mutate data directly and their own paint undo is separate; no editor UI for prefab commands; undo history is not cleared by non-command edits.
+- Not done (AF8): project-level properties still mutate data directly; tileset/clip draft editing before Save is transient; no editor UI for prefab commands; undo history is not cleared by non-command edits.
 - UNTESTED on native Windows/MSVC.
 
 ## AF6B — tilemap and tileset commands

@@ -8,8 +8,14 @@ drag coalescing and save-point dirty tracking; `test_edit_session` lints
 `editor_main.cpp` for direct scene writes. **AF6B update:** tilemap layer add, viewport brush, erase, rectangle fill and terrain brush now run as
 `tilemap.*` commands through `EditSession` (one drag = one undo step via coalescing; Undo/Redo and Ctrl+Z use the
 command history). The tileset panel still edits a draft in memory, but its Save now writes the file through
-`tileset.create` (overwrite), `tileset.set_tile` and `tileset.set_rule` (not undoable per field). The remaining direct paths are the tileset
-panel, clip/HUD/input (AF7) and project-level properties (AF8).
+`tileset.create` (overwrite), `tileset.set_tile` and `tileset.set_rule` (not undoable per field). **AF7B update:** the HUD panel (add button/text/bar/image, remove, every field incl. image texture asset, UV and tint),
+the Input Map panel (actions, player, bindings and every binding field) and clip **Save clip** now run as `hud.*`, `input.*`
+and `clip.create` (overwrite) commands. HUD and input edits are in-memory project data run through `EditSession`
+(undo/redo, drag coalescing, `*modified*`), written by File > Save; clip Save writes the file at once like the tileset Save.
+The panels read `session.project()` only; `test_edit_session` lints `editor_main.cpp` for `mutable_project()`, `hud.add(`,
+`.set_action(`, `.remove_action(`, `save_clip_file(` and `elements.erase(`. What remains direct: the tileset panel's draft editing
+before Save, the clip panel's draft editing and **Open clip** (a read through `load_clip_file`; the draft is transient), and
+project-level properties (AF8).
 
 Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
 
@@ -22,7 +28,7 @@ Historical list (before AF5B): these paths mutated authored data directly. Locat
   rectangle and terrain operations mutate Tilemap through TilePaintTool. Its
   separate stroke undo/redo is not a generic command history. The tileset panel
   edits a draft and writes the tileset file directly.
-- Clip, HUD and input (AF7): the clip panel saves files through
+- Clip, HUD and input (AF7, before AF7B): the clip panel saved files through
   `save_clip_file`; HUD widgets edit project HUD elements; Input Map widgets
   add, change and remove actions and bindings.
 - Remaining data actions (AF8): audit asset assignment and registered audio,
