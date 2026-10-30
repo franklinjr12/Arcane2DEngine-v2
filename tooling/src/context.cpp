@@ -2,6 +2,7 @@
 
 #include "arcane/atlas.hpp"
 #include "arcane/canonical_json.hpp"
+#include "arcane/project.hpp"
 
 namespace arcane::tooling {
 
@@ -12,8 +13,12 @@ constexpr const char* kModuleFailurePrefix = "failed to load project module";
 
 }  // namespace
 
-ProjectContext::ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text)
-    : runtime_(std::move(runtime)), scene_file_(std::move(scene_file)), loaded_scene_text_(std::move(scene_text)) {}
+ProjectContext::ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text,
+                               std::string project_text)
+    : runtime_(std::move(runtime)),
+      scene_file_(std::move(scene_file)),
+      loaded_scene_text_(std::move(scene_text)),
+      loaded_project_text_(std::move(project_text)) {}
 
 ProjectContext::~ProjectContext() = default;
 
@@ -57,8 +62,12 @@ std::expected<std::unique_ptr<ProjectContext>, ToolError> ProjectContext::open(
     }
     runtime->session().scene() = std::move(*scene);
   }
-  return std::unique_ptr<ProjectContext>(
-      new ProjectContext(std::move(*runtime), std::move(scene_file), std::move(*scene_text)));
+  auto project_text = read_text_file(project_dir / "project.json");
+  if (!project_text) {
+    return std::unexpected(ToolError{"IO_ERROR", project_text.error(), "project.json", "", ""});
+  }
+  return std::unique_ptr<ProjectContext>(new ProjectContext(std::move(*runtime), std::move(scene_file),
+                                                            std::move(*scene_text), std::move(*project_text)));
 }
 
 const std::filesystem::path& ProjectContext::project_dir() const noexcept {
@@ -69,11 +78,21 @@ Scene& ProjectContext::scene() noexcept { return runtime_.session().scene(); }
 
 std::expected<void, ToolError> ProjectContext::save() {
   const std::filesystem::path path = project_dir() / scene_file_;
+  const std::filesystem::path project_path = project_dir() / "project.json";
+  // Serialize everything first so a validation failure writes nothing.
   auto text = scene().save_canonical_json(registry());
   if (!text) {
     return std::unexpected(ToolError{"VALUE_INVALID", text.error(), scene_file(), "", ""});
   }
-  // Refuse to overwrite a scene somebody else edited since we read it. This
+  std::string project_text;
+  if (project_dirty_) {
+    auto serialized = save_project_canonical_json(session().project());
+    if (!serialized) {
+      return std::unexpected(ToolError{"VALUE_INVALID", serialized.error(), "project.json", "", ""});
+    }
+    project_text = std::move(*serialized);
+  }
+  // Refuse to overwrite a file somebody else edited since we read it. This
   // detects edits, it is not a lock against a simultaneous writer.
   auto on_disk = read_text_file(path);
   if (!on_disk) {
@@ -82,6 +101,21 @@ std::expected<void, ToolError> ProjectContext::save() {
   if (*on_disk != loaded_scene_text_) {
     return std::unexpected(ToolError{"CONFLICT", "Scene file changed on disk since it was loaded", scene_file(), "",
                                      "Reopen the project and repeat the command"});
+  }
+  if (project_dirty_) {
+    auto project_on_disk = read_text_file(project_path);
+    if (!project_on_disk) {
+      return std::unexpected(ToolError{"IO_ERROR", project_on_disk.error(), "project.json", "", ""});
+    }
+    if (*project_on_disk != loaded_project_text_) {
+      return std::unexpected(ToolError{"CONFLICT", "project.json changed on disk since it was loaded", "project.json",
+                                       "", "Reopen the project and repeat the command"});
+    }
+    if (auto written = write_text_file_atomic(project_path, project_text); !written) {
+      return std::unexpected(ToolError{"IO_ERROR", written.error(), "project.json", "", ""});
+    }
+    loaded_project_text_ = std::move(project_text);
+    project_dirty_ = false;
   }
   if (auto written = write_text_file_atomic(path, *text); !written) {
     return std::unexpected(ToolError{"IO_ERROR", written.error(), scene_file(), "", ""});

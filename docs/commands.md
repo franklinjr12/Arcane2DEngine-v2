@@ -18,9 +18,12 @@ open and nothing is written. The module stays loaded until the context is
 destroyed; the scene and registry are destroyed first. Do not keep node,
 component or descriptor pointers beyond the context.
 
-`save()` writes the scene file only (serialized first, replaced atomically,
-old file kept on failure) and fails with `CONFLICT` if the file changed on disk
-since it was read or last saved.
+`save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*`),
+`project.json`. Both are serialized before anything is written, each file is replaced atomically (old file kept
+on failure) and project.json goes first; the pair is not a transaction. It fails with `CONFLICT`, writing
+nothing, if a file it would write changed on disk since it was read or last saved. Project-level commands edit
+`session().mutable_project()` in memory only, are ordinary mutating commands (`persist` and `dry_run` work as
+for scene commands, `dry_run` leaves the project clean) and never write on their own.
 
 ## Execution
 
@@ -137,6 +140,30 @@ integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or
 `validate` (rule tiles inside `tile_count`, rule tiles marked with their terrain, duplicate/empty rules; `ok:false` lists
 problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
 `tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
+
+## HUD commands
+
+`hud.*` edit the HUD layout stored in `project.json` (`docs/formats/hud.md`), addressing elements by 0-based
+`index` into the draw order. Registered by `register_hud_commands`; see `tooling/src/hud_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `hud.list` | none | `{count, elements:[{index,type,id,...fields}]}`; `type` is `text`, `image`, `bar` or `button` |
+| `hud.add` (mutating) | `type`, `index?` (default append), `element?` (field overrides) | `{index, id}`; inverse `hud.remove` |
+| `hud.remove` (mutating) | `index` | `{index,id,type}`; inverse `hud.add` with every field and the index |
+| `hud.set` (mutating) | `index`, `field`, `value` | `{index,field,previous,value,changed}`; inverse `hud.set` with the previous value |
+| `hud.move` (mutating) | `from`, `to` | `{from,to,changed}`; inverse `hud.move` with the indices swapped |
+
+Defaults match the editor's `+` buttons (button id `button` label `Button`; text `Text`, white; default bar; default
+image). A new element without an `id` gets an unused one (`button`, then `<type>_<n>`); ids are unique and non-empty.
+Fields: all types `id`, `anchor` (`TopLeft`, `Top`, `TopRight`, `Left`, `Center`, `Right`, `BottomLeft`, `Bottom`,
+`BottomRight`), `offset_x`, `offset_y`; text `text`, `font_scale`, `color`; image `texture_asset` (image asset id,
+0 = none; a non-zero id must name an image under `assets/`), `uv` `[u0,v0,u1,v1]`, `width`, `height`, `tint`;
+bar `width`, `height`, `fraction` (0..1), `fill`, `background`; button `label`, `width`, `height`, `font_scale`,
+`enabled`, `normal`, `hover`, `pressed`, `disabled`, `text_color`. Colors are `[r,g,b,a]`; sizes are >= 0 and
+`font_scale` > 0. Runtime-only state (`HudImage::texture`, button `state`/`focused`) is never exposed. An unknown
+field is `ARGS_INVALID` with the valid names in the hint, a bad value or index `VALUE_INVALID`; a rejected call changes
+nothing. Setting a field to its current value, or moving an element onto itself, is a no-op without an inverse.
 
 ## Errors
 

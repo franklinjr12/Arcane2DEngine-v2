@@ -162,6 +162,9 @@ void register_debug_commands(CommandRegistry& registry);
 // and tileset.info/validate/create/set_tile/set_rule/remove_rule (tileset files under assets/, written at once).
 void register_tilemap_commands(CommandRegistry& registry);
 
+// Registers hud.list/add/remove/set/move (the HUD layout in project.json, edited in memory; saved with the project).
+void register_hud_commands(CommandRegistry& registry);
+
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 

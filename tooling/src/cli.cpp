@@ -367,7 +367,7 @@ void describe(std::ostringstream& md, const CommandSpec& spec) {
   } else if (spec.immediate_write) {
     md << "Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).\n\n";
   } else if (spec.mutating) {
-    md << "Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.\n\n";
+    md << "Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.\n\n";
   } else {
     md << "Read only.\n\n";
   }

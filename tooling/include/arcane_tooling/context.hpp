@@ -56,22 +56,31 @@ class ProjectContext {
   bool dirty() const noexcept { return dirty_; }
   void mark_dirty() noexcept { dirty_ = true; }
 
-  // Writes the scene file only (property-level commands never change
-  // project.json, so there is no multi-file write to tear). The scene is
-  // serialized first and replaced atomically; any failure leaves the old
-  // file intact. Fails with CONFLICT, writing nothing, if the scene file on
-  // disk no longer matches what was loaded or last saved by this context.
+  // Project-level data (project.json: HUD, input maps ...) is edited in memory through
+  // session().mutable_project(); commands that change it call mark_project_dirty().
+  bool project_dirty() const noexcept { return project_dirty_; }
+  void mark_project_dirty() noexcept { project_dirty_ = true; }
+  void clear_project_dirty() noexcept { project_dirty_ = false; }  // only after restoring the loaded state
+
+  // Writes the scene file and, when project_dirty(), project.json. Everything is serialized
+  // before the first byte is written, project.json is written first, then the scene; each
+  // replace is atomic, but the pair is not a transaction (a failure of the second write leaves
+  // the new project.json behind). Fails with CONFLICT, writing nothing, if a file to be
+  // written no longer matches what was loaded or last saved by this context.
   std::expected<void, ToolError> save();
 
  private:
-  ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text);
+  ProjectContext(editor::ProjectRuntime&& runtime, std::string scene_file, std::string scene_text,
+                 std::string project_text);
 
   // runtime_ owns the module, registry and scene; it is destroyed with the
   // context, scene and registry first, module last.
   editor::ProjectRuntime runtime_;
   std::string scene_file_;
   std::string loaded_scene_text_;
+  std::string loaded_project_text_;
   bool dirty_ = false;
+  bool project_dirty_ = false;
 };
 
 }  // namespace arcane::tooling

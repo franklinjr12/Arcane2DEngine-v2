@@ -259,6 +259,12 @@ target_compile_definitions(test_tilemap_commands PRIVATE
 add_dependencies(test_tilemap_commands topdown_slice_game)
 add_test(NAME test_tilemap_commands COMMAND test_tilemap_commands)
 
+# --- hud.* / input commands (project.json data edited in memory) ---------------
+add_executable(test_hud_input_commands test_hud_input_commands.cpp)
+target_link_libraries(test_hud_input_commands PRIVATE arcane_tooling)
+target_include_directories(test_hud_input_commands SYSTEM PRIVATE ${TP}/stb)
+add_test(NAME test_hud_input_commands COMMAND test_hud_input_commands)
+
 # --- FE22 scene transitions, save API, transition.* / save.* commands ---------
 add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
