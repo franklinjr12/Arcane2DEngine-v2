@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "vec2": {
+      "items": {
+        "type": "number"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "type": "array"
+    }
+  },
+  "$id": "https://arcane2d.local/schemas/arcane.prefab.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.prefab"
+    },
+    "next_id": {
+      "minimum": 1,
+      "type": "integer"
+    },
+    "nodes": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "components": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                "properties": {
+                  "description": "Names and value types are defined by the component type's registered descriptors (builtin or game module); validate them with the module-aware validator.",
+                  "type": "object"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "id": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "name": {
+            "type": "string"
+          },
+          "parent_id": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "position": {
+            "$ref": "#/$defs/vec2"
+          },
+          "rotation_radians": {
+            "type": "number"
+          },
+          "scale": {
+            "$ref": "#/$defs/vec2"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "type": "object"
+      },
+      "minItems": 1,
+      "type": "array"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "nodes"
+  ],
+  "title": "Arcane prefab file (v1)",
+  "type": "object"
+}

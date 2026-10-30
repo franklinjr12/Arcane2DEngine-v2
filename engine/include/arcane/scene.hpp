@@ -39,10 +39,24 @@ class ARCANE_API Scene {
   // `node`. Returns nullptr if the type is not registered.
   Component* add_component(Node* node, const std::string& type_name, const ComponentRegistry& registry);
 
+  // Detaches and destroys `component` (calling its on_destroy()), keeping the
+  // IDs of everything else. Returns false and does nothing for null or a
+  // component that is not attached to a node of this scene.
+  bool remove_component(Component* component);
+
   // Moves `node` (and its subtree) under `new_parent` (nullptr = becomes a
   // root). Returns false and does nothing if new_parent is node itself or a
   // descendant of node (which would create a cycle).
   bool reparent(Node* node, Node* new_parent);
+
+  // Moves the subtree of root node `root` out of `from` and into this scene
+  // as a root, keeping the live Node/Component objects (and their runtime
+  // state). Every node and component gets a fresh ID from this scene's
+  // counter; EntityId properties that pointed inside the subtree follow, any
+  // other node reference is cleared. Returns the node, or nullptr (nothing
+  // moved) if `root` is not a root of `from`, is pending destroy, or `from`
+  // is this scene. Used by SceneManager to keep persistent nodes.
+  Node* adopt_root(Scene& from, Node* root, const ComponentRegistry& registry);
 
   // Marks `id`'s node and its whole subtree for destruction. Safe to call
   // while iterating the scene (e.g. from a component's on_update): nodes
