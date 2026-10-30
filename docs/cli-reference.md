@@ -135,6 +135,165 @@ Read only.
 | `--particles-per-emitter` | integer | no |  |
 | `--sprites` | integer | no |  |
 
+### `arcane clip add-frames`
+
+Insert grid cells `from`..`to` (inclusive, either order) into a clip at frame `index` (default: append). The clip is reopened on the given grid first; new frames last 1/fps of the first frame. Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | yes |  |
+| `--index` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | yes |  |
+
+### `arcane clip create`
+
+Create a clip file from sprite sheet grid cells (`cells`, or the inclusive range `from`..`to`), `fps` (default 10) and optional per-frame `durations` in seconds (0 = 1/fps). Fails if the file exists unless overwrite=true. Writes the file at once; the inverse is clip.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--cells` | array | no |  |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--durations` | array | no |  |
+| `--fps` | number | no |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | no |  |
+| `--loop` | boolean | no |  |
+| `--margin` | integer | no |  |
+| `--name` | string | no |  |
+| `--overwrite` | boolean | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | no |  |
+
+### `arcane clip info`
+
+Describe a clip file: name, loop and frames [{uv, seconds}]. With `sheet` and the grid arguments (columns, rows ...) it also reopens the clip on that grid and returns `cells`, `durations` and `fps`; frames that are not on the grid are a VALUE_INVALID error naming the frame.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | no |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | no |  |
+| `--sheet` | string | no |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip move-frame`
+
+Move frame `from` to position `to` (both 0-based frame indices; durations travel with the frame). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | yes |  |
+
+### `arcane clip remove-frame`
+
+Remove frame `index` from a clip (reopened on the given grid). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--index` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip restore`
+
+Put a clip file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. Used as the inverse of the other clip.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--clip` | string | yes |  |
+| `--content` | string | no |  |
+
+### `arcane clip set`
+
+Set the `name` and/or `loop` flag of a clip file; frames are kept exactly (no grid needed). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--loop` | boolean | no |  |
+| `--name` | string | no |  |
+
+### `arcane clip set-frame`
+
+Change frame `index` of a clip (reopened on the given grid): `cell` picks another grid cell, `seconds` (> 0) sets its duration. Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--cell` | integer | no |  |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--index` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--seconds` | number | no |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip slice`
+
+Cut a sprite sheet into a regular grid: returns the sheet size (read from the PNG) and the UV rect [u0,v0,u1,v1] of every cell, numbered row-major from the top-left. frame_width/frame_height 0 = auto.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
 ### `arcane component add`
 
 Attach a new component of a registered type (default property values) to a node.

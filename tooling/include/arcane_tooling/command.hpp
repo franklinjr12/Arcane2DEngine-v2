@@ -169,6 +169,10 @@ void register_hud_commands(CommandRegistry& registry);
 // (the input action map in project.json, edited in memory; saved with the project).
 void register_input_commands(CommandRegistry& registry);
 
+// Registers clip.slice/info/create/add_frames/remove_frame/move_frame/set_frame/set/restore (animation clip files under the
+// project, written at once; clip.restore is the inverse of the others). Sheet sizes are read from PNG files.
+void register_clip_commands(CommandRegistry& registry);
+
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 

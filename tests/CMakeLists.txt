@@ -265,6 +265,12 @@ target_link_libraries(test_hud_input_commands PRIVATE arcane_tooling)
 target_include_directories(test_hud_input_commands SYSTEM PRIVATE ${TP}/stb)
 add_test(NAME test_hud_input_commands COMMAND test_hud_input_commands)
 
+# --- clip.* commands (sheet grid slicing, clip files) ----------------------------
+add_executable(test_clip_commands test_clip_commands.cpp)
+target_link_libraries(test_clip_commands PRIVATE arcane_tooling)
+target_include_directories(test_clip_commands SYSTEM PRIVATE ${TP}/stb)
+add_test(NAME test_clip_commands COMMAND test_clip_commands)
+
 # --- FE22 scene transitions, save API, transition.* / save.* commands ---------
 add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)

@@ -189,6 +189,37 @@ persisted order; `input.restore_action` rebuilds the map to insert at `index`, s
 An unknown action or out-of-range index is `VALUE_INVALID` (hint: list with `input.list`); a rejected call changes
 nothing, and setting a field to its current value is a no-op without an inverse.
 
+## Clip commands
+
+`clip.*` slice a sprite sheet and author animation clip files (`docs/formats/clip.md`). Like `atlas.*` and `tileset.*` they
+read and write asset files only, at once (no `persist`/`dry_run`, the CLI refuses `--dry-run`). Paths (`clip`, `sheet`) are
+project-relative `/` paths; clips normally live under `assets/`. The sheet's pixel size is read from the PNG file without
+a GL context, so only PNG sheets are supported (`VALUE_INVALID` otherwise, `IO_ERROR` if missing). Registered by
+`register_clip_commands`; see `tooling/src/clip_commands.cpp`.
+
+Grid arguments (the editor's Animation Clip panel fields): `columns`, `rows` (>= 1), `frame_width`, `frame_height`
+(0 = sheet size / count), `margin`, `spacing` (>= 0). Cells are numbered row-major from the top-left.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `clip.slice` | `sheet`, grid | `{sheet_width, sheet_height, cells:[{index, uv:[u0,v0,u1,v1]}]}`; an empty cell is `VALUE_INVALID` |
+| `clip.info` | `clip`, `sheet?` + grid | `{name, loop, frames:[{uv,seconds}]}`; with a sheet also `{cells, durations, fps}` |
+| `clip.create` | `clip`, `sheet`, grid, `cells` or `from`+`to`, `fps?` (10), `durations?`, `loop?`, `name?`, `overwrite?` | `{clip, frames, cells}`; inverse `clip.restore` |
+| `clip.add_frames` | `clip`, `sheet`, grid, `from`, `to`, `index?` (append) | `{clip, frames, added, index, changed}` |
+| `clip.remove_frame` | `clip`, `sheet`, grid, `index` | `{clip, frames, index, changed}` |
+| `clip.move_frame` | `clip`, `sheet`, grid, `from`, `to` | `{clip, frames, from, to, changed}` |
+| `clip.set_frame` | `clip`, `sheet`, grid, `index`, `cell?`, `seconds?` | `{clip, frames, index, changed}` |
+| `clip.set` | `clip`, `name?`, `loop?` | `{clip, name, loop, changed}`; no grid needed, frames are kept exactly |
+| `clip.restore` | `clip`, `content` or `absent=true` | `{clip, restored}`; only used as the inverse of the others |
+
+`clip.create` builds the clip with `ClipDraft` + `build_clip` (a `durations` entry of 0 means `1/fps`) and refuses an
+existing file (`CONFLICT`) unless `overwrite=true`. The edit commands reopen the clip with `draft_from_clip` on the grid
+you pass: clip files do not store their grid, so every frame must be exactly one grid cell, otherwise the call fails with
+`VALUE_INVALID` naming the frame and the file is untouched. Durations are kept per frame; frames added by `add_frames` use
+`1/fps` of the first frame (change them with `set_frame --seconds`). Setting a value to what it already is writes nothing
+and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
+undo restores the exact bytes.
+
 ## Errors
 
 `{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
