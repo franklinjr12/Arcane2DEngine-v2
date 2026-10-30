@@ -1,0 +1,46 @@
+{
+  "format": "arcane.prefab",
+  "next_id": 4,
+  "nodes": [
+    {
+      "components": [],
+      "id": 1,
+      "name": "Rig",
+      "parent_id": 0,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 3,
+          "properties": {
+            "primary": false,
+            "zoom": 1.0
+          },
+          "type": "Camera"
+        }
+      ],
+      "id": 2,
+      "name": "Hand",
+      "parent_id": 1,
+      "position": [
+        4.0,
+        2.5
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "version": 1
+}

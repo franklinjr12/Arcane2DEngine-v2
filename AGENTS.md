@@ -96,6 +96,7 @@ unknown fields and properties, while compatible loading can accept legacy data.
 Editor save rejects detected unknown data and external edits, but is not a
 multi-file transaction or a lock. Keep sample projects readable without requiring
 manual migration; verify stable IDs, semantic round trips and canonical output.
+Schema changes must keep `test_schema_examples` passing; its examples live in `tests/golden/schema_examples/`.
 
 For changes, run the relevant tests and `scripts/build-and-test.sh` before
 committing. Do not mistake a MinGW cross-build for native Windows testing.
