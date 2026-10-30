@@ -492,7 +492,7 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,\n"
         "replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
         "tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics\n"
-        "authoring beyond properties, asset import, `run`, `export`, `render`, `test`. The editor does not use\n"
+        "authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use\n"
         "these commands for its edits yet (docs/editor-command-inventory.md).\n\n"
         "## Commands\n\n";
   std::map<std::string, const CommandSpec*> all;

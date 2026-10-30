@@ -79,10 +79,43 @@ changed. With `--dry-run` the commands run cumulatively in memory and nothing is
 Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,
 replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
 tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics
-authoring beyond properties, asset import, `run`, `export`, `render`, `test`. The editor does not use
+authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use
 these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
+
+### `arcane asset import`
+
+Copy a checked image (.png/.jpg/.jpeg/.bmp), clip (.json) or audio (.wav/.ogg/.mp3/.flac) file into assets/; never overwrites unless overwrite is set. Content is checked by header only.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--dest` | string | no | 2 |
+| `--overwrite` | boolean | no |  |
+| `--source` | string | yes | 1 |
+
+### `arcane asset list`
+
+List the image, clip and audio files under assets/ with their path-derived ids, sorted by path.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--kind` | string | no |  |
+
+### `arcane asset reimport`
+
+Re-validate an existing asset in place, or atomically replace it from a checked source of the same kind; the id does not change.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--path` | string | yes | 1 |
+| `--source` | string | no |  |
 
 ### `arcane atlas make-clip`
 
