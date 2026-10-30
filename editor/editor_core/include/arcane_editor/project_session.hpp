@@ -35,9 +35,11 @@ class ProjectSession {
   ProjectSession(const ProjectSession&) = delete;
   ProjectSession& operator=(const ProjectSession&) = delete;
 
-  // Writes project.json and the current scene back to main_scene_path();
-  // clears the dirty flag on success.
+  // Writes project.json and the current scene back to main_scene_path() in one transactional
+  // write (all-or-nothing for ordinary failures, not crash-atomic); clears the dirty flag on success.
   std::expected<void, std::string> save(const ComponentRegistry& registry);
+  // Test hook: simulate a failure committing the Nth file in save() (-1 = none).
+  void set_fail_commit_index_for_testing(int index) noexcept { fail_commit_index_ = index; }
 
   const ProjectFile& project() const noexcept { return project_; }
   // For editor panels that edit project-level data (e.g. the HUD); call mark_dirty() after changes.
@@ -59,6 +61,7 @@ class ProjectSession {
   std::filesystem::path project_dir_;
   Scene scene_;
   bool dirty_ = false;
+  int fail_commit_index_ = -1;
   // Compatible loading may discard fields that this engine does not know.
   // Keep the strict-load diagnostic so Save cannot silently erase them.
   std::string unsafe_save_reason_;

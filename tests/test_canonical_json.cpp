@@ -3,6 +3,7 @@
 #include <json.hpp>
 
 #include <cmath>
+#include <filesystem>
 #include <limits>
 
 #include "arcane/builtin_components.hpp"
@@ -141,6 +142,46 @@ void test_save_round_trip_and_nonfinite() {
   ARCANE_ASSERT_TRUE(scene.save_to_json(registry).empty());
 }
 
+std::string slurp_file(const std::filesystem::path& path) {
+  auto text = arcane::read_text_file(path);
+  ARCANE_ASSERT_TRUE(text.has_value());
+  return *text;
+}
+
+void test_transactional_write_rolls_back() {
+  namespace fs = std::filesystem;
+  const fs::path dir = fs::temp_directory_path() / "arcane_test_transactional";
+  const fs::path a = dir / "a.json", b = dir / "b.json", c = dir / "c.json";
+  auto reset = [&] {
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    ARCANE_ASSERT_TRUE(arcane::write_text_file_atomic(a, "old a").has_value());
+    ARCANE_ASSERT_TRUE(arcane::write_text_file_atomic(b, std::string("old b\0bin", 9)).has_value());
+  };
+  auto no_temp = [&] {
+    for (const auto& entry : fs::directory_iterator(dir)) {
+      ARCANE_ASSERT_TRUE(entry.path().extension() != ".arcane-tmp");
+    }
+  };
+  const std::vector<arcane::FileWrite> files = {{a, "new a"}, {b, "new b"}, {c, "new c"}};
+
+  reset();
+  ARCANE_ASSERT_TRUE(arcane::write_text_files_transactional(files).has_value());
+  ARCANE_ASSERT_TRUE(slurp_file(a) == "new a" && slurp_file(b) == "new b" && slurp_file(c) == "new c");
+  no_temp();
+
+  for (int fail = 0; fail < 3; ++fail) {
+    reset();
+    auto result = arcane::write_text_files_transactional(files, {.fail_commit_index = fail});
+    ARCANE_ASSERT_TRUE(!result.has_value());
+    ARCANE_ASSERT_TRUE(result.error().starts_with("rolled back: simulated failure committing"));
+    ARCANE_ASSERT_TRUE(slurp_file(a) == "old a" && slurp_file(b) == std::string("old b\0bin", 9));
+    ARCANE_ASSERT_TRUE(!fs::exists(c));
+    no_temp();
+  }
+  fs::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -151,5 +192,6 @@ int main() {
   test_v2_is_strict();
   test_project_paths_and_unknowns();
   test_save_round_trip_and_nonfinite();
+  test_transactional_write_rolls_back();
   return 0;
 }

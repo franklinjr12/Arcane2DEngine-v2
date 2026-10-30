@@ -419,6 +419,30 @@ void test_project_get_set() {
 
 }  // namespace
 
+void test_save_is_all_or_nothing() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  register_hud_commands(registry);
+  auto context = open(project);
+  const fs::path project_file = project.dir / "project.json";
+  const std::string project_before = slurp(project_file), scene_before = slurp(project.scene());
+  ARCANE_ASSERT_TRUE(registry.execute(*context, {"hud.add", {{"type", "button"}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Sprite", "width", 77.0)).has_value());
+  ARCANE_ASSERT_TRUE(context->project_dirty() && context->dirty());
+
+  context->set_fail_commit_index_for_testing(1);
+  auto failed = context->save();
+  ARCANE_ASSERT_TRUE(!failed.has_value() && failed.error().code == "IO_ERROR");
+  ARCANE_ASSERT_TRUE(slurp(project_file) == project_before && slurp(project.scene()) == scene_before);
+  ARCANE_ASSERT_TRUE(context->project_dirty() && context->dirty());
+  ARCANE_ASSERT_TRUE(!fs::exists(project.dir / "project.json.arcane-tmp"));
+
+  context->set_fail_commit_index_for_testing(-1);
+  ARCANE_ASSERT_TRUE(context->save().has_value());
+  ARCANE_ASSERT_TRUE(slurp(project_file) != project_before && slurp(project.scene()) != scene_before);
+  ARCANE_ASSERT_TRUE(!context->project_dirty() && !context->dirty());
+}
+
 int main() {
   test_module_property_set_persist_undo_redo();
   test_builtin_types_and_value_kinds();
@@ -430,5 +454,6 @@ int main() {
   test_audio_settings_and_backend();
   test_one_way_settings_round_trip();
   test_project_get_set();
+  test_save_is_all_or_nothing();
   return 0;
 }
