@@ -111,14 +111,18 @@ std::expected<void, ToolError> ProjectContext::save() {
       return std::unexpected(ToolError{"CONFLICT", "project.json changed on disk since it was loaded", "project.json",
                                        "", "Reopen the project and repeat the command"});
     }
-    if (auto written = write_text_file_atomic(project_path, project_text); !written) {
-      return std::unexpected(ToolError{"IO_ERROR", written.error(), "project.json", "", ""});
-    }
+  }
+  std::vector<FileWrite> writes;
+  if (project_dirty_) writes.push_back({project_path, project_text});
+  writes.push_back({path, *text});
+  FileTransactionOptions options;
+  options.fail_commit_index = fail_commit_index_;
+  if (auto written = write_text_files_transactional(writes, options); !written) {
+    return std::unexpected(ToolError{"IO_ERROR", written.error(), project_dirty_ ? "project.json and " + scene_file() : scene_file(), "", ""});
+  }
+  if (project_dirty_) {
     loaded_project_text_ = std::move(project_text);
     project_dirty_ = false;
-  }
-  if (auto written = write_text_file_atomic(path, *text); !written) {
-    return std::unexpected(ToolError{"IO_ERROR", written.error(), scene_file(), "", ""});
   }
   loaded_scene_text_ = std::move(*text);
   dirty_ = false;

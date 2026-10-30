@@ -19,8 +19,9 @@ destroyed; the scene and registry are destroyed first. Do not keep node,
 component or descriptor pointers beyond the context.
 
 `save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*` and `input.*`),
-`project.json`. Both are serialized before anything is written, each file is replaced atomically (old file kept
-on failure) and project.json goes first; the pair is not a transaction. It fails with `CONFLICT`, writing
+`project.json`. Both are serialized before anything is written, both files are written in one transactional
+step (project.json first): all-or-nothing for ordinary failures, with the earlier file restored if the second
+commit fails, but not crash-atomic (a kill between the two renames can leave a mix); a failure is `IO_ERROR` and keeps both dirty flags. It fails with `CONFLICT`, writing
 nothing, if a file it would write changed on disk since it was read or last saved. Project-level commands edit
 `session().mutable_project()` in memory only, are ordinary mutating commands (`persist` and `dry_run` work as
 for scene commands, `dry_run` leaves the project clean) and never write on their own.
