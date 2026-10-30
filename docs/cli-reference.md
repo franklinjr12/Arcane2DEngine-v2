@@ -715,6 +715,14 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 | `--node` | string | yes |  |
 | `--overwrite` | boolean | no |  |
 
+### `arcane project get`
+
+Show the project-level properties: name, main_scene and module (from project.json).
+
+Read only.
+
+No arguments.
+
 ### `arcane project info`
 
 Describe the project: name, main scene, module, format, scene count, transition/save/debug settings.
@@ -733,6 +741,18 @@ Writes files; honors `--dry-run`.
 | --- | --- | --- | --- |
 | `--name` | string | no |  |
 | `--path` | string | yes | 1 |
+
+### `arcane project set`
+
+Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--main-scene` | string | no |  |
+| `--module` | string | no |  |
+| `--name` | string | no |  |
 
 ### `arcane project settings-get`
 
