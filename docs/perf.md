@@ -54,3 +54,28 @@ Release build (gcc 14, `-DCMAKE_BUILD_TYPE=Release`), 8-vCPU Xeon VM, 300 frames
 | 2000 bodies | 0.353 | 0.545 |
 
 Treat these as an order-of-magnitude reference for spotting regressions on the same machine, not as a target.
+
+## Arena slice (GS1)
+
+`samples/topdown_slice` replayed headless for 3600 fixed frames (60 s of game time, `tests/arena_60s.replay.json`: WASD
+moves, Space fires, a pause in the middle). Rendering is not measured: `--headless` skips the window and GL.
+
+Machine: 2 vCPU (`nproc` = 2) VM, g++ 15.2.0, Release (`cmake -S . -B build-rel -G Ninja -DCMAKE_BUILD_TYPE=Release`).
+
+```sh
+env -u DISPLAY build-rel/bin/arcane_player --headless --project samples/topdown_slice \
+  --module build-rel/bin/topdown_slice_game.so --replay samples/topdown_slice/tests/arena_60s.replay.json
+```
+
+| Run | wall time, 3600 frames |
+| --- | --- |
+| 1 | 0.306 s |
+| 2 | 0.289 s |
+| 3 | 0.288 s |
+
+About 0.08 ms per frame on average, including process start and loading the module (so this is an upper bound for the
+simulation alone). Peak live enemies and bullets were not recorded. `arcane_bench` with its defaults (1000 sprites,
+100 particle emitters): 0.167 ms average and 0.278 ms maximum frame, 120 frames.
+
+The recorded trace is only valid for the build that produced it: the Release run above reports a divergence from the
+Debug-recorded `arena_60s.trace.json` at frame 60 (determinism is per build and platform, see `docs/formats/replay.md`).

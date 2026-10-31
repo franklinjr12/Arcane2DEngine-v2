@@ -43,6 +43,8 @@ GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "
 
 PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
 
+GS1: the top-down sample is now an arena with waves, coin pickups, HUD, pause, game over/restart, a 60 s replay test (`test_topdown_replay_60s`) and perf numbers in `docs/perf.md`.
+
 GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner, an enemy that paths around an interior wall, player health in the HUD, restart on death.
 
 GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
