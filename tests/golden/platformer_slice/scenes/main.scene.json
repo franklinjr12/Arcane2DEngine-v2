@@ -33,9 +33,11 @@
         {
           "id": 4,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 600.0,
+            "region": "",
             "texture": 12108252429286753327,
             "tint": [
               1.0,
@@ -78,9 +80,11 @@
         {
           "id": 7,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 48.0,
+            "region": "",
             "texture": 15591983102683395244,
             "tint": [
               1.0,
@@ -387,9 +391,11 @@
         {
           "id": 20,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 20.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -420,9 +426,11 @@
         {
           "id": 22,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 20.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -453,9 +461,11 @@
         {
           "id": 24,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 20.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -486,9 +496,11 @@
         {
           "id": 26,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 20.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -519,9 +531,11 @@
         {
           "id": 28,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 20.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -552,9 +566,11 @@
         {
           "id": 30,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 28.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               1.0,
@@ -585,9 +601,11 @@
         {
           "id": 32,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 64.0,
+            "region": "",
             "texture": 1617945095526466553,
             "tint": [
               0.3,

@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <string_view>
 
+#include "arcane/assets.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/node.hpp"
 
@@ -135,7 +137,8 @@ void restart_particles(Scene& scene) {
 }
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
-                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera) {
+                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera,
+                   AtlasCache* atlases) {
   CameraView cam = find_primary_camera(scene);
   bool found = false;
   if (runtime_camera) visit_scene_preorder(scene, [&](Node* node) {
@@ -167,17 +170,30 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     auto* sprite = static_cast<Sprite*>(node->find_component("Sprite"));
     if (!sprite) return;
     Texture* texture = textures.get(sprite->texture);
-    if (!texture) return;
 
     UvRect uv{};
+    bool animated_uv = false;
     if (clips) {
       auto* animated = static_cast<AnimatedSprite*>(node->find_component("AnimatedSprite"));
       if (const AnimationClip* clip = animated ? clips->get(animated->clip) : nullptr) {
         if (!clip->frames.empty()) {
           uv = clip->frames[select_frame_index(*clip, animated->elapsed_seconds())].uv;
+          animated_uv = true;
         }
       }
     }
+    if (!animated_uv && atlases && sprite->atlas != 0 && !sprite->region.empty()) {
+      const Atlas* atlas = atlases->get(sprite->atlas);
+      const AtlasRegion* region = atlas ? find_atlas_region(*atlas, sprite->region) : nullptr;
+      constexpr std::string_view kAssets = "assets/";
+      if (region && atlas->image.compare(0, kAssets.size(), kAssets) == 0) {
+        if (Texture* atlas_texture = textures.get(asset_id_for_relative_path(atlas->image.substr(kAssets.size())))) {
+          texture = atlas_texture;
+          uv = atlas_region_uv(*atlas, *region);
+        }
+      }
+    }
+    if (!texture) return;
 
     if (sprite->flip_x) std::swap(uv.u0, uv.u1);
     if (sprite->flip_y) std::swap(uv.v0, uv.v1);

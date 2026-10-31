@@ -43,7 +43,10 @@ the folder. Sources are decoded to RGBA; empty space is transparent black.
 
 - `atlas.make_clip` writes an `arcane.clip` whose frames are atlas regions (UVs copied from the
   atlas). The sprite using that clip keeps `Sprite.texture` pointing at the atlas image.
-- `Sprite` itself has no region property yet; its `uv` stays a rect. Use `atlas.regions` to read
-  a region's UV.
+- `Sprite.atlas` (asset id of the `*.atlas.json`) and `Sprite.region` (a region name such as `hero/idle_0`)
+  draw that region of the atlas image instead of the whole `Sprite.texture`. Precedence: an
+  `AnimatedSprite` with a valid clip wins (its frames carry their own UVs); else a resolving atlas+region
+  (atlas image under `assets/` and the region exists); else `Sprite.texture` with the full UV. `flip_x`/`flip_y`
+  still swap the final UV and `ParallaxLayer` is unchanged. Unknown atlas/region fall back silently.
 - `scripts/export-game.sh` copies the project's `assets/` folder wholesale, so atlas JSON and PNG
   placed there are exported; nothing else is needed.

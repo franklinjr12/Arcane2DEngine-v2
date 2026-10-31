@@ -31,9 +31,11 @@
         {
           "id": 4,
           "properties": {
+            "atlas": 0,
             "flip_x": false,
             "flip_y": false,
             "height": 48.0,
+            "region": "",
             "texture": 13743565431654770875,
             "tint": [
               1.0,

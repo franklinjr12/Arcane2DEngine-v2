@@ -145,6 +145,8 @@ int run_project(const Args& args) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
+  arcane::editor::AtlasCache atlases;
+  atlases.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
@@ -214,9 +216,11 @@ int run_project(const Args& args) {
       textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
       clips.set_assets(clip_assets);
       tilesets.set_assets(clip_assets);
+      atlases.set_assets(clip_assets);
       textures.refresh();
       clips.refresh();
       tilesets.refresh();
+      atlases.refresh();
     }
     const bool overlay_key_down = input_backend.is_down(arcane::InputDevice::Keyboard, arcane::kDebugOverlayKey);
     if (overlay_key_down && !overlay_key_was_down) overlay_visible = !overlay_visible;
@@ -251,7 +255,7 @@ int run_project(const Args& args) {
     if (replay) trace.push_back(arcane::hash_scene_state(scene, runtime->registry()));
 
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
-                                &tilesets);
+                                &tilesets, true, &atlases);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     if (overlay_visible) {
