@@ -21,6 +21,7 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <map>
 #include <cstdlib>
 #include <filesystem>
 #include <functional>
@@ -33,6 +34,7 @@
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
@@ -45,6 +47,8 @@
 #include "arcane_editor/audio_wiring.hpp"
 #include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_runtime.hpp"
+#include "arcane_tooling/command.hpp"
+#include "arcane_tooling/edit_session.hpp"
 #include "arcane_editor/scene_render.hpp"
 #include "arcane_editor/tile_paint.hpp"
 
@@ -130,7 +134,9 @@ class ViewportTarget {
   int height_ = 0;
 };
 
-bool draw_property_editor(const arcane::PropertyDescriptor& descriptor, arcane::Component& component) {
+// Draws one property widget; returns the edited value (the caller applies it through a command).
+std::optional<arcane::PropertyValue> draw_property_editor(const arcane::PropertyDescriptor& descriptor,
+                                                         arcane::Component& component) {
   arcane::PropertyValue value = descriptor.get(component);
   bool changed = false;
   switch (descriptor.type) {
@@ -184,106 +190,122 @@ bool draw_property_editor(const arcane::PropertyDescriptor& descriptor, arcane::
       break;
     }
   }
-  if (changed) {
-    descriptor.set(component, value);
-  }
-  return changed;
+  if (changed) return value;
+  return std::nullopt;
 }
 
-// Inspector-style editor for the project's authored HUD: add/remove elements and
-// edit their fields. `changed` is called after any edit.
-void draw_hud_editor(arcane::Hud& hud, const std::function<void()>& changed) {
+// Runs a registry command as an editor edit; the key coalesces a drag into one undo step ("" = never merges).
+using EditFn = std::function<void(const arcane::tooling::Invocation&, const std::string& coalesce_key)>;
+
+// Inspector-style editor for the project's authored HUD. The HUD is read-only here: every widget edit is a
+// hud.* command (the same ones as the CLI) run through `edit`, so it is undoable and keeps dirty state.
+void draw_hud_editor(const arcane::Hud& hud, const std::vector<arcane::editor::AssetEntry>& images, const EditFn& edit) {
+  using arcane::tooling::Json;
   static constexpr const char* kAnchors[] = {"TopLeft", "Top", "TopRight", "Left", "Center",
                                              "Right", "BottomLeft", "Bottom", "BottomRight"};
-  auto text_field = [&](const char* label, std::string& value) {
-    char buf[128];
-    std::snprintf(buf, sizeof(buf), "%s", value.c_str());
-    if (ImGui::InputText(label, buf, sizeof(buf))) {
-      value = buf;
-      changed();
-    }
+  int index = 0;  // element being drawn
+  auto set = [&](const char* field, Json value) {
+    edit({"hud.set", {{"index", index}, {"field", field}, {"value", std::move(value)}}},
+         "hud.set:" + std::to_string(index) + ":" + field);
   };
-  auto layout = [&](arcane::HudAnchor& anchor, float& ox, float& oy) {
+  auto text_field = [&](const char* label, const char* field, const std::string& current) {
+    char buf[128];
+    std::snprintf(buf, sizeof(buf), "%s", current.c_str());
+    if (ImGui::InputText(label, buf, sizeof(buf))) set(field, std::string(buf));
+  };
+  auto layout = [&](arcane::HudAnchor anchor, float ox, float oy) {
     int a = static_cast<int>(anchor);
-    if (ImGui::Combo("Anchor", &a, kAnchors, 9)) {
-      anchor = static_cast<arcane::HudAnchor>(a);
-      changed();
-    }
+    if (ImGui::Combo("Anchor", &a, kAnchors, 9)) set("anchor", kAnchors[a]);
     float off[2] = {ox, oy};
     if (ImGui::DragFloat2("Offset", off, 0.5f)) {
-      ox = off[0];
-      oy = off[1];
-      changed();
+      if (off[0] != ox) set("offset_x", off[0]);  // only the dragged axis, so one drag stays one undo step
+      if (off[1] != oy) set("offset_y", off[1]);
     }
   };
-  auto size_field = [&](float& w, float& h) {
+  auto size_field = [&](float w, float h) {
     float v[2] = {w, h};
     if (ImGui::DragFloat2("Size", v, 0.5f, 1.0f, 4000.0f)) {
-      w = v[0];
-      h = v[1];
-      changed();
+      if (v[0] != w) set("width", v[0]);
+      if (v[1] != h) set("height", v[1]);
     }
   };
-  auto color_field = [&](const char* label, arcane::Color& c) {
-    if (ImGui::ColorEdit4(label, &c.r)) changed();
+  auto color_field = [&](const char* label, const char* field, const arcane::Color& c) {
+    float v[4] = {c.r, c.g, c.b, c.a};
+    if (ImGui::ColorEdit4(label, v)) set(field, Json::array({v[0], v[1], v[2], v[3]}));
   };
+  auto font_scale_field = [&](float current) {
+    float v = current;
+    if (ImGui::DragFloat("Font scale", &v, 0.1f, 0.5f, 16.0f)) set("font_scale", v);
+  };
+  auto add = [&](const char* type) { edit({"hud.add", {{"type", type}}}, {}); };
 
-  if (ImGui::Button("+ Button")) {
-    hud.add(arcane::HudButton{.id = "button", .label = "Button"});
-    changed();
-  }
+  if (ImGui::Button("+ Button")) add("button");
   ImGui::SameLine();
-  if (ImGui::Button("+ Text")) {
-    hud.add(arcane::HudText{.text = "Text", .color = {1, 1, 1, 1}});
-    changed();
-  }
+  if (ImGui::Button("+ Text")) add("text");
   ImGui::SameLine();
-  if (ImGui::Button("+ Bar")) {
-    hud.add(arcane::HudProgressBar{});
-    changed();
-  }
+  if (ImGui::Button("+ Bar")) add("bar");
+  ImGui::SameLine();
+  if (ImGui::Button("+ Image")) add("image");
 
-  auto& elements = hud.elements();
+  const auto& elements = hud.elements();
   int remove = -1;
-  for (int i = 0; i < static_cast<int>(elements.size()); ++i) {
-    ImGui::PushID(i);
+  for (index = 0; index < static_cast<int>(elements.size()); ++index) {
+    ImGui::PushID(index);
     ImGui::Separator();
-    if (auto* b = std::get_if<arcane::HudButton>(&elements[i])) {
+    if (const auto* b = std::get_if<arcane::HudButton>(&elements[index])) {
       ImGui::Text("Button");
-      text_field("Id", b->id);
-      text_field("Label", b->label);
+      text_field("Id", "id", b->id);
+      text_field("Label", "label", b->label);
       layout(b->anchor, b->offset_x, b->offset_y);
       size_field(b->width, b->height);
-      if (ImGui::DragFloat("Font scale", &b->font_scale, 0.1f, 0.5f, 16.0f)) changed();
-      if (ImGui::Checkbox("Enabled", &b->enabled)) changed();
-      color_field("Normal", b->normal);
-      color_field("Hover", b->hover);
-      color_field("Pressed", b->pressed);
-      color_field("Disabled", b->disabled);
-      color_field("Text color", b->text_color);
-    } else if (auto* t = std::get_if<arcane::HudText>(&elements[i])) {
+      font_scale_field(b->font_scale);
+      bool enabled = b->enabled;
+      if (ImGui::Checkbox("Enabled", &enabled)) set("enabled", enabled);
+      color_field("Normal", "normal", b->normal);
+      color_field("Hover", "hover", b->hover);
+      color_field("Pressed", "pressed", b->pressed);
+      color_field("Disabled", "disabled", b->disabled);
+      color_field("Text color", "text_color", b->text_color);
+    } else if (const auto* t = std::get_if<arcane::HudText>(&elements[index])) {
       ImGui::Text("Text");
-      text_field("Text", t->text);
+      text_field("Id", "id", t->id);
+      text_field("Text", "text", t->text);
       layout(t->anchor, t->offset_x, t->offset_y);
-      if (ImGui::DragFloat("Font scale", &t->font_scale, 0.1f, 0.5f, 16.0f)) changed();
-      color_field("Color", t->color);
-    } else if (auto* bar = std::get_if<arcane::HudProgressBar>(&elements[i])) {
+      font_scale_field(t->font_scale);
+      color_field("Color", "color", t->color);
+    } else if (const auto* bar = std::get_if<arcane::HudProgressBar>(&elements[index])) {
       ImGui::Text("Progress bar");
+      text_field("Id", "id", bar->id);
       layout(bar->anchor, bar->offset_x, bar->offset_y);
       size_field(bar->width, bar->height);
-      if (ImGui::SliderFloat("Fraction", &bar->fraction, 0.0f, 1.0f)) changed();
-      color_field("Fill", bar->fill);
-      color_field("Background", bar->background);
-    } else {
-      ImGui::TextUnformatted("Image (runtime only)");
+      float fraction = bar->fraction;
+      if (ImGui::SliderFloat("Fraction", &fraction, 0.0f, 1.0f)) set("fraction", fraction);
+      color_field("Fill", "fill", bar->fill);
+      color_field("Background", "background", bar->background);
+    } else if (const auto* image = std::get_if<arcane::HudImage>(&elements[index])) {
+      ImGui::Text("Image");
+      text_field("Id", "id", image->id);
+      const arcane::editor::AssetEntry* current = nullptr;
+      for (const auto& e : images) if (e.id == image->texture_asset) current = &e;
+      if (ImGui::BeginCombo("Texture", current ? current->relative_path.c_str() : "(none)")) {
+        if (ImGui::Selectable("(none)", image->texture_asset == 0)) set("texture_asset", std::uint64_t{0});
+        for (const auto& e : images) {
+          if (ImGui::Selectable(e.relative_path.c_str(), e.id == image->texture_asset)) {
+            set("texture_asset", static_cast<std::uint64_t>(e.id));
+          }
+        }
+        ImGui::EndCombo();
+      }
+      float uv[4] = {image->uv.u0, image->uv.v0, image->uv.u1, image->uv.v1};
+      if (ImGui::DragFloat4("UV (u0 v0 u1 v1)", uv, 0.005f)) set("uv", Json::array({uv[0], uv[1], uv[2], uv[3]}));
+      layout(image->anchor, image->offset_x, image->offset_y);
+      size_field(image->width, image->height);
+      color_field("Tint", "tint", image->tint);
     }
-    if (ImGui::Button("Remove")) remove = i;
+    if (ImGui::Button("Remove")) remove = index;
     ImGui::PopID();
   }
-  if (remove >= 0) {
-    elements.erase(elements.begin() + remove);
-    changed();
-  }
+  if (remove >= 0) edit({"hud.remove", {{"index", remove}}}, {});
 }
 
 // State of the Animation Clip panel: the sheet being sliced and the clip being built.
@@ -298,11 +320,14 @@ struct ClipPanelState {
 };
 
 // Authors a clip from a sprite sheet grid: pick the sheet, set the grid, add/reorder
-// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it).
+// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it). The draft is transient;
+// Save runs clip.create (overwrite) through `run_clip`, which returns an error message or nullopt on success.
 // `saved` is called after a successful save so the caller can rescan assets.
 void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
-                     const std::vector<arcane::editor::AssetEntry>& images, const std::filesystem::path& assets_dir,
-                     float dt, const std::function<void()>& saved) {
+                     const std::vector<arcane::editor::AssetEntry>& images, const std::filesystem::path& project_dir,
+                     const std::filesystem::path& assets_dir, float dt,
+                     const std::function<std::optional<std::string>(const arcane::tooling::Invocation&)>& run_clip,
+                     const std::function<void()>& saved) {
   auto& d = st.draft;
   const arcane::editor::AssetEntry* sheet_entry = nullptr;
   for (const auto& e : images) if (e.id == st.sheet) sheet_entry = &e;
@@ -365,15 +390,42 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
 
   ImGui::InputText("Clip name", st.name, sizeof(st.name));
   ImGui::InputText("File", st.file_name, sizeof(st.file_name));
+  // Reopen: load the clip named in File into the draft using the grid set above (rejects frames off the grid).
+  if (ImGui::Button("Open clip")) {
+    const std::filesystem::path rel(st.file_name);
+    if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
+      st.status = "invalid file name";
+    } else if (auto loaded = arcane::editor::load_clip_file(assets_dir / rel); !loaded) {
+      st.status = loaded.error();
+    } else if (auto reopened = arcane::editor::draft_from_clip(*loaded, d.grid, tex->width(), tex->height()); !reopened) {
+      st.status = "cannot reopen on this grid: " + reopened.error();
+    } else {
+      d = std::move(*reopened);
+      std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
+      st.status = "opened " + rel.string();
+    }
+  }
+  ImGui::SameLine();
   if (ImGui::Button("Save clip")) {
     d.name = st.name;
     const std::filesystem::path rel(st.file_name);
     if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
       st.status = "invalid file name";
+    } else if (!sheet_entry) {
+      st.status = "the sheet is not in the asset list";
     } else {
-      auto result = arcane::editor::save_clip_file(assets_dir / rel, clip);
-      st.status = result ? "saved " + rel.string() : result.error();
-      if (result) saved();
+      // The same clip.create the CLI runs: project-relative sheet and clip paths, the draft's grid, cells and timing.
+      const std::string clip_path = (std::filesystem::relative(assets_dir, project_dir) / rel).generic_string();
+      const std::string sheet_path = std::filesystem::relative(sheet_entry->absolute_path, project_dir).generic_string();
+      const arcane::tooling::Invocation call{
+          "clip.create",
+          {{"clip", clip_path}, {"sheet", sheet_path}, {"columns", d.grid.columns}, {"rows", d.grid.rows},
+           {"frame_width", d.grid.frame_width}, {"frame_height", d.grid.frame_height}, {"margin", d.grid.margin},
+           {"spacing", d.grid.spacing}, {"cells", d.cells}, {"fps", d.fps}, {"durations", d.durations},
+           {"loop", d.loop}, {"name", d.name}, {"overwrite", true}}};
+      const auto failure = run_clip(call);
+      st.status = failure ? *failure : "saved " + rel.string();
+      if (!failure) saved();
     }
   }
   if (!st.status.empty()) ImGui::TextUnformatted(st.status.c_str());
@@ -410,13 +462,30 @@ int main(int argc, char** argv) {
   }
 #endif
 
-  auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.module_override);
-  if (!runtime) {
-    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
+  // The editor opens through the same context the `arcane` CLI uses; scene edits are registry commands.
+  // Compatible policy keeps legacy sample projects openable (Save still refuses to drop unknown data).
+  auto context = arcane::tooling::ProjectContext::open(args.project_dir, args.module_override, {},
+                                                      arcane::editor::SceneLoadPolicy::Compatible);
+  if (!context) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, context.error().message);
     return 1;
   }
-  arcane::ComponentRegistry& registry = runtime->registry();
-  arcane::editor::ProjectSession& session = runtime->session();
+  arcane::ComponentRegistry& registry = (*context)->registry();
+  arcane::editor::ProjectSession& session = (*context)->session();
+  arcane::tooling::CommandRegistry commands;
+  arcane::tooling::register_all_commands(commands);
+  arcane::tooling::EditSession edits(**context, commands);
+  // Runs a scene command; failures are logged and leave the scene unchanged.
+  auto run_edit = [&](const arcane::tooling::Invocation& call,
+                      const std::string& coalesce_key = {}) -> std::optional<arcane::tooling::CommandResult> {
+    auto done = edits.run(call, coalesce_key);
+    if (!done) {
+      ARCANE_LOG_ERROR(kLogCategory, "{} failed: {}", call.command, done.error().message);
+      return std::nullopt;
+    }
+    return *done;
+  };
+  auto node_selector = [](arcane::NodeId id) { return "id:" + std::to_string(id); };
 
   auto renderer = arcane::SpriteRenderer::create();
   if (!renderer) {
@@ -464,7 +533,11 @@ int main(int argc, char** argv) {
   int selected_tile = 1;
   int rule_terrain = 1;
   bool paint_rect = false;  // drag a rectangle instead of a freehand brush
-  arcane::editor::TilePaintTool paint_tool;
+  // Paint tool settings; every cell edit is a tilemap.* command in the edit history (one drag = one undo step).
+  int paint_layer = 0;
+  int paint_tile = 1;
+  bool tilemap_layer_failed = false;  // stop auto-adding the first layer if the command keeps failing
+  bool paint_stroke = false;  // a viewport drag is in progress: keep coalescing into one undo step
   std::optional<arcane::Vec2> rect_start;  // world position where the rectangle drag began
   bool rect_erase = false;
   auto hud_renderer = arcane::HudRenderer::create();
@@ -492,6 +565,13 @@ int main(int argc, char** argv) {
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
     hud = session.project().hud;
+    for (auto& element : hud.elements()) {
+      if (auto* image = std::get_if<arcane::HudImage>(&element)) {
+        // Live copy only (never saved): resolve the persisted asset id; 0 or an unknown id draws nothing.
+        arcane::HudImage& live = *image;
+        live.texture = live.texture_asset != 0 ? textures.get(live.texture_asset) : nullptr;
+      }
+    }
     hud_input = arcane::HudInput{};
     arcane::set_active_hud(&hud);
     arcane::editor::start_play_on_start_sounds(*play_stop.active_scene(session.scene()), *audio,
@@ -510,6 +590,8 @@ int main(int argc, char** argv) {
   auto previous_time = std::chrono::steady_clock::now();
   long frame_count = 0;
   long play_tick_count = 0;
+  bool overlay_visible = session.project().debug.overlay_visible;
+  arcane::FrameTimer frame_timer;
 
   while (!window->should_close()) {
     if (args.frames.has_value() && frame_count >= *args.frames) break;
@@ -560,15 +642,42 @@ int main(int argc, char** argv) {
 
     ImGui::DockSpaceOverViewport(0, nullptr, ImGuiDockNodeFlags_PassthruCentralNode);
 
+    // Scene undo/redo (commands, tile strokes included); not while typing text.
+    bool do_undo = false, do_redo = false;
+    if (!ImGui::GetIO().WantTextInput) {
+      const ImGuiIO& keys = ImGui::GetIO();
+      if (keys.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !keys.KeyShift) do_undo = true;
+      if (keys.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y) || (keys.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z)))) {
+        do_redo = true;
+      }
+    }
+    // A drag ends when no widget is active any more: the next edit starts a new undo step.
+    if (!ImGui::IsAnyItemActive() && !paint_stroke) edits.end_gesture();
+
     if (ImGui::BeginMainMenuBar()) {
       if (ImGui::BeginMenu("File")) {
         if (ImGui::MenuItem("Save")) {
           auto saved = session.save(registry);
           if (!saved) ARCANE_LOG_ERROR(kLogCategory, "save failed: {}", saved.error());
+          else edits.mark_saved();
         }
         ImGui::EndMenu();
       }
+      if (ImGui::BeginMenu("Edit")) {
+        const bool can_edit = play_stop.mode() == arcane::editor::EditorMode::Edit;
+        if (ImGui::MenuItem("Undo", "Ctrl+Z", false, can_edit && edits.can_undo())) do_undo = true;
+        if (ImGui::MenuItem("Redo", "Ctrl+Y", false, can_edit && edits.can_redo())) do_redo = true;
+        ImGui::EndMenu();
+      }
       ImGui::EndMainMenuBar();
+    }
+
+    if (play_stop.mode() == arcane::editor::EditorMode::Edit) {
+      if (do_undo && edits.can_undo()) {
+        if (auto done = edits.undo(); !done) ARCANE_LOG_ERROR(kLogCategory, "undo failed: {}", done.error().message);
+      } else if (do_redo && edits.can_redo()) {
+        if (auto done = edits.redo(); !done) ARCANE_LOG_ERROR(kLogCategory, "redo failed: {}", done.error().message);
+      }
     }
 
     if (ImGui::Begin("Toolbar")) {
@@ -587,7 +696,7 @@ int main(int argc, char** argv) {
       ImGui::SameLine();
       ImGui::TextUnformatted(playing ? "Mode: Play" : "Mode: Edit");
       ImGui::SameLine();
-      ImGui::TextUnformatted(session.dirty() ? "*modified*" : "");
+      ImGui::TextUnformatted(session.dirty() || edits.modified() ? "*modified*" : "");
     }
     ImGui::End();
 
@@ -596,20 +705,18 @@ int main(int argc, char** argv) {
 
     if (ImGui::Begin("Hierarchy")) {
       if (editable && ImGui::Button("New Node")) {
-        arcane::Node* parent = nullptr;
-        if (selection.has_selection()) parent = active_scene->find_node(*selection.selected());
-        arcane::Node* created = active_scene->create_node("Node", parent);
-        selection.select(created->id());
-        session.mark_dirty();
+        arcane::tooling::Json add_args = {{"name", "Node"}};
+        if (selection.has_selection() && active_scene->find_node(*selection.selected())) {
+          add_args["parent"] = node_selector(*selection.selected());
+        }
+        if (auto created = run_edit({"node.add", add_args})) selection.select((*created).value["id"].get<arcane::NodeId>());
       }
       ImGui::SameLine();
       if (editable && selection.has_selection() && ImGui::Button("Delete")) {
-        active_scene->destroy_node(*selection.selected());
-        active_scene->flush_destroyed();
-        selection.clear();
-        session.mark_dirty();
+        if (run_edit({"node.remove", {{"node", node_selector(*selection.selected())}}})) selection.clear();
       }
 
+      std::optional<std::pair<arcane::NodeId, arcane::NodeId>> pending_reparent;
       std::function<void(arcane::Node*)> draw_node = [&](arcane::Node* node) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (selection.selected() == node->id()) flags |= ImGuiTreeNodeFlags_Selected;
@@ -627,8 +734,7 @@ int main(int argc, char** argv) {
         if (editable && ImGui::BeginDragDropTarget()) {
           if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ARCANE_NODE")) {
             arcane::NodeId dragged = *static_cast<const arcane::NodeId*>(payload->Data);
-            arcane::Node* dragged_node = active_scene->find_node(dragged);
-            if (dragged_node && active_scene->reparent(dragged_node, node)) session.mark_dirty();
+            pending_reparent = {dragged, node->id()};  // applied after the tree is drawn
           }
           ImGui::EndDragDropTarget();
         }
@@ -639,6 +745,10 @@ int main(int argc, char** argv) {
         }
       };
       for (const auto& root : active_scene->roots()) draw_node(root.get());
+      if (pending_reparent) {
+        run_edit({"node.reparent", {{"node", node_selector(pending_reparent->first)},
+                                   {"parent", node_selector(pending_reparent->second)}}});
+      }
     }
     ImGui::End();
 
@@ -652,24 +762,32 @@ int main(int argc, char** argv) {
         char name_buf[128];
         std::snprintf(name_buf, sizeof(name_buf), "%s", selected_node->name().c_str());
         if (ImGui::InputText("Name", name_buf, sizeof(name_buf))) {
-          selected_node->set_name(name_buf);
-          session.mark_dirty();
+          // Typing coalesces into one undo step; an invalid name (e.g. with '/') is refused and logged.
+          auto renamed = edits.run({"node.rename", {{"node", node_selector(selected_node->id())}, {"name", name_buf}}},
+                                   "rename:" + std::to_string(selected_node->id()));
+          if (!renamed) ARCANE_LOG_ERROR(kLogCategory, "rename failed: {}", renamed.error().message);
         }
-        auto& transform = selected_node->local_transform();
+        arcane::Transform2D transform = selected_node->local_transform();
+        bool transform_changed = false;
         float pos[2] = {transform.position.x, transform.position.y};
         if (ImGui::DragFloat2("Position", pos, 0.5f)) {
           transform.position = {pos[0], pos[1]};
-          session.mark_dirty();
+          transform_changed = true;
         }
         float rotation_degrees = transform.rotation_radians * 180.0f / 3.14159265f;
         if (ImGui::DragFloat("Rotation", &rotation_degrees, 1.0f)) {
           transform.rotation_radians = rotation_degrees * 3.14159265f / 180.0f;
-          session.mark_dirty();
+          transform_changed = true;
         }
         float scale[2] = {transform.scale.x, transform.scale.y};
         if (ImGui::DragFloat2("Scale", scale, 0.05f)) {
           transform.scale = {scale[0], scale[1]};
-          session.mark_dirty();
+          transform_changed = true;
+        }
+        if (transform_changed) {
+          if (auto set = edits.set_transform(selected_node->id(), transform); !set) {
+            ARCANE_LOG_ERROR(kLogCategory, "transform edit failed: {}", set.error().message);
+          }
         }
 
         for (const auto& component : selected_node->components()) {
@@ -678,7 +796,12 @@ int main(int argc, char** argv) {
           if (const auto* descriptors = registry.properties_of(component->type_name())) {
             for (const auto& descriptor : *descriptors) {
               ImGui::PushID(descriptor.name.c_str());
-              if (draw_property_editor(descriptor, *component)) session.mark_dirty();
+              if (auto value = draw_property_editor(descriptor, *component)) {
+                if (auto set = edits.set_property(selected_node->id(), component->id(), descriptor, *value); !set) {
+                  ARCANE_LOG_ERROR(kLogCategory, "{}.{} edit failed: {}", component->type_name(), descriptor.name,
+                                   set.error().message);
+                }
+              }
               ImGui::PopID();
             }
           }
@@ -690,8 +813,7 @@ int main(int argc, char** argv) {
             for (const auto& type_name : registry.type_names()) {
               if (selected_node->find_component(type_name)) continue;
               if (ImGui::Selectable(type_name.c_str())) {
-                active_scene->add_component(selected_node, type_name, registry);
-                session.mark_dirty();
+                run_edit({"component.add", {{"node", node_selector(selected_node->id())}, {"type", type_name}}});
               }
             }
             ImGui::EndCombo();
@@ -703,22 +825,25 @@ int main(int argc, char** argv) {
     ImGui::End();
 
     if (ImGui::Begin("Assets")) {
+      // Assigns an asset id to a registered property of the selected node's component, as an undoable command.
+      auto assign_asset_property = [&](const char* component_name, const char* property_name, arcane::AssetId id) {
+        arcane::Node* selected_node = active_scene->find_node(*selection.selected());
+        arcane::Component* component = selected_node ? selected_node->find_component(component_name) : nullptr;
+        if (!component) return;
+        run_edit({"prop.set", {{"node", node_selector(selected_node->id())}, {"component", component->id()},
+                              {"name", property_name}, {"value", id}}});
+        if (auto* animated = dynamic_cast<arcane::AnimatedSprite*>(component)) animated->reset();
+      };
       auto assets = arcane::editor::list_image_assets(session.assets_dir());
       for (const auto& asset : assets) {
         const bool pressed = ImGui::Selectable(asset.relative_path.c_str());
         if (pressed && editable && selection.has_selection()) {
-          arcane::Node* selected_node = active_scene->find_node(*selection.selected());
-          auto* sprite = selected_node ? static_cast<arcane::Sprite*>(selected_node->find_component("Sprite"))
-                                        : nullptr;
-          auto* emitter = selected_node ? static_cast<arcane::ParticleEmitter*>(selected_node->find_component("ParticleEmitter"))
-                                        : nullptr;
-          if (sprite) {
-            sprite->texture = asset.id;
-            session.mark_dirty();
-          } else if (emitter) {
-            emitter->texture = asset.id;
-            session.mark_dirty();
-          }
+          // Sprite wins over ParticleEmitter when a node has both.
+          const char* target = active_scene->find_node(*selection.selected()) == nullptr ? nullptr
+                               : active_scene->find_node(*selection.selected())->find_component("Sprite") ? "Sprite"
+                               : active_scene->find_node(*selection.selected())->find_component("ParticleEmitter")
+                                   ? "ParticleEmitter" : nullptr;
+          if (target) assign_asset_property(target, "texture", asset.id);
         }
       }
 
@@ -726,27 +851,17 @@ int main(int argc, char** argv) {
       // AnimatedSprite / AudioSource (the Inspector then shows the id, and
       // "Preview animations" in the Toolbar plays it in the Viewport).
       auto assign_asset = [&](const char* header, const std::vector<arcane::editor::AssetEntry>& list,
-                               const char* component_name, auto set_id) {
+                               const char* component_name, const char* property_name) {
         if (!ImGui::CollapsingHeader(header)) return;
         for (const auto& asset : list) {
           if (!ImGui::Selectable(asset.relative_path.c_str()) || !editable || !selection.has_selection()) continue;
-          arcane::Node* selected_node = active_scene->find_node(*selection.selected());
-          if (auto* component = selected_node ? selected_node->find_component(component_name) : nullptr) {
-            set_id(component, asset.id);
-            session.mark_dirty();
-          }
+          assign_asset_property(component_name, property_name, asset.id);
         }
       };
       assign_asset("Animation clips", arcane::editor::list_animation_clip_assets(session.assets_dir()),
-                   "AnimatedSprite", [](arcane::Component* c, arcane::AssetId id) {
-                     auto* animated = static_cast<arcane::AnimatedSprite*>(c);
-                     animated->clip = id;
-                     animated->reset();
-                   });
-      assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap",
-                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::Tilemap*>(c)->tileset = id; });
-      assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource",
-                   [](arcane::Component* c, arcane::AssetId id) { static_cast<arcane::AudioSource*>(c)->clip = id; });
+                   "AnimatedSprite", "clip");
+      assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap", "tileset");
+      assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource", "clip");
     }
     ImGui::End();
 
@@ -761,23 +876,34 @@ int main(int argc, char** argv) {
         ImGui::Checkbox("Terrain brush", &terrain_mode);
         if (terrain_mode) { ImGui::InputInt("Terrain id", &paint_terrain); paint_terrain = std::max(1, paint_terrain); }
         else ImGui::Checkbox("Fill rectangle (drag)", &paint_rect);
-        if (ImGui::Button("Undo") && paint_tool.undo(*paint_map)) session.mark_dirty();
-        ImGui::SameLine();
-        if (ImGui::Button("Redo") && paint_tool.redo(*paint_map)) session.mark_dirty();
-        if (paint_map->layer_count() == 0 || ImGui::Button("Add layer")) {
-          paint_map->add_layer();
-          session.mark_dirty();
+        // Undo/redo go through the command history; the scene may change, so drop the pointers afterwards.
+        if (ImGui::Button("Undo") && edits.can_undo()) {
+          if (auto done = edits.undo(); !done) ARCANE_LOG_ERROR(kLogCategory, "undo failed: {}", done.error().message);
+          paint_map = nullptr;
         }
-        ImGui::InputInt("Layer", &paint_tool.layer);
-        paint_tool.layer = std::clamp(paint_tool.layer, 0, std::max(0, paint_map->layer_count() - 1));
+        ImGui::SameLine();
+        if (paint_map && ImGui::Button("Redo") && edits.can_redo()) {
+          if (auto done = edits.redo(); !done) ARCANE_LOG_ERROR(kLogCategory, "redo failed: {}", done.error().message);
+          paint_map = nullptr;
+        }
+        if (paint_map && (ImGui::Button("Add layer") || paint_map->layer_count() == 0)) {
+          if (paint_map->layer_count() > 0 || !tilemap_layer_failed) {
+            tilemap_layer_failed = !run_edit({"tilemap.add_layer", {{"node", node_selector(paint_node->id())}}});
+          }
+          paint_map = nullptr;
+        }
+      }
+      if (paint_map) {
+        ImGui::InputInt("Layer", &paint_layer);
+        paint_layer = std::clamp(paint_layer, 0, std::max(0, paint_map->layer_count() - 1));
         const arcane::Tileset* tileset = tilesets.get(paint_map->tileset);
         if (!tileset) {
           ImGui::TextUnformatted("Assign a tileset from Assets > Tilesets.");
         } else {
-          if (ImGui::Selectable("0: erase", paint_tool.tile == 0)) paint_tool.tile = 0;
+          if (ImGui::Selectable("0: erase", paint_tile == 0)) paint_tile = 0;
           for (int id = 1; id <= tileset->tile_count; ++id) {
             const std::string label = std::to_string(id);
-            if (ImGui::Selectable(label.c_str(), paint_tool.tile == id, 0, ImVec2(28, 0))) paint_tool.tile = id;
+            if (ImGui::Selectable(label.c_str(), paint_tile == id, 0, ImVec2(28, 0))) paint_tile = id;
             if (id % 8 != 0 && id < tileset->tile_count) ImGui::SameLine();
           }
         }
@@ -842,9 +968,28 @@ int main(int argc, char** argv) {
           ImGui::TreePop();
         }
         if (ImGui::Button("Save tileset")) {
-          std::ofstream out(tileset_path, std::ios::binary | std::ios::trunc);
-          out << arcane::save_tileset_to_json(tileset_draft); out.close();
-          tileset_message = out ? "Saved." : "Could not save tileset.";
+          // The draft is written by the same tileset.* commands the CLI uses: create (overwrite), then tile flags and rules.
+          using arcane::tooling::Json;
+          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
+          std::string failure;
+          auto step = [&](const char* command, Json call_args) {
+            if (!failure.empty()) return;
+            auto done = commands.execute(**context, {command, std::move(call_args)});
+            if (!done) failure = done.error().message;
+          };
+          step("tileset.create", {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
+                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
+                                  {"tile_count", tileset_draft.tile_count}, {"overwrite", true}});
+          for (std::size_t i = 0; i < tileset_draft.tiles.size(); ++i) {
+            const auto& tile = tileset_draft.tiles[i];
+            if (tile.solid || tile.terrain != 0) {
+              step("tileset.set_tile", {{"tileset", file}, {"tile", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
+            }
+          }
+          for (const auto& rule : tileset_draft.terrains) {
+            step("tileset.set_rule", {{"tileset", file}, {"terrain", rule.terrain}, {"tiles", rule.tiles}});
+          }
+          tileset_message = failure.empty() ? "Saved." : "Could not save tileset: " + failure;
           tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
           tilesets.refresh();
         }
@@ -857,59 +1002,74 @@ int main(int argc, char** argv) {
     if (ImGui::Begin("Animation Clip")) {
       ImGui::BeginDisabled(!editable);
       draw_clip_panel(clip_panel, textures, arcane::editor::list_image_assets(session.assets_dir()),
-                      session.assets_dir(), static_cast<float>(delta_seconds), [&] {
-                        clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
-                      });
+                      (*context)->project_dir(), session.assets_dir(), static_cast<float>(delta_seconds),
+                      [&](const arcane::tooling::Invocation& call) -> std::optional<std::string> {
+                        auto done = commands.execute(**context, call);  // immediate file write, no scene history
+                        if (!done) return done.error().message;
+                        return std::nullopt;
+                      },
+                      [&] { clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir())); });
       ImGui::EndDisabled();
     }
     ImGui::End();
 
     if (ImGui::Begin("Input Map")) {
       ImGui::BeginDisabled(!editable);
-      auto& map = session.mutable_project().input_actions;
+      // Every edit is an input.* command (undoable); the map is only read here. Iterate a copy because
+      // a command may rebuild the map's storage while this frame is still drawing it.
+      const auto actions = session.project().input_actions.actions();
       static char action_name[128] = {};
       ImGui::InputText("New action", action_name, sizeof(action_name));
       ImGui::SameLine();
       if (ImGui::Button("Add action") && action_name[0] != '\0') {
         bool exists = false;
-        for (const auto& action : map.actions()) exists |= action.name == action_name;
-        if (!exists) { map.set_action({action_name, {}}); session.mark_dirty(); }
+        for (const auto& action : actions) exists |= action.name == action_name;
+        if (!exists) run_edit({"input.add_action", {{"name", std::string(action_name)}}});
         action_name[0] = '\0';
       }
-      // Work on copies because set_action and removal may invalidate the map's storage.
-      const auto actions = map.actions();
-      for (auto action : actions) {
+      static constexpr const char* kDevices[] = {"keyboard", "mouse_button", "gamepad_button", "gamepad_axis"};
+      static constexpr const char* kDeviceLabels[] = {"Keyboard", "Mouse button", "Gamepad button", "Gamepad axis"};
+      for (const auto& action : actions) {
         ImGui::PushID(action.name.c_str());
         if (ImGui::TreeNode(action.name.c_str())) {
-          bool changed = false;
-          changed |= ImGui::SliderInt("Player (-1 = any)", &action.player, -1, arcane::kMaxGamepads - 1);
+          int player = action.player;
+          if (ImGui::SliderInt("Player (-1 = any)", &player, -1, arcane::kMaxGamepads - 1)) {
+            run_edit({"input.set_player", {{"action", action.name}, {"player", player}}}, "input:" + action.name + ":player");
+          }
           for (std::size_t i = 0; i < action.bindings.size(); ++i) {
             ImGui::PushID(static_cast<int>(i));
-            auto& binding = action.bindings[i];
+            const auto& binding = action.bindings[i];
+            auto set_binding = [&](const char* field, arcane::tooling::Json value) {
+              run_edit({"input.set_binding", {{"action", action.name}, {"index", i}, {"field", field}, {"value", std::move(value)}}},
+                       "input:" + action.name + ":" + std::to_string(i) + ":" + field);
+            };
             int device = static_cast<int>(binding.device);
-            const char* devices[] = {"Keyboard", "Mouse button", "Gamepad button", "Gamepad axis"};
-            if (ImGui::Combo("Device", &device, devices, 4)) {
-              binding.device = static_cast<arcane::InputDevice>(device); changed = true;
+            if (ImGui::Combo("Device", &device, kDeviceLabels, 4)) set_binding("device", kDevices[device]);
+            int code = binding.code;
+            if (ImGui::InputInt("Code", &code) && code >= 0) set_binding("code", code);
+            if (device >= 2) {
+              int pad = binding.pad;
+              if (ImGui::SliderInt("Pad (-1 = player)", &pad, -1, arcane::kMaxGamepads - 1)) set_binding("pad", pad);
             }
-            changed |= ImGui::InputInt("Code", &binding.code);
-            if (device >= 2) changed |= ImGui::SliderInt("Pad (-1 = player)", &binding.pad, -1, arcane::kMaxGamepads - 1);
             if (device == 3) {
-              changed |= ImGui::SliderInt("Direction (-1 / 0 / 1)", &binding.axis_sign, -1, 1);
-              changed |= ImGui::SliderFloat("Deadzone", &binding.deadzone, 0.0f, 0.99f);
-              changed |= ImGui::SliderFloat("Button threshold", &binding.threshold, 0.0f, 1.0f);
+              int sign = binding.axis_sign;
+              if (ImGui::SliderInt("Direction (-1 / 0 / 1)", &sign, -1, 1)) set_binding("axis_sign", sign);
+              float deadzone = binding.deadzone;
+              if (ImGui::SliderFloat("Deadzone", &deadzone, 0.0f, 0.99f)) set_binding("deadzone", deadzone);
+              float threshold = binding.threshold;
+              if (ImGui::SliderFloat("Button threshold", &threshold, 0.0f, 1.0f)) set_binding("threshold", threshold);
             }
             if (ImGui::Button("Remove binding")) {
-              action.bindings.erase(action.bindings.begin() + static_cast<std::ptrdiff_t>(i));
-              changed = true; ImGui::PopID(); break;
+              run_edit({"input.remove_binding", {{"action", action.name}, {"index", i}}});
+              ImGui::PopID();
+              break;
             }
             ImGui::Separator();
             ImGui::PopID();
           }
-          if (ImGui::Button("Add binding")) { action.bindings.push_back({}); changed = true; }
+          if (ImGui::Button("Add binding")) run_edit({"input.add_binding", {{"action", action.name}}});
           ImGui::SameLine();
-          const bool remove = ImGui::Button("Remove action");
-          if (remove) { map.remove_action(action.name); session.mark_dirty(); }
-          else if (changed) { map.set_action(std::move(action)); session.mark_dirty(); }
+          if (ImGui::Button("Remove action")) run_edit({"input.remove_action", {{"action", action.name}}});
           ImGui::TreePop();
         }
         ImGui::PopID();
@@ -920,7 +1080,33 @@ int main(int argc, char** argv) {
 
     if (ImGui::Begin("HUD")) {
       ImGui::BeginDisabled(!editable);
-      draw_hud_editor(session.mutable_project().hud, [&] { session.mark_dirty(); });
+      draw_hud_editor(session.project().hud, arcane::editor::list_image_assets(session.assets_dir()),
+                      [&](const arcane::tooling::Invocation& call, const std::string& key) { run_edit(call, key); });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Project Settings")) {
+      ImGui::BeginDisabled(!editable);
+      // Edits are project.set commands; a field shows the project value until it is being typed in, and one
+      // typing gesture (same coalesce key) is one undo step.
+      auto project_field = [&](const char* label, const char* key, const std::string& current) {
+        static std::map<std::string, std::string> buffers;
+        std::string& buffer = buffers[key];
+        if (buffer.empty() || !ImGui::IsAnyItemActive()) buffer = current;
+        char text[512] = {};
+        std::snprintf(text, sizeof(text), "%s", buffer.c_str());
+        if (ImGui::InputText(label, text, sizeof(text))) {
+          buffer = text;
+          run_edit({"project.set", {{key, buffer}}}, std::string("project.") + key);
+        }
+        if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      };
+      const auto& project = session.project();
+      project_field("Name", "name", project.name);
+      project_field("Main scene", "main_scene", project.main_scene);
+      project_field("Module", "module", project.module);
+      ImGui::TextDisabled("Main scene and module take effect on next open.");
       ImGui::EndDisabled();
     }
     ImGui::End();
@@ -955,35 +1141,78 @@ int main(int argc, char** argv) {
             arcane::editor::viewport_to_world(*active_scene, mouse.x - origin.x, mouse.y - origin.y, viewport.width(),
                                               viewport.height());
         const auto node_world = paint_node->world_transform();
+        const std::string target = node_selector(paint_node->id());
+        // Cell under a world position, not clamped to the grid (rectangles clamp afterwards).
+        auto cell_of = [&](arcane::Vec2 at, int& cx, int& cy) {
+          if (paint_map->tile_width <= 0.0f || paint_map->tile_height <= 0.0f || node_world.scale.x == 0.0f ||
+              node_world.scale.y == 0.0f) {
+            return false;
+          }
+          cx = static_cast<int>(std::floor((at.x - node_world.position.x) / node_world.scale.x / paint_map->tile_width));
+          cy = static_cast<int>(std::floor((at.y - node_world.position.y) / node_world.scale.y / paint_map->tile_height));
+          return true;
+        };
         if (ImGui::IsItemHovered() && (left || right)) {
+          paint_stroke = true;
           if (paint_rect && !terrain_mode) {
             if (!rect_start) {
               rect_start = world;
               rect_erase = right;
             }
           } else {
-            paint_tool.begin_stroke();
-            const auto* brush_set = terrain_mode ? tilesets.get(paint_map->tileset) : nullptr;
-            if (terrain_mode ? (brush_set && paint_tool.terrain_brush(*paint_map, *brush_set, node_world, world, paint_terrain, right))
-                             : paint_tool.brush(*paint_map, node_world, world, right)) session.mark_dirty();
+            int cx = 0, cy = 0;
+            if (cell_of(world, cx, cy) && paint_map->in_bounds(cx, cy) && paint_map->layer_count() > 0) {
+              arcane::tooling::Json cell = {{"node", target}, {"layer", paint_layer}, {"x", cx}, {"y", cy}};
+              const char* command = "tilemap.paint";
+              if (terrain_mode) {
+                command = "tilemap.terrain_paint";
+                cell["terrain"] = paint_terrain;
+                cell["erase"] = right;
+              } else if (right || paint_tile == 0) {
+                command = "tilemap.erase";
+              } else {
+                cell["tile"] = paint_tile;
+              }
+              auto done = edits.run({command, cell}, "tile-stroke");
+              // Painting a tile the tileset lacks, or terrain without a rule, is simply ignored while dragging.
+              if (!done) ARCANE_LOG_DEBUG(kLogCategory, "{}: {}", command, done.error().message);
+            }
           }
         } else if (!left && !right) {
           if (rect_start) {
-            paint_tool.begin_stroke();
-            if (paint_tool.fill_rect(*paint_map, node_world, *rect_start, world, rect_erase)) session.mark_dirty();
+            int ax = 0, ay = 0, bx = 0, by = 0;
+            if (cell_of(*rect_start, ax, ay) && cell_of(world, bx, by) && paint_map->layer_count() > 0) {
+              const int x0 = std::max(0, std::min(ax, bx)), x1 = std::min(paint_map->width - 1, std::max(ax, bx));
+              const int y0 = std::max(0, std::min(ay, by)), y1 = std::min(paint_map->height - 1, std::max(ay, by));
+              if (x0 <= x1 && y0 <= y1) {
+                auto done = edits.run({"tilemap.fill_rect", {{"node", target}, {"layer", paint_layer}, {"x0", x0}, {"y0", y0},
+                                                              {"x1", x1}, {"y1", y1}, {"tile", rect_erase ? 0 : paint_tile}}});
+                if (!done) ARCANE_LOG_ERROR(kLogCategory, "fill failed: {}", done.error().message);
+              }
+            }
             rect_start.reset();
           }
-          paint_tool.end_stroke();
-        }
-        const ImGuiIO& io = ImGui::GetIO();
-        if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Z) && !io.KeyShift) {
-          if (paint_tool.undo(*paint_map)) session.mark_dirty();
-        } else if (io.KeyCtrl && (ImGui::IsKeyPressed(ImGuiKey_Y) || (io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Z)))) {
-          if (paint_tool.redo(*paint_map)) session.mark_dirty();
+          if (paint_stroke) edits.end_gesture();  // mouse released: the next stroke is a new undo step
+          paint_stroke = false;
         }
       }
     }
     ImGui::End();
+
+    // Debug overlay (F3): the same numbers as the player's, from project.json "debug" at startup.
+    frame_timer.tick(delta_seconds);
+    if (ImGui::IsKeyPressed(ImGuiKey_F3, false)) overlay_visible = !overlay_visible;
+    if (overlay_visible) {
+      const arcane::RenderStats& render_stats = renderer->stats();
+      const arcane::FrameStats stats{frame_timer.fps(), frame_timer.frame_ms(), render_stats.draw_calls,
+                                     render_stats.sprites, play_stop.physics_body_count(),
+                                     arcane::count_particles(*active_scene)};
+      ImGui::SetNextWindowBgAlpha(0.6f);
+      if (ImGui::Begin("Debug overlay (F3)", &overlay_visible, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(arcane::format_debug_overlay(stats).c_str());
+      }
+      ImGui::End();
+    }
 
     ImGui::Render();
 

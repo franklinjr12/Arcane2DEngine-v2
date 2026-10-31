@@ -213,6 +213,36 @@ void test_save_rejects_external_edits() {
   std::filesystem::remove_all(dir);
 }
 
+void test_save_is_all_or_nothing() {
+  arcane::ComponentRegistry registry;
+  arcane::register_builtin_components(registry);
+  const auto dir = std::filesystem::temp_directory_path() / "arcane_test_save_rollback";
+  std::filesystem::remove_all(dir);
+  ARCANE_ASSERT_TRUE(arcane::editor::ProjectSession::create(dir, "test", registry).has_value());
+  auto opened = arcane::editor::ProjectSession::open(dir, registry);
+  ARCANE_ASSERT_TRUE(opened.has_value());
+  auto slurp = [](const std::filesystem::path& p) {
+    std::ifstream in(p, std::ios::binary);
+    return std::string((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+  };
+  const auto project_path = dir / "project.json";
+  const auto scene_path = opened->main_scene_path();
+  const std::string project_before = slurp(project_path), scene_before = slurp(scene_path);
+  opened->mutable_project().name = "renamed";
+  opened->scene().create_node("Extra");
+  opened->mark_dirty();
+  opened->set_fail_commit_index_for_testing(1);
+  ARCANE_ASSERT_TRUE(!opened->save(registry).has_value());
+  ARCANE_ASSERT_TRUE(slurp(project_path) == project_before && slurp(scene_path) == scene_before);
+  ARCANE_ASSERT_TRUE(opened->dirty());
+  ARCANE_ASSERT_TRUE(!std::filesystem::exists(dir / "project.json.arcane-tmp"));
+  opened->set_fail_commit_index_for_testing(-1);
+  ARCANE_ASSERT_TRUE(opened->save(registry).has_value());
+  ARCANE_ASSERT_TRUE(slurp(project_path) != project_before && slurp(scene_path) != scene_before);
+  ARCANE_ASSERT_TRUE(!opened->dirty());
+  std::filesystem::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -222,5 +252,6 @@ int main() {
   test_strict_runtime_rejects_unknown_legacy_module_property();
   test_compatible_project_unknown_fields_cannot_be_saved();
   test_save_rejects_external_edits();
+  test_save_is_all_or_nothing();
   return 0;
 }
