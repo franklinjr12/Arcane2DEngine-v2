@@ -40,6 +40,19 @@
             "code": 32
           }
         ]
+      },
+      {
+        "name": "pause",
+        "bindings": [
+          {
+            "device": "keyboard",
+            "code": 80
+          },
+          {
+            "device": "keyboard",
+            "code": 256
+          }
+        ]
       }
     ]
   },

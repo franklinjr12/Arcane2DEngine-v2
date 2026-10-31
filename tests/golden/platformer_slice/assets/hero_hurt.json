@@ -1,0 +1,17 @@
+{
+  "format": "arcane.clip",
+  "frames": [
+    {
+      "duration_seconds": 0.1,
+      "uv": [
+        0.85714287,
+        0.0,
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "loop": true,
+  "name": "hurt",
+  "version": 2
+}

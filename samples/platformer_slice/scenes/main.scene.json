@@ -22,7 +22,9 @@
             "win_x": 1300.0,
             "pit_y": 700.0,
             "coin_value": 10,
-            "hurt_cooldown": 1.0
+            "hurt_cooldown": 1.0,
+            "enemy_value": 50,
+            "next_scene": "scenes/level2.scene.json"
           }
         }
       ]
@@ -306,11 +308,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 21,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 22,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 20.0,
+            "height": 20.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 23,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "coin"
+          }
         }
       ]
     },
     {
-      "id": 21,
+      "id": 24,
       "name": "Coin1",
       "parent_id": 1,
       "position": [
@@ -324,7 +365,7 @@
       ],
       "components": [
         {
-          "id": 22,
+          "id": 25,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -337,11 +378,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 26,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 27,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 20.0,
+            "height": 20.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 28,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "coin"
+          }
         }
       ]
     },
     {
-      "id": 23,
+      "id": 29,
       "name": "Coin2",
       "parent_id": 1,
       "position": [
@@ -355,7 +435,7 @@
       ],
       "components": [
         {
-          "id": 24,
+          "id": 30,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -368,11 +448,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 31,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 32,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 20.0,
+            "height": 20.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 33,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "coin"
+          }
         }
       ]
     },
     {
-      "id": 25,
+      "id": 34,
       "name": "Coin3",
       "parent_id": 1,
       "position": [
@@ -386,7 +505,7 @@
       ],
       "components": [
         {
-          "id": 26,
+          "id": 35,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -399,11 +518,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 36,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 37,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 20.0,
+            "height": 20.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 38,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "coin"
+          }
         }
       ]
     },
     {
-      "id": 27,
+      "id": 39,
       "name": "Coin4",
       "parent_id": 1,
       "position": [
@@ -417,7 +575,7 @@
       ],
       "components": [
         {
-          "id": 28,
+          "id": 40,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -430,11 +588,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 41,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 42,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 20.0,
+            "height": 20.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 43,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "coin"
+          }
         }
       ]
     },
     {
-      "id": 29,
+      "id": 44,
       "name": "Spikes",
       "parent_id": 1,
       "position": [
@@ -448,7 +645,7 @@
       ],
       "components": [
         {
-          "id": 30,
+          "id": 45,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -461,11 +658,338 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 46,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 47,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 28.0,
+            "height": 28.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 48,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "spikes"
+          }
         }
       ]
     },
     {
-      "id": 31,
+      "id": 49,
+      "name": "Checkpoint0",
+      "parent_id": 1,
+      "position": [
+        590,
+        380
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 50,
+          "type": "Sprite",
+          "properties": {
+            "texture": 1617945095526466553,
+            "width": 12.0,
+            "height": 40.0,
+            "tint": [
+              0.6,
+              0.6,
+              0.9,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": 51,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 52,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 12.0,
+            "height": 40.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 53,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "checkpoint"
+          }
+        }
+      ]
+    },
+    {
+      "id": 54,
+      "name": "Checkpoint1",
+      "parent_id": 1,
+      "position": [
+        1000,
+        380
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 55,
+          "type": "Sprite",
+          "properties": {
+            "texture": 1617945095526466553,
+            "width": 12.0,
+            "height": 40.0,
+            "tint": [
+              0.6,
+              0.6,
+              0.9,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": 56,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 57,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 12.0,
+            "height": 40.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 58,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "checkpoint"
+          }
+        }
+      ]
+    },
+    {
+      "id": 59,
+      "name": "Enemy0",
+      "parent_id": 1,
+      "position": [
+        800.0,
+        386
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 60,
+          "type": "Sprite",
+          "properties": {
+            "texture": 279569511929920202,
+            "width": 28.0,
+            "height": 28.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "flip_x": false,
+            "flip_y": false
+          }
+        },
+        {
+          "id": 61,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 1,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 62,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 26.0,
+            "height": 26.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              1.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": false,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 63,
+          "type": "PatrolEnemy",
+          "properties": {
+            "speed": 50.0,
+            "left_x": 770.0,
+            "right_x": 880.0
+          }
+        }
+      ]
+    },
+    {
+      "id": 64,
+      "name": "Enemy1",
+      "parent_id": 1,
+      "position": [
+        1060.0,
+        386
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 65,
+          "type": "Sprite",
+          "properties": {
+            "texture": 279569511929920202,
+            "width": 28.0,
+            "height": 28.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "flip_x": false,
+            "flip_y": false
+          }
+        },
+        {
+          "id": 66,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 1,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 67,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 26.0,
+            "height": 26.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              1.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": false,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 68,
+          "type": "PatrolEnemy",
+          "properties": {
+            "speed": 40.0,
+            "left_x": 1030.0,
+            "right_x": 1100.0
+          }
+        }
+      ]
+    },
+    {
+      "id": 69,
       "name": "Goal",
       "parent_id": 1,
       "position": [
@@ -479,7 +1003,7 @@
       ],
       "components": [
         {
-          "id": 32,
+          "id": 70,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -492,11 +1016,50 @@
               1.0
             ]
           }
+        },
+        {
+          "id": 71,
+          "type": "RigidBody2D",
+          "properties": {
+            "body_type": 0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ],
+            "gravity_scale": 0.0,
+            "fixed_rotation": true
+          }
+        },
+        {
+          "id": 72,
+          "type": "Collider2D",
+          "properties": {
+            "shape_type": 0,
+            "width": 24.0,
+            "height": 64.0,
+            "radius": 16.0,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "density": 1.0,
+            "friction": 0.0,
+            "restitution": 0.0,
+            "is_sensor": true,
+            "mirror_with_sprite": false
+          }
+        },
+        {
+          "id": 73,
+          "type": "SliceTrigger",
+          "properties": {
+            "kind": "goal"
+          }
         }
       ]
     },
     {
-      "id": 33,
+      "id": 74,
       "name": "PickupBurst",
       "parent_id": 1,
       "position": [
@@ -510,7 +1073,7 @@
       ],
       "components": [
         {
-          "id": 34,
+          "id": 75,
           "type": "ParticleEmitter",
           "properties": {
             "emitting": false,
@@ -552,5 +1115,5 @@
       ]
     }
   ],
-  "next_id": 35
+  "next_id": 76
 }

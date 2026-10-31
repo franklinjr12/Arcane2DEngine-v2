@@ -1,7 +1,8 @@
 // Game module for the platformer validation slice (samples/platformer_slice).
-// All gameplay lives in one component, SliceRules, on the "Level" node: coin
-// pickups, spike damage, pit death, goal, HUD updates, animation clip choice and
-// camera follow. It deliberately uses only public engine APIs; every awkward
+// Gameplay lives in SliceRules on the "Level" node (score, health, pit death and respawn, HUD, animation
+// parameters). Coins, spikes, checkpoints and the goal are sensor nodes carrying a SliceTrigger, which forwards
+// the physics on_trigger_enter of the Player to SliceRules. Enemies are Kinematic bodies with a PatrolEnemy, which
+// forwards the Player's on_collision_enter (stomp or hurt). The module deliberately uses only public engine APIs; every awkward
 // spot is recorded in docs/slice_platformer_gaps.md.
 #include <algorithm>
 #include <cmath>
@@ -21,29 +22,17 @@
 #include "arcane/hud.hpp"
 #include "arcane/node.hpp"
 #include "arcane/particles.hpp"
+#include "arcane/input.hpp"
 #include "arcane/physics.hpp"
+#include "arcane/scene_flow.hpp"
 
 namespace {
 
-struct Box {
-  float x, y, half_w, half_h;
-};
-
-bool overlaps(const Box& a, const Box& b) {
-  return std::abs(a.x - b.x) < a.half_w + b.half_w && std::abs(a.y - b.y) < a.half_h + b.half_h;
-}
-
-Box box_of(const arcane::Node& node, float w, float h) {
-  const auto p = node.world_transform().position;
-  return {p.x, p.y, w * 0.5f, h * 0.5f};
-}
-
-void collect(arcane::Node& node, std::vector<arcane::Node*>& out) {
-  for (const auto& child : node.children()) {
-    out.push_back(child.get());
-    collect(*child, out);
-  }
-}
+// The score travels from one level to the next through module-static state rather than a persistent root: the
+// Level node (with its SliceRules) is replaced by every scene switch, and a persistent node would drag its whole
+// subtree along. The goal stores the score here and the next level's on_start consumes it (so a standalone load of
+// any level starts at 0); restarting a level re-stores the score it began with.
+int g_carried_score = 0;
 
 class SliceRules : public arcane::Component {
  public:
@@ -51,67 +40,101 @@ class SliceRules : public arcane::Component {
   float pit_y = 700.0f;
   int coin_value = 10;
   float hurt_cooldown = 1.0f;
+  int enemy_value = 50;
+  std::string next_scene;  // project-relative scene to switch to on the goal; empty = last level (YOU WIN)
 
   int score() const noexcept { return score_; }
   float health() const noexcept { return health_; }
   bool won() const noexcept { return won_; }
+  bool paused() const noexcept { return paused_; }
   bool dead() const noexcept { return health_ <= 0.0f; }
   int steps() const noexcept { return steps_; }
+  // Where a pit fall puts the player back: the start, or the latest checkpoint reached.
+  arcane::Vec2 respawn_point() const noexcept { return respawn_; }
+  int checkpoint_count() const noexcept { return checkpoints_; }
+  int stomps() const noexcept { return stomps_; }
 
   // "step" events come from the run state of hero.animgraph.json.
   void on_animation_event(const std::string& name) override {
     if (name == "step") ++steps_;
   }
 
-  void on_update(float dt) override {
-    std::vector<arcane::Node*> nodes;
-    collect(*node(), nodes);
-    arcane::Node* player = nullptr;
-    arcane::Node* goal = nullptr;
-    arcane::Node* burst_node = nullptr;
-    for (arcane::Node* n : nodes) {
-      if (n->name() == "Player") player = n;
-      else if (n->name() == "Goal") goal = n;
-      else if (n->name() == "PickupBurst") burst_node = n;
+  void on_start() override {
+    player_ = find_named(*node(), "Player");
+    burst_ = find_named(*node(), "PickupBurst");
+    if (player_) respawn_ = player_->world_transform().position;
+    score_ = entry_score_ = g_carried_score;
+    g_carried_score = 0;
+  }
+
+  // Called by SliceTrigger when the Player enters the sensor `trigger` of the given kind.
+  void on_player_trigger(const std::string& kind, arcane::Node& trigger) {
+    if (won_ || dead() || trigger.pending_destroy()) return;
+    if (kind == "coin") {
+      collect_coin(trigger);
+    } else if (kind == "spikes") {
+      if (hurt_timer_ > 0.0f) return;
+      damage(0.25f);
+      if (auto* rb = rigid_body()) rb->linear_velocity.y = -250.0f;  // y-down: negative is up
+    } else if (kind == "checkpoint") {
+      const auto pos = trigger.world_transform().position;
+      if (pos.x <= respawn_.x) return;  // only further along than the current one
+      respawn_ = {pos.x, pos.y - 40.0f};  // stand on the ground next to the flag
+      ++checkpoints_;
+      if (auto* flag = static_cast<arcane::Sprite*>(trigger.find_component("Sprite"))) flag->tint = {0.3f, 1.0f, 0.5f, 1.0f};
+    } else if (kind == "goal") {
+      won_ = true;
+      cue("win.wav");
+      go_to_next_level();
     }
-    if (!player) return;
+  }
+
+  // Called by PatrolEnemy when the Player touches it: landing on top (above it and not rising) stomps the enemy
+  // and bounces the player; any other contact hurts through the same cooldown path as the spikes.
+  void on_player_touch_enemy(arcane::Node& enemy) {
+    if (won_ || dead() || enemy.pending_destroy() || !player_) return;
+    auto* rb = rigid_body();
+    if (!rb) return;
+    const arcane::Vec2 p = player_->world_transform().position;
+    const arcane::Vec2 e = enemy.world_transform().position;
+    if (p.y < e.y - kStompHeight && rb->linear_velocity.y > -1.0f) {
+      score_ += enemy_value;
+      ++stomps_;
+      rb->linear_velocity.y = -300.0f;
+      cue("coin.wav");
+      scene()->destroy_node(enemy.id());  // deferred to the end of the tick
+    } else if (hurt_timer_ <= 0.0f) {
+      damage(0.25f);
+      rb->linear_velocity = {p.x < e.x ? -200.0f : 200.0f, -250.0f};
+    }
+  }
+
+  void on_update(float dt) override {
+    if (!player_) return;
 
     arcane::Hud* hud = arcane::active_hud();
     if (hud && hud->clicked("restart")) restart();
-    if (!has_spawn_) {
-      spawn_ = player->world_transform().position;
-      has_spawn_ = true;
-    }
+    auto* input = arcane::active_input_map();
+    if (input && input->pressed("pause") && !won_ && !dead()) set_paused(!paused_);
     hurt_timer_ = std::max(0.0f, hurt_timer_ - dt);
 
     if (!won_ && !dead()) {
-      const Box body = box_of(*player, 28.0f, 46.0f);
-      for (arcane::Node* n : nodes) {
-        if (n->pending_destroy()) continue;
-        if (n->name().starts_with("Coin") && overlaps(body, box_of(*n, 20.0f, 20.0f))) {
-          collect_coin(*n, burst_node);
-        } else if (n->name() == "Spikes" && hurt_timer_ <= 0.0f && overlaps(body, box_of(*n, 28.0f, 28.0f))) {
-          damage(0.25f);
-          if (auto* rb = static_cast<arcane::RigidBody2D*>(player->find_component("RigidBody2D"))) {
-            rb->linear_velocity.y = -250.0f;  // y-down: negative is up
+      if (player_->world_transform().position.y > pit_y) {
+        damage(0.5f);
+        if (!dead()) {  // fell into the pit with health left: back to the latest checkpoint
+          if (auto* rb = rigid_body()) {
+            rb->teleport(respawn_);
+            rb->linear_velocity = {};
           }
         }
       }
-      if (player->world_transform().position.y > pit_y) {
-        damage(0.5f);
-        if (!dead()) {  // fell into the pit with health left: back to the start
-          if (auto* rb = static_cast<arcane::RigidBody2D*>(player->find_component("RigidBody2D"))) rb->teleport(spawn_);
-        }
-      }
-      if (goal && overlaps(body, box_of(*goal, 24.0f, 64.0f))) {
+      if (player_->world_transform().position.x > win_x) {  // fallback if the goal node is missing
         won_ = true;
-        cue("win.wav");
-      } else if (player->world_transform().position.x > win_x) {
-        won_ = true;  // fallback if the goal node is missing
+        go_to_next_level();
       }
     }
 
-    animate(*player);
+    animate(*player_);
     refresh_hud(hud);
   }
 
@@ -119,6 +142,13 @@ class SliceRules : public arcane::Component {
   // Restart reloads the authored scene (coins, player, this component) through the runner; without a game
   // context only the counters can be reset.
   void restart() {
+    // Under a SceneManager the level being played may not be the project's main scene, which is all the runner's
+    // restart reloads, so reload this one through the manager (applied after the current tick, without a fade).
+    if (auto* manager = arcane::active_scene_manager(); manager && !manager->current_scene_path().empty()) {
+      g_carried_score = entry_score_;
+      manager->request_switch(manager->current_scene_path(), false);
+      return;
+    }
     if (auto* context = arcane::active_game_context()) {
       context->request_restart();
       return;
@@ -129,12 +159,50 @@ class SliceRules : public arcane::Component {
     hurt_timer_ = 0.0f;
   }
 
-  void collect_coin(arcane::Node& coin, arcane::Node* burst_node) {
+  void go_to_next_level() {
+    auto* manager = arcane::active_scene_manager();
+    if (next_scene.empty() || !manager || switching_) return;
+    switching_ = true;
+    g_carried_score = score_;
+    manager->request_switch(next_scene);
+  }
+
+  // Deactivates every gameplay node (all of the Level's children and any other root) except the camera, the Level
+  // node itself and the HUD, remembering exactly which ones so a resume wakes only those.
+  void set_paused(bool paused) {
+    paused_ = paused;
+    if (!paused) {
+      for (arcane::NodeId id : frozen_) if (auto* held = scene()->find_node(id)) held->set_active(true);
+      frozen_.clear();
+      return;
+    }
+    auto hold = [this](arcane::Node& candidate) {
+      if (&candidate == node() || !candidate.active() || candidate.find_component("Camera2D")) return;
+      frozen_.push_back(candidate.id());
+      candidate.set_active(false);
+    };
+    for (const auto& child : node()->children()) hold(*child);
+    for (const auto& root : scene()->roots()) hold(*root);
+  }
+
+  static arcane::Node* find_named(arcane::Node& root, const std::string& name) {
+    for (const auto& child : root.children()) {
+      if (child->name() == name) return child.get();
+      if (auto* found = find_named(*child, name)) return found;
+    }
+    return nullptr;
+  }
+
+  arcane::RigidBody2D* rigid_body() {
+    return player_ ? static_cast<arcane::RigidBody2D*>(player_->find_component("RigidBody2D")) : nullptr;
+  }
+
+  void collect_coin(arcane::Node& coin) {
     score_ += coin_value;
     cue("coin.wav");
-    if (burst_node) {
-      burst_node->local_transform().position = coin.world_transform().position;
-      if (auto* e = static_cast<arcane::ParticleEmitter*>(burst_node->find_component("ParticleEmitter"))) {
+    if (burst_) {
+      burst_->local_transform().position = coin.world_transform().position;
+      if (auto* e = static_cast<arcane::ParticleEmitter*>(burst_->find_component("ParticleEmitter"))) {
         e->burst(12);
       }
     }
@@ -151,14 +219,19 @@ class SliceRules : public arcane::Component {
     if (auto* context = arcane::active_game_context()) context->play_sound(std::string(asset));
   }
 
-  // The Animator on the Player (hero.animgraph.json) picks idle/run from the "moving" parameter; facing is the
-  // Sprite's flip_x, which the Collider2D follows (mirror_with_sprite).
+  // The Animator on the Player (hero.animgraph.json) picks idle/run/jump/fall/hurt from the parameters below; facing
+  // is the Sprite's flip_x, which the Collider2D follows (mirror_with_sprite).
   void animate(arcane::Node& player) {
     auto* animator = static_cast<arcane::Animator*>(player.find_component("Animator"));
     auto* sprite = static_cast<arcane::Sprite*>(player.find_component("Sprite"));
     auto* body = static_cast<arcane::RigidBody2D*>(player.find_component("RigidBody2D"));
     if (!body) return;
-    if (animator) animator->set_bool("moving", std::abs(body->linear_velocity.x) > 10.0f);
+    if (animator) {
+      animator->set_bool("moving", std::abs(body->linear_velocity.x) > 10.0f);
+      animator->set_bool("grounded", body->grounded);
+      animator->set_float("vy", body->linear_velocity.y);  // y-down: negative while rising
+      animator->set_bool("hurt", hurt_timer_ > hurt_cooldown - kHurtPoseSeconds);
+    }
     if (sprite && body->linear_velocity.x < -10.0f) sprite->flip_x = true;
     else if (sprite && body->linear_velocity.x > 10.0f) sprite->flip_x = false;
   }
@@ -167,17 +240,77 @@ class SliceRules : public arcane::Component {
   void refresh_hud(arcane::Hud* hud) {
     if (!hud) return;
     if (auto* text = hud->find_text("score")) text->text = std::format("SCORE {}", score_);
-    if (auto* text = hud->find_text("banner")) text->text = won_ ? "YOU WIN" : (dead() ? "GAME OVER" : "");
+    if (auto* text = hud->find_text("banner")) text->text = won_ ? (switching_ ? "" : "YOU WIN") : (dead() ? "GAME OVER" : (paused_ ? "PAUSED" : ""));
     if (auto* bar = hud->find_bar("health")) bar->fraction = health_;
   }
 
+  static constexpr float kStompHeight = 24.0f;      // player centre this far above the enemy centre = on top
+  static constexpr float kHurtPoseSeconds = 0.3f;   // the hero shows the hurt pose this long after a hit
+
   int steps_ = 0;
+  int stomps_ = 0;
   int score_ = 0;
   float health_ = 1.0f;
   float hurt_timer_ = 0.0f;
   bool won_ = false;
-  bool has_spawn_ = false;
-  arcane::Vec2 spawn_{};
+  bool paused_ = false;
+  bool switching_ = false;
+  int entry_score_ = 0;  // score when this level began (restart returns to it)
+  std::vector<arcane::NodeId> frozen_;
+  int checkpoints_ = 0;
+  arcane::Vec2 respawn_{};
+  arcane::Node* player_ = nullptr;
+  arcane::Node* burst_ = nullptr;
+};
+
+// On a sensor node (coin, spikes, checkpoint, goal): reports the Player entering it to the Level's SliceRules.
+class SliceTrigger : public arcane::Component {
+ public:
+  std::string kind;  // coin | spikes | checkpoint | goal
+
+  void on_trigger_enter(arcane::Node& other) override {
+    if (other.name() != "Player") return;
+    for (arcane::Node* n = node()->parent(); n; n = n->parent()) {
+      if (auto* rules = static_cast<SliceRules*>(n->find_component("SliceRules"))) {
+        rules->on_player_trigger(kind, *node());
+        return;
+      }
+    }
+  }
+};
+
+// A Kinematic enemy walking between left_x and right_x (world x) that flips its Sprite at each end; reports the
+// Player touching it to the Level's SliceRules.
+class PatrolEnemy : public arcane::Component {
+ public:
+  float speed = 50.0f;
+  float left_x = 0.0f;
+  float right_x = 0.0f;
+
+  float direction() const noexcept { return dir_; }
+
+  void on_update(float) override {
+    auto* body = static_cast<arcane::RigidBody2D*>(node()->find_component("RigidBody2D"));
+    if (!body) return;
+    const float x = node()->world_transform().position.x;
+    if (x <= left_x) dir_ = 1.0f;
+    else if (x >= right_x) dir_ = -1.0f;
+    body->linear_velocity = {dir_ * speed, 0.0f};
+    if (auto* sprite = static_cast<arcane::Sprite*>(node()->find_component("Sprite"))) sprite->flip_x = dir_ < 0.0f;
+  }
+
+  void on_collision_enter(arcane::Node& other) override {
+    if (other.name() != "Player") return;
+    for (arcane::Node* n = node()->parent(); n; n = n->parent()) {
+      if (auto* rules = static_cast<SliceRules*>(n->find_component("SliceRules"))) {
+        rules->on_player_touch_enemy(*node());
+        return;
+      }
+    }
+  }
+
+ private:
+  float dir_ = 1.0f;
 };
 
 void register_types(arcane::ComponentRegistry& registry) {
@@ -189,6 +322,18 @@ void register_types(arcane::ComponentRegistry& registry) {
           arcane::make_property<SliceRules>("pit_y", PropertyType::Float, &SliceRules::pit_y),
           arcane::make_property<SliceRules>("coin_value", PropertyType::Int, &SliceRules::coin_value),
           arcane::make_property<SliceRules>("hurt_cooldown", PropertyType::Float, &SliceRules::hurt_cooldown),
+          arcane::make_property<SliceRules>("enemy_value", PropertyType::Int, &SliceRules::enemy_value),
+          arcane::make_property<SliceRules>("next_scene", PropertyType::String, &SliceRules::next_scene),
+      });
+  registry.register_component(
+      "SliceTrigger", [] { return std::make_unique<SliceTrigger>(); },
+      {arcane::make_property<SliceTrigger>("kind", PropertyType::String, &SliceTrigger::kind)});
+  registry.register_component(
+      "PatrolEnemy", [] { return std::make_unique<PatrolEnemy>(); },
+      {
+          arcane::make_property<PatrolEnemy>("speed", PropertyType::Float, &PatrolEnemy::speed),
+          arcane::make_property<PatrolEnemy>("left_x", PropertyType::Float, &PatrolEnemy::left_x),
+          arcane::make_property<PatrolEnemy>("right_x", PropertyType::Float, &PatrolEnemy::right_x),
       });
 }
 
