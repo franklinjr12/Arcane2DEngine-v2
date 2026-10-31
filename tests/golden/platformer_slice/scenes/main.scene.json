@@ -100,6 +100,8 @@
             "friction": 0.0,
             "height": 46.0,
             "is_sensor": false,
+            "layer": 0,
+            "mask": 2147483647,
             "offset": [
               0.0,
               1.0

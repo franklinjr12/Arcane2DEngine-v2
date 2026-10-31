@@ -12,7 +12,7 @@ Gaps found while building it (most important first). Each has the workaround use
    checkpoints are impossible; "Restart" resets score/health only.
 2. **(FIXED in GP1: `Component::scene()`, coins use `destroy_node`.)** Components cannot reach their `Scene`.** No `destroy_node`/spawn from gameplay code. Workaround: collected coins
    are parked at (-100000, -100000). Needs a scene accessor on `Component`/`Node` (or a `GameContext` in `on_update`).
-3. **No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
+3. **(FIXED in GP2: `on_trigger_enter/exit`, `on_collision_enter/exit`, layers/masks, raycast/overlap queries; the slice still uses its AABB test.)** No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
    tests against hard-coded sizes duplicated from the scene.
 4. **HUD text/bar elements have no ids** (only buttons). The module finds them by order (first text = score).
 5. **(FIXED in GP1: `arcane/assets.hpp`, `GameContext::play_sound`, `AudioSource::play`; the `idle_clip`/`run_clip` properties remain as authored data.)** No runtime asset-id → path resolution.** Audio cues use a literal `"assets/coin.wav"` string; `AudioSource` has no
@@ -23,7 +23,7 @@ Gaps found while building it (most important first). Each has the workaround use
    and the collider is not mirrored.
 8. **No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)
    assumes the 800-wide design view.
-9. **No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. One-way platforms: done in FE17 (`Collider2D::one_way`).
+9. **(FIXED in GP2: tileset `tags`, `GameContext::tile_at/tagged_tile_at`.)** No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. One-way platforms: done in FE17 (`Collider2D::one_way`).
 10. **No animation state machine / events**; clip choice is hand-coded from velocity.
 11. **Player has no module render hook with scene/renderer access**, and `arcane_player` builds `TilesetCache` from
     `list_animation_clip_assets` (works only because both are `.json`): a dedicated tileset catalog is missing.

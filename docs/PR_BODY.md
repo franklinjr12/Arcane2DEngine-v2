@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) and GP1 (gameplay context API) have run so far.
+This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API) and GP2 (collision/trigger events, layers, queries, tile tags) have run so far.
 
 **1. Step-by-step manual checks**
 
@@ -29,6 +29,8 @@ AF8C extra check (Linux, or Windows with a GL desktop): `build-gcc/bin/arcane_ed
 
 GP1 extra check (any platform, no window needed): `ctest --test-dir build -C Debug -R "test_game_context|test_platformer_slice" --output-on-failure` expects both to pass. To see it live: run `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, collect a coin (it disappears and the score rises), walk into the pit with health left (you respawn at the start instead of dying at once; the second fall is game over), click Restart (the whole level reloads: coins are back, score 0).
 
+GP2 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_physics_events|test_tilemap_commands|test_tooling_commands|test_schema_examples" --output-on-failure` expects all four to pass. CLI: `arcane --project DIR project set --collision_layers '["world","player"]'` then `project get` shows them; `arcane --project DIR tileset set_tile --tileset assets/set.json --tile 1 --tags '["hazard"]'`. Not visible in a window: there is no editor UI for layers/tags beyond the Inspector's integer `layer`/`mask` fields.
+
 **2. What you can visibly see**
 
 AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
@@ -52,6 +54,11 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ---
 
 ## Technical detail
+
+### GP2: events, layers/masks, spatial queries, tile tags (slice gaps 3 and 9)
+- `Component::on_collision_enter/exit` (renamed from `on_contact_*`) and new `on_trigger_enter/exit` (sensor Collider2D, Box2D sensor events); deterministic order (exits first, then by node id). `Collider2D.layer`/`mask`; names in `project.json` `collision_layers` (schema, `project.set`, undoable through EditSession). `PhysicsWorld::raycast/overlap_aabb/overlap_point` with layer mask, reachable via `GameContext::physics()` (set by the player and the fixed-frame runner). Tileset `tiles[].tags` (`tileset.set_tile --tags`), `GameContext::tile_at/tagged_tile_at`. Goldens: only `layer`/`mask` added to scene goldens; new `project.example.json`, `tileset.example.json`.
+- Tests: `test_physics_events` (new), `test_tilemap_commands`, `test_tooling_commands`, `test_schema_examples`. `scripts/build-and-test.sh`: gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC.
+- Not done: the platformer slice still uses its manual AABB test (not replaced); no editor widgets for layer names or tile tags; sensors do not detect static bodies' shapes beyond what Box2D allows.
 
 ### GP1: gameplay context API (docs/slice_platformer_gaps.md items 1, 2, 5, 6)
 - `RigidBody2D::teleport(pos)` moves the node at once and queues a Box2D transform applied at the start of the next `PhysicsWorld::step` (velocity cleared), so it is safe inside any hook. `PhysicsWorld::step` now also drops bodies of destroyed nodes and creates bodies for nodes spawned since the last step (before this a destroyed node kept a ghost body).

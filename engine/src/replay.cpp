@@ -341,6 +341,11 @@ std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& s
   const float dt = static_cast<float>(1.0 / fixed_hz);
   PhysicsWorld physics;
   physics.rebuild(scene);
+  struct PhysicsLink {  // gameplay reaches the world through the context only while this run lasts
+    GameContext* context;
+    ~PhysicsLink() { if (context) context->set_physics(nullptr); }
+  } physics_link{active_game_context()};
+  if (physics_link.context) physics_link.context->set_physics(&physics);
   std::optional<ReplayInput> input;
   if (options.recording) input.emplace(*options.recording);
   FakeInputBackend idle;

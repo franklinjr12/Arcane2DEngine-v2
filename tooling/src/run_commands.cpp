@@ -52,6 +52,7 @@ std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRu
   auto audio = AudioSystem::create(true);  // null backend: no device
   if (!audio) return std::unexpected(offline_error("IO_ERROR", audio.error()));
   GameContext game_context(context.project_dir(), context.registry());
+  game_context.set_collision_layers(context.session().project().collision_layers);
   options.restart_scene_json = *scene_text;
   set_active_audio_system(&*audio);
   set_active_game_context(&game_context);

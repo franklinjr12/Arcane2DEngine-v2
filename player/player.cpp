@@ -178,6 +178,8 @@ int run_project(const Args& args) {
 
   arcane::PhysicsWorld physics;
   physics.rebuild(runtime->session().scene());
+  game_context.set_physics(&physics);
+  game_context.set_collision_layers(runtime->session().project().collision_layers);
 
   arcane::InputActionMap input_map = runtime->session().project().input_actions;
   arcane::GlfwInputBackend input_backend(*window);
