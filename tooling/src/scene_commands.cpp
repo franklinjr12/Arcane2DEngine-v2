@@ -205,6 +205,7 @@ void register_scene_commands(CommandRegistry& registry) {
         info["transform"] = transform_json(**node);
         info["components"] = components_json(**node);
         info["children"] = children;
+        info["persistent"] = (*node)->persistent();
         if ((*node)->prefab_link()) {
           info["prefab"] = {{"asset", (*node)->prefab_link()->asset}, {"instance_id", (*node)->prefab_link()->instance_id}};
         }
@@ -403,6 +404,26 @@ void register_scene_commands(CommandRegistry& registry) {
         Json result = node_ref(*copy);
         result["nodes"] = ids.size();
         return CommandResult{result, Invocation{"node.remove", {{"node", id_selector(*copy)}}}};
+      });
+
+  registry.add(
+      {"node.set_persistent",
+       "Set the authored `persistent` flag of a root node: SceneManager carries such roots over scene switches "
+       "(docs/formats/scene.md). Refused for non-root nodes.",
+       schema({{"node", kNodeArg}, {"value", {{"type", "boolean"}}}}, {"node", "value"}), {{"type", "object"}}, true},
+      [](ProjectContext& context, const Json& args) -> Result {
+        auto node = resolve_node(context, args["node"].get<std::string>());
+        if (!node) return std::unexpected(node.error());
+        if (!args["value"].is_boolean()) return std::unexpected(fail("VALUE_INVALID", "expected true or false", context, "/value"));
+        if ((*node)->parent()) {
+          return std::unexpected(fail("VALUE_INVALID", "only a root node can be persistent", context, "/node"));
+        }
+        const bool previous = (*node)->persistent();
+        const bool value = args["value"].get<bool>();
+        (*node)->set_persistent(value);
+        Json result = {{"changed", previous != value}, {"previous", previous}, {"persistent", value}};
+        if (previous == value) return CommandResult{result, std::nullopt};
+        return CommandResult{result, Invocation{"node.set_persistent", {{"node", id_selector(**node)}, {"value", previous}}}};
       });
 
   registry.add(

@@ -815,6 +815,17 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--node` | string | yes |  |
 | `--parent` | string | no |  |
 
+### `arcane node set-persistent`
+
+Set the authored `persistent` flag of a root node: SceneManager carries such roots over scene switches (docs/formats/scene.md). Refused for non-root nodes.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--node` | string | yes |  |
+| `--value` | boolean | yes |  |
+
 ### `arcane node set-transform`
 
 Set a node's local transform fields; omitted fields keep their value.

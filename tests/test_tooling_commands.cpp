@@ -153,7 +153,7 @@ void test_builtin_types_and_value_kinds() {
   // Selectors: by component id and by node path.
   auto listed = registry.execute(*context, {"prop.list", {{"node", "path:/Player"}, {"component", "Sprite"}}});
   ARCANE_ASSERT_TRUE(listed.has_value());
-  ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 6);
+  ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 8);
   const unsigned component_id = listed->value["component_id"];
   auto by_id = registry.execute(*context, {"prop.get", {{"node", "id:1"}, {"component", component_id}, {"name", "texture"}}});
   ARCANE_ASSERT_TRUE(by_id.has_value() && by_id->value["value"] == 77);
@@ -456,7 +456,42 @@ void test_save_is_all_or_nothing() {
   ARCANE_ASSERT_TRUE(!context->project_dirty() && !context->dirty());
 }
 
+void test_node_set_persistent() {
+  TempProject project;
+  CommandRegistry registry;
+  register_scene_commands(registry);
+  auto context = open(project);
+  auto added = registry.execute(*context, {"node.add", {{"name", "Child"}, {"parent", "id:1"}}});
+  ARCANE_ASSERT_TRUE(added.has_value());
+  const std::string child = "id:" + std::to_string(added->value["id"].get<std::uint64_t>());
+
+  auto info = registry.execute(*context, {"node.info", {{"node", "id:1"}}});
+  ARCANE_ASSERT_TRUE(info.has_value() && info->value["persistent"] == false);
+
+  // Dry run changes nothing.
+  auto dry = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", true}}}, {.dry_run = true});
+  ARCANE_ASSERT_TRUE(dry.has_value() && context->scene().find_node(1)->persistent() == false);
+
+  auto set_true = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", true}}});
+  ARCANE_ASSERT_TRUE(set_true.has_value() && context->scene().find_node(1)->persistent());
+  ARCANE_ASSERT_TRUE(set_true->value["previous"] == false && set_true->inverse.has_value());
+  info = registry.execute(*context, {"node.info", {{"node", "id:1"}}});
+  ARCANE_ASSERT_TRUE(info->value["persistent"] == true);
+
+  // The inverse restores the previous value; setting the same value yields no inverse.
+  ARCANE_ASSERT_TRUE(registry.execute(*context, *set_true->inverse).has_value());
+  ARCANE_ASSERT_TRUE(!context->scene().find_node(1)->persistent());
+  auto same = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", false}}});
+  ARCANE_ASSERT_TRUE(same.has_value() && !same->inverse.has_value());
+
+  // Non-root and non-boolean values are refused and change nothing.
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"node.set_persistent", {{"node", child}, {"value", true}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", "yes"}}}).has_value());
+  ARCANE_ASSERT_TRUE(!context->scene().find_node(1)->persistent());
+}
+
 int main() {
+  test_node_set_persistent();
   test_module_property_set_persist_undo_redo();
   test_builtin_types_and_value_kinds();
   test_failures_change_nothing();

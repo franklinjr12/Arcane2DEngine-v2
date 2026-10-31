@@ -85,6 +85,12 @@ class ARCANE_API Node {
   const std::optional<PrefabLink>& prefab_link() const noexcept { return prefab_link_; }
   void set_prefab_link(std::optional<PrefabLink> link) { prefab_link_ = std::move(link); }
 
+  // Authored flag on a root node: SceneManager carries it over scene switches
+  // (docs/formats/scene.md "persistent"). Not copied by duplicate or prefab
+  // instancing; ignored on non-root nodes.
+  bool persistent() const noexcept { return persistent_; }
+  void set_persistent(bool persistent) noexcept { persistent_ = persistent; }
+
   // True once Scene::destroy_node has marked this node (or an ancestor) for
   // destruction; the node still physically exists until the next flush.
   bool pending_destroy() const noexcept { return pending_destroy_; }
@@ -105,6 +111,7 @@ class ARCANE_API Node {
   Transform2D local_{};
   std::vector<std::unique_ptr<Component>> components_;
   std::optional<PrefabLink> prefab_link_;
+  bool persistent_ = false;
   bool pending_destroy_ = false;
 };
 
