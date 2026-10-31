@@ -42,6 +42,7 @@ void ParticleEmitter::spawn() {
   p.lifetime = std::max(0.001f, lerp(lifetime_min, lifetime_max, random01()));
   p.velocity = {std::cos(angle) * speed, std::sin(angle) * speed};
   p.position = world_space ? world.position : Vec2{};
+  if (particles_.empty()) particles_.reserve(static_cast<std::size_t>(std::max(0, max_particles)));
   particles_.push_back(p);
 }
 
