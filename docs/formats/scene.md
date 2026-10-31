@@ -106,6 +106,12 @@ editor Inspector.
 
 `SteeringAgent2D` (registered with the physics components) moves a node's sibling `RigidBody2D` (give it `gravity_scale` 0 and `fixed_rotation`) toward the node named by `target` (string). Properties: `behavior` (int: 0 seek, 1 arrive, 2 flee; default 0), `max_speed` (float px/s, default 90), `max_acceleration` (600 px/s^2), `slow_radius` (48, arrive only), `stop_distance` (4; seek/arrive stop this close to the target), `use_pathfinding` (bool, default true; seek/arrive follow a grid A* path, flee ignores paths), `repath_interval` (seconds, default 0.5), `tilemap` (string node name of the map to plan on; empty = first node with a `Tilemap`) and `allow_diagonal` (bool, default true). Cells with a solid tile in any layer of the tilemap are blocked. The path, waypoint index, repath timer and any `set_target_position` override are runtime-only and never saved. Covered by `tests/test_navigation.cpp`.
 
+## Spawner2D and the runtime active flag
+
+`Spawner2D` (registered with the physics components) is a pooled prefab spawner. Properties: `prefab` (string, project-relative `*.prefab.json`), `prewarm` (int, default 0; inactive instances created when the spawner starts), `max_alive` (int, default 16, 0 = unlimited), `grow` (bool, default true; instantiate when no parked instance is left), `interval` (float seconds, default 0 = only manual `spawn()` calls), `auto_start` (bool, default true), `offset` (Vec2 added to the spawner's world position for interval spawns) and `spawn_as_root` (bool, default true; otherwise instances are children of the spawner node). Released instances are parked inactive and handed out again with `Component::on_pool_reuse`; destroying the spawner destroys its instances. Pool contents and timers are runtime-only and never saved. Covered by `tests/test_spawner.cpp`.
+
+Nodes have a runtime-only `active` flag (`Node::set_active`, default true). It is never written to or read from scene or prefab files: an inactive subtree gets no `on_start`/`on_update`, is not drawn and its physics bodies are disabled (no contacts, triggers or query hits).
+
 ## `Tween` component properties
 
 `Tween` is an ordinary component (`"type": "Tween"`) animating one property of its own node in Play.

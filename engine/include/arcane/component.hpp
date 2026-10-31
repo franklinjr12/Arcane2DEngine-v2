@@ -43,6 +43,11 @@ class ARCANE_API Component {
   // playing state's clip reaches the frame an event is attached to. Default no-op.
   virtual void on_animation_event(const std::string& name) { (void)name; }
 
+  // Object pooling (Spawner2D, arcane/spawner.hpp): called on every component of a pooled subtree each time the
+  // pool hands out a parked (prewarmed or released) instance, after it is moved and reactivated, so components can
+  // reset runtime state (health, timers, velocity). Not called for a freshly instantiated one. Default no-op.
+  virtual void on_pool_reuse() {}
+
   ComponentId id() const noexcept { return id_; }
   Node* node() const noexcept { return node_; }
   // The scene owning this component's node (null if detached); see Node::scene().
