@@ -20,27 +20,25 @@ namespace {
 
 using Result = std::expected<Json, ToolError>;
 
-struct RunOutput {
-  std::vector<std::uint64_t> hashes;
-  std::size_t nodes = 0;
-  bool module = false;
-};
-
 std::size_t count_nodes(const Node& node) {
   std::size_t n = 1;
   for (const auto& child : node.children()) n += count_nodes(*child);
   return n;
 }
 
-std::expected<void, ToolError> check_path(const std::string& value, const char* arg) {
+}  // namespace
+
+std::expected<void, ToolError> offline_check_path(const std::string& value, const char* arg) {
   if (is_project_relative_path(value)) return {};
   return std::unexpected(offline_error("ARGS_INVALID", "'" + value + "' is not a project-relative '/' path", "",
                                        std::string("/") + arg));
 }
 
 // Runs `options` on a fresh copy of the context scene with the module's on_update before each step,
-// like arcane_player --headless. Module exceptions become MODULE_FAILURE.
-std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRunOptions options, const std::string& file) {
+// like arcane_player --headless. Module exceptions become MODULE_FAILURE. `finish`, if set, runs on the stepped
+// scene while the audio and HUD globals are still active (used by render).
+std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRunOptions options, const std::string& file,
+                                                const RunFinish& finish) {
   auto scene_text = context.scene().save_canonical_json(context.registry());
   if (!scene_text) return std::unexpected(offline_error("VALUE_INVALID", scene_text.error(), context.scene_file()));
   auto scene = Scene::load_from_json(*scene_text, context.registry());
@@ -61,15 +59,23 @@ std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRu
     }
   } reset;
   try {
-    auto hashes = run_fixed_frames(*scene, context.registry(), actions, options);
+    // frames == 0 (render only): no stepping, the trace is just the initial state hash.
+    auto hashes = options.frames == 0 && !options.recording
+                      ? std::expected<std::vector<std::uint64_t>, std::string>(std::vector{hash_scene_state(*scene, context.registry())})
+                      : run_fixed_frames(*scene, context.registry(), actions, options);
     if (!hashes) return std::unexpected(offline_error("VALUE_INVALID", hashes.error(), file));
     std::size_t nodes = 0;
     for (const auto& root : scene->roots()) nodes += count_nodes(*root);
+    if (finish) {
+      if (auto done = finish(*scene, hud); !done) return std::unexpected(done.error());
+    }
     return RunOutput{std::move(*hashes), nodes, api != nullptr};
   } catch (const std::exception& ex) {
     return std::unexpected(offline_error("MODULE_FAILURE", ex.what()));
   }
 }
+
+namespace {
 
 std::expected<ReplayRecording, ToolError> load_recording(const std::filesystem::path& dir, const std::string& file) {
   auto text = read_text_file(dir / file);
@@ -86,7 +92,7 @@ Result run(const OfflineEnv& env, const Json& args, bool dry_run) {
   }
   for (const char* key : {"replay", "trace_out"}) {
     if (args.contains(key)) {
-      if (auto ok = check_path(args[key].get<std::string>(), key); !ok) return std::unexpected(ok.error());
+      if (auto ok = offline_check_path(args[key].get<std::string>(), key); !ok) return std::unexpected(ok.error());
     }
   }
   auto context = ProjectContext::open(env.project_dir, env.module_override, env.scene_override);

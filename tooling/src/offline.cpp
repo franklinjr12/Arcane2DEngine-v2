@@ -434,6 +434,7 @@ std::vector<OfflineCommand> make_commands() {
                docs});
   for (auto& asset : make_asset_commands()) c.push_back(std::move(asset));
   for (auto& run : make_run_commands()) c.push_back(std::move(run));
+  for (auto& render : make_render_commands()) c.push_back(std::move(render));
   for (auto& exported : make_export_commands()) c.push_back(std::move(exported));
   return c;
 }
