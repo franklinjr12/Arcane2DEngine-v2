@@ -35,7 +35,8 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 ```
 
 `fade_out_seconds` / `fade_in_seconds` (number, 0..60, default 0.3) and `color` (RGBA, default opaque black)
-configure `SceneManager` (`arcane/scene_flow.hpp`). Edit with `transition.get` / `transition.set`.
+configure `SceneManager` (`arcane/scene_flow.hpp`), which the windowed player and the editor's Play mode own
+(headless runs do not run one yet). Edit with `transition.get` / `transition.set`.
 
 ### `debug`
 
