@@ -119,7 +119,8 @@ class ARCANE_API PhysicsWorld {
   // by `fixed_dt`, pulls resulting position/rotation/velocity back into the
   // owning node's Transform2D and RigidBody2D, and dispatches
   // the Component collision and trigger hooks (see component.hpp) for the
-  // shapes that started or stopped touching or overlapping this step.
+  // shapes that started or stopped touching or overlapping this step. Bodies of inactive nodes (Node::active)
+  // are disabled: they do not move, collide, trigger or appear in queries until the node is active again.
   void step(Scene& scene, float fixed_dt);
 
   // Spatial queries in scene pixels against the shapes built by rebuild/step. `layers` is a bit mask of collision

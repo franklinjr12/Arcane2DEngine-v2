@@ -68,7 +68,8 @@ class ARCANE_API Scene {
   void flush_destroyed();
 
   // Runs one fixed-timestep tick over every live component (on_start on
-  // first tick, on_update on every tick including that one), then flushes
+  // first tick, on_update on every tick including that one; inactive
+  // subtrees, see Node::active, are skipped), then flushes
   // any destructions queued during the tick.
   void update(float fixed_dt);
 

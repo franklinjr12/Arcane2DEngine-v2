@@ -16,6 +16,7 @@
 #include "arcane/node.hpp"
 #include "arcane/platformer.hpp"
 #include "arcane/scene.hpp"
+#include "arcane/spawner.hpp"
 #include "arcane/tilemap.hpp"
 #include "arcane/topdown.hpp"
 
@@ -62,7 +63,8 @@ void queue_event(std::vector<PhysicsEvent>& out, EventKind kind, b2ShapeId a, b2
 void deliver(Scene& scene, const PhysicsEvent& event) {
   Node* first = scene.find_node(event.first);
   Node* second = scene.find_node(event.second);
-  if (!first || !second) return;
+  // Inactive nodes (Node::active) report nothing, including the exits caused by disabling their bodies.
+  if (!first || !second || !first->active_in_hierarchy() || !second->active_in_hierarchy()) return;
   auto call = [&](Node& self, Node& other) {
     for (const auto& component : self.components()) {
       switch (event.kind) {
@@ -226,6 +228,7 @@ void register_physics_components(ComponentRegistry& registry) {
   register_platformer_components(registry);
   register_topdown_components(registry);
   register_navigation_components(registry);
+  register_spawner_components(registry);
 }
 
 struct PhysicsWorld::Impl {
@@ -236,6 +239,7 @@ struct PhysicsWorld::Impl {
 
   void add_node(Node* node);
   void sync_flips(Scene& scene);
+  void sync_active(Scene& scene);
 
   ~Impl() {
     if (b2World_IsValid(world)) b2DestroyWorld(world);
@@ -316,6 +320,28 @@ void PhysicsWorld::Impl::sync_flips(Scene& scene) {
   }
 }
 
+// Disables the bodies of inactive nodes (removing their shapes from the broad-phase, so no contacts, triggers or
+// query hits) and re-enables them, after applying a pending teleport, once the node is active again.
+void PhysicsWorld::Impl::sync_active(Scene& scene) {
+  for (auto& [node_id, body] : bodies) {
+    Node* node = scene.find_node(node_id);
+    if (!node || !b2Body_IsValid(body)) continue;
+    const bool want = node->active_in_hierarchy();
+    const bool enabled = b2Body_IsEnabled(body);
+    if (!want && enabled) {
+      b2Body_Disable(body);
+    } else if (want && !enabled) {
+      auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
+      if (rigid && rigid->has_pending_teleport) {
+        b2Body_SetTransform(body, px_to_m(rigid->pending_teleport), b2MakeRot(-node->world_transform().rotation_radians));
+        b2Body_SetLinearVelocity(body, b2Vec2{0.0f, 0.0f});
+        rigid->has_pending_teleport = false;
+      }
+      b2Body_Enable(body);
+    }
+  }
+}
+
 void PhysicsWorld::rebuild(Scene& scene) {
   b2World_SetPreSolveCallback(impl_->world, one_way_pre_solve, nullptr, &scene);
   for (auto& [id, body] : impl_->bodies) {
@@ -327,6 +353,7 @@ void PhysicsWorld::rebuild(Scene& scene) {
   std::vector<Node*> nodes;
   collect_physics_nodes(scene.roots(), nodes);
   for (Node* node : nodes) impl_->add_node(node);
+  impl_->sync_active(scene);
 }
 
 void PhysicsWorld::step(Scene& scene, float fixed_dt) {
@@ -346,9 +373,10 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
     if (!node->pending_destroy() && !impl_->bodies.contains(node->id())) impl_->add_node(node);
   }
   impl_->sync_flips(scene);
+  impl_->sync_active(scene);
 
   for (auto& [node_id, body] : impl_->bodies) {
-    if (!b2Body_IsValid(body)) continue;
+    if (!b2Body_IsValid(body) || !b2Body_IsEnabled(body)) continue;
     const b2BodyType type = b2Body_GetType(body);
     if (type == b2_dynamicBody || type == b2_kinematicBody) {
       Node* node = scene.find_node(node_id);
@@ -380,7 +408,7 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
   b2World_Step(impl_->world, fixed_dt, 4);
 
   for (auto& [node_id, body] : impl_->bodies) {
-    if (!b2Body_IsValid(body)) continue;
+    if (!b2Body_IsValid(body) || !b2Body_IsEnabled(body)) continue;
     const b2BodyType type = b2Body_GetType(body);
     if (type != b2_dynamicBody && type != b2_kinematicBody) continue;
 
