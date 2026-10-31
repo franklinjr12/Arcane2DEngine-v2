@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
@@ -239,8 +241,9 @@ struct Fixture {
     keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kSpace, jump);
     input.update(keys);
     runtime->module_api()->on_update(kDt);
-    scene->update(kDt);
-    physics.step(*scene, kDt);
+    const float dt = kDt * context->time_scale();  // as the player's loop: a paused game updates at dt 0, no physics
+    scene->update(dt);
+    if (dt > 0.0f) physics.step(*scene, dt);
   }
   arcane::Node* named(const char* name) { return find(level, name); }
   arcane::Vec2 pos(const char* name) { return named(name)->world_transform().position; }
@@ -343,8 +346,8 @@ void test_side_contact_hurts() {
   ARCANE_ASSERT_TRUE(f.hud.find_text("score")->text == "SCORE 0");
 }
 
-// A pressed `pause` freezes the gameplay nodes (the player stays put even though it is falling) and shows PAUSED;
-// pressing it again resumes.
+// A pressed `pause` sets the time scale to 0 (the player stays put even though it is falling), shows PAUSED and
+// the Resume / Restart / Menu buttons; pressing it again, or clicking Resume, resumes and removes the buttons.
 void test_pause_freezes_and_resumes() {
   Fixture f({300.0f, 200.0f});  // in the air, so an unfrozen player visibly moves
   f.park("Enemy0");
@@ -359,16 +362,78 @@ void test_pause_freezes_and_resumes() {
   for (int i = 0; i < 5; ++i) f.step();
   const float falling_y = f.pos("Player").y;
   ARCANE_ASSERT_TRUE(falling_y > 200.0f);
+  ARCANE_ASSERT_TRUE(f.context->time_scale() == 1.0f);
+  ARCANE_ASSERT_TRUE(!f.hud.contains("pause_resume") && f.hud.find_button("restart")->enabled);
   tap_pause();
+  ARCANE_ASSERT_TRUE(f.context->time_scale() == 0.0f && f.context->paused());
   ARCANE_ASSERT_TRUE(f.hud.find_text("banner")->text == "PAUSED");
+  ARCANE_ASSERT_TRUE(f.hud.contains("pause_resume") && f.hud.contains("pause_restart") && f.hud.contains("pause_menu"));
+  ARCANE_ASSERT_TRUE(!f.hud.find_button("restart")->enabled);  // so D-pad down starts at Resume
   const arcane::Vec2 held = f.pos("Player");
   for (int i = 0; i < 60; ++i) f.step(/*jump=*/false, /*right=*/true);
   ARCANE_ASSERT_TRUE(f.pos("Player").x == held.x && f.pos("Player").y == held.y);
   ARCANE_ASSERT_TRUE(f.hud.find_text("banner")->text == "PAUSED");
   tap_pause();
+  ARCANE_ASSERT_TRUE(f.context->time_scale() == 1.0f);
   ARCANE_ASSERT_TRUE(f.hud.find_text("banner")->text.empty());
+  ARCANE_ASSERT_TRUE(!f.hud.contains("pause_resume") && !f.hud.contains("pause_restart") && !f.hud.contains("pause_menu"));
+  ARCANE_ASSERT_TRUE(f.hud.find_button("restart")->enabled);
   for (int i = 0; i < 30; ++i) f.step(false, true);
   ARCANE_ASSERT_TRUE(f.pos("Player").x > held.x + 20.0f || f.pos("Player").y > held.y + 20.0f);
+}
+
+// Clicks the HUD button `id` (at its laid-out position in an 800x600 view) with the mouse.
+void click_button(arcane::Hud& hud, arcane::HudInput& hud_input, const char* id) {
+  const arcane::HudButton* b = hud.find_button(id);
+  ARCANE_ASSERT_TRUE(b != nullptr);
+  const arcane::HudRect r = arcane::hud_layout(b->anchor, b->offset_x, b->offset_y, b->width, b->height, 800, 600);
+  arcane::FakeInputBackend mouse;
+  mouse.set_mouse_position({r.x + r.w / 2, r.y + r.h / 2});
+  mouse.set_down(arcane::InputDevice::MouseButton, 0, true);
+  hud_input.update(hud, mouse, 800, 600);
+  mouse.set_down(arcane::InputDevice::MouseButton, 0, false);
+  hud_input.update(hud, mouse, 800, 600);
+  ARCANE_ASSERT_TRUE(hud.clicked(id));
+}
+
+void test_pause_menu_buttons() {
+  Fixture f({300.0f, 200.0f});
+  f.park("Enemy0");
+  f.park("Enemy1");
+  f.start();
+  arcane::HudInput hud_input;
+  auto press_pause = [&] {
+    f.keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kEscape, true);
+    f.step();
+    f.keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kEscape, false);
+    f.step();
+  };
+  press_pause();
+  ARCANE_ASSERT_TRUE(f.context->paused());
+
+  // D-pad down + A (the HUD's gamepad navigation) focuses and presses the first enabled button: Resume.
+  arcane::FakeInputBackend pad;
+  pad.set_down(arcane::InputDevice::GamepadButton, arcane::GamepadButtons::kDpadDown, true);
+  hud_input.update(f.hud, pad, 800, 600);
+  pad.set_down(arcane::InputDevice::GamepadButton, arcane::GamepadButtons::kDpadDown, false);
+  hud_input.update(f.hud, pad, 800, 600);
+  ARCANE_ASSERT_TRUE(f.hud.find_button("pause_resume")->focused);
+  pad.set_down(arcane::InputDevice::GamepadButton, arcane::GamepadButtons::kA, true);
+  hud_input.update(f.hud, pad, 800, 600);
+  pad.set_down(arcane::InputDevice::GamepadButton, arcane::GamepadButtons::kA, false);  // confirm acts on release
+  hud_input.update(f.hud, pad, 800, 600);
+  ARCANE_ASSERT_TRUE(f.hud.clicked("pause_resume"));
+  f.step();
+  ARCANE_ASSERT_TRUE(!f.context->paused() && !f.hud.contains("pause_resume"));
+  hud_input.update(f.hud, pad, 800, 600);  // the next real frame: last frame's clicks are gone
+
+  // A mouse click on Resume does the same.
+  press_pause();
+  ARCANE_ASSERT_TRUE(f.context->paused());
+  click_button(f.hud, hud_input, "pause_resume");
+  f.step();
+  ARCANE_ASSERT_TRUE(!f.context->paused() && f.hud.find_text("banner")->text.empty());
+  ARCANE_ASSERT_TRUE(!f.hud.contains("pause_menu") && !f.hud.contains("pause_restart"));
 }
 
 // The game as arcane_player runs it: scene owned by a SceneManager, advanced like player.cpp's step loop.
@@ -379,7 +444,10 @@ struct ManagedGame {
     auto snapshot = arcane::Scene::load_from_json(f.scene->save_to_json(f.runtime->registry()), f.runtime->registry());
     ARCANE_ASSERT_TRUE(snapshot.has_value());
     manager.set_scene(std::move(*snapshot), f.runtime->session().project().main_scene);
-    manager.set_on_switched([this](arcane::Scene& next) { f.physics.rebuild(next); });
+    manager.set_on_switched([this](arcane::Scene& next) {
+      f.physics.rebuild(next);
+      f.context->set_time_scale(1.0f);  // a new scene never starts paused (player.cpp)
+    });
     f.physics.rebuild(*manager.scene());
     arcane::set_active_scene_manager(&manager);
   }
@@ -392,8 +460,9 @@ struct ManagedGame {
     f.input.update(f.keys);
     f.runtime->module_api()->on_update(kDt);
     arcane::Scene& scene = *manager.scene();  // a switch replaces the scene: fetch per step
-    scene.update(kDt);
-    f.physics.step(scene, kDt);
+    const float dt = kDt * f.context->time_scale();
+    scene.update(dt);
+    if (dt > 0.0f) f.physics.step(scene, dt);
     manager.update(kDt);
   }
   arcane::Node* find_in_scene(const char* name) { return find(manager.scene()->roots().front().get(), name); }
@@ -401,6 +470,110 @@ struct ManagedGame {
   Fixture& f;
   arcane::SceneManager manager;
 };
+
+// Pause > Menu switches to the menu scene (its own HUD elements replace the level HUD), PLAY returns to the main
+// scene with the level HUD restored, and Pause > Restart unpauses and removes the buttons.
+void test_pause_menu_and_menu_scene_flow() {
+  Fixture f({300.0f, 200.0f});
+  f.park("Enemy0");
+  f.park("Enemy1");
+  f.start();
+  ManagedGame game(f);
+  arcane::HudInput hud_input;
+  auto press_pause = [&] {
+    f.keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kEscape, true);
+    game.step();
+    f.keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kEscape, false);
+    game.step();
+  };
+  press_pause();
+  ARCANE_ASSERT_TRUE(f.context->paused());
+  click_button(f.hud, hud_input, "pause_restart");
+  game.step();
+  for (int i = 0; i < 90 && game.manager.busy(); ++i) game.step();
+  ARCANE_ASSERT_TRUE(!f.context->paused() && game.manager.current_scene_path() == "scenes/main.scene.json");
+  ARCANE_ASSERT_TRUE(!f.hud.contains("pause_resume") && !f.hud.contains("pause_menu") && f.hud.find_button("restart")->enabled);
+  hud_input.update(f.hud, arcane::FakeInputBackend{}, 800, 600);  // the next real frame: last frame's clicks are gone
+
+  press_pause();
+  click_button(f.hud, hud_input, "pause_menu");
+  for (int i = 0; i < 200 && game.manager.current_scene_path() != "scenes/menu.scene.json"; ++i) game.step();
+  ARCANE_ASSERT_TRUE(game.manager.current_scene_path() == "scenes/menu.scene.json");
+  for (int i = 0; i < 60; ++i) game.step();  // fade in; the MenuController starts
+  ARCANE_ASSERT_TRUE(!f.context->paused());
+  ARCANE_ASSERT_TRUE(f.hud.contains("menu_title") && f.hud.contains("menu_play") && f.hud.find_text("menu_best"));
+  ARCANE_ASSERT_TRUE(f.hud.find_text("menu_best")->text == "BEST 0");
+  ARCANE_ASSERT_TRUE(!f.hud.contains("pause_resume") && !f.hud.contains("pause_menu"));
+  ARCANE_ASSERT_TRUE(!f.hud.contains("score") && !f.hud.contains("health") && !f.hud.contains("restart"));
+
+  click_button(f.hud, hud_input, "menu_play");
+  for (int i = 0; i < 200 && game.manager.current_scene_path() != "scenes/main.scene.json"; ++i) game.step();
+  ARCANE_ASSERT_TRUE(game.manager.current_scene_path() == "scenes/main.scene.json");
+  for (int i = 0; i < 60; ++i) game.step();
+  ARCANE_ASSERT_TRUE(!f.hud.contains("menu_title") && !f.hud.contains("menu_play") && !f.hud.contains("menu_best"));
+  ARCANE_ASSERT_TRUE(f.hud.find_text("score") && f.hud.find_bar("health") && f.hud.find_text("banner"));
+  ARCANE_ASSERT_TRUE(f.hud.find_button("restart") && f.hud.find_button("restart")->enabled && f.hud.find_text("best"));
+  ARCANE_ASSERT_TRUE(f.hud.find_text("score")->text == "SCORE 0");
+}
+
+void set_save_dir(const std::string& dir) {
+#ifdef _WIN32
+  _putenv_s("ARCANE_SAVE_DIR", dir.c_str());
+#else
+  ::setenv("ARCANE_SAVE_DIR", dir.c_str(), 1);
+#endif
+}
+
+// Finishes level 1 as a standalone run (no SceneManager: the goal ends the run) having collected `coins` coins.
+// Returns the best score the "progress" save holds afterwards.
+int finish_run_with_coins(int coins) {
+  Fixture f({1135.0f, 340.0f});
+  f.context->set_save_config({"arcane_platformer_slice", 1}, true);
+  for (int i = 0; i < coins; ++i) f.named(i == 0 ? "Coin4" : "Coin3")->local_transform().position = {1135.0f, 372.0f};
+  f.start();
+  for (int i = 0; i < 300 && f.hud.find_text("banner")->text != "YOU WIN"; ++i) f.step();
+  ARCANE_ASSERT_TRUE(f.hud.find_text("banner")->text == "YOU WIN");
+  ARCANE_ASSERT_TRUE(f.hud.find_text("score")->text == "SCORE " + std::to_string(10 * coins));
+  // The end of the run offers Restart and Menu (no Resume) and leaves time running.
+  ARCANE_ASSERT_TRUE(f.hud.contains("pause_restart") && f.hud.contains("pause_menu") && !f.hud.contains("pause_resume"));
+  ARCANE_ASSERT_TRUE(!f.context->paused());
+  auto save = f.context->load_save("progress");
+  ARCANE_ASSERT_TRUE(save.has_value());
+  return save->get_int("best_score", -1);
+}
+
+// Winning writes the best score to <ARCANE_SAVE_DIR>/arcane_platformer_slice/progress.save.json; a lower score later
+// does not overwrite it, a higher one does; the HUD and the menu show it. With saves off nothing is written.
+void test_best_score_is_saved() {
+  const auto dir = std::filesystem::temp_directory_path() / "arcane_platformer_slice_save_test";
+  std::filesystem::remove_all(dir);
+  set_save_dir(dir.string());
+
+  ARCANE_ASSERT_TRUE(finish_run_with_coins(1) == 10);
+  ARCANE_ASSERT_TRUE(std::filesystem::exists(dir / "arcane_platformer_slice" / "progress.save.json"));
+  ARCANE_ASSERT_TRUE(finish_run_with_coins(0) == 10);  // a lower score (0) keeps the best
+  ARCANE_ASSERT_TRUE(finish_run_with_coins(2) == 20);
+
+  {  // the next run starts with the best on the HUD
+    Fixture f;
+    f.context->set_save_config({"arcane_platformer_slice", 1}, true);
+    f.start();
+    f.step();
+    ARCANE_ASSERT_TRUE(f.hud.find_text("best")->text == "BEST 20");
+  }
+  {  // saves disabled (headless, replay): nothing is read or written and the HUD stays empty
+    Fixture f({1135.0f, 340.0f});
+    f.start();
+    for (int i = 0; i < 300 && f.hud.find_text("banner")->text != "YOU WIN"; ++i) f.step();
+    ARCANE_ASSERT_TRUE(f.hud.find_text("banner")->text == "YOU WIN" && f.hud.find_text("best")->text.empty());
+  }
+  std::filesystem::remove_all(dir);
+#ifdef _WIN32
+  _putenv_s("ARCANE_SAVE_DIR", "");
+#else
+  ::unsetenv("ARCANE_SAVE_DIR");
+#endif
+}
 
 // Reaching the goal of level 1 switches to level 2 through the SceneManager and keeps the score.
 void test_goal_switches_to_level2_keeping_score() {
@@ -498,6 +671,9 @@ int main() {
   test_stomp_kills_enemy();
   test_side_contact_hurts();
   test_pause_freezes_and_resumes();
+  test_pause_menu_buttons();
+  test_pause_menu_and_menu_scene_flow();
+  test_best_score_is_saved();
   test_goal_switches_to_level2_keeping_score();
   test_level2_standalone_camera_follows();
   return 0;

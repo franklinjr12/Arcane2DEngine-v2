@@ -1,4 +1,9 @@
 {
+  "display": {
+    "design_height": 360,
+    "design_width": 640,
+    "scale_mode": "letterbox"
+  },
   "format": "arcane.project",
   "hud": {
     "elements": [
@@ -17,6 +22,23 @@
           16.0
         ],
         "text": "SCORE 0",
+        "type": "text"
+      },
+      {
+        "anchor": "top_left",
+        "color": [
+          1.0,
+          0.9,
+          0.3,
+          1.0
+        ],
+        "font_scale": 2.0,
+        "id": "best",
+        "offset": [
+          16.0,
+          52.0
+        ],
+        "text": "",
         "type": "text"
       },
       {
@@ -123,6 +145,17 @@
           {
             "code": 263,
             "device": "keyboard"
+          },
+          {
+            "code": 14,
+            "device": "gamepad_button"
+          },
+          {
+            "axis_sign": -1,
+            "code": 0,
+            "deadzone": 0.2,
+            "device": "gamepad_axis",
+            "threshold": 0.5
           }
         ],
         "name": "move_left"
@@ -136,6 +169,17 @@
           {
             "code": 262,
             "device": "keyboard"
+          },
+          {
+            "code": 12,
+            "device": "gamepad_button"
+          },
+          {
+            "axis_sign": 1,
+            "code": 0,
+            "deadzone": 0.2,
+            "device": "gamepad_axis",
+            "threshold": 0.5
           }
         ],
         "name": "move_right"
@@ -145,6 +189,10 @@
           {
             "code": 32,
             "device": "keyboard"
+          },
+          {
+            "code": 0,
+            "device": "gamepad_button"
           }
         ],
         "name": "jump"
@@ -158,6 +206,10 @@
           {
             "code": 256,
             "device": "keyboard"
+          },
+          {
+            "code": 7,
+            "device": "gamepad_button"
           }
         ],
         "name": "pause"
@@ -169,5 +221,9 @@
   "main_scene": "scenes/main.scene.json",
   "module": "platformer_slice_game.so",
   "name": "platformer_slice",
+  "save": {
+    "data_version": 1,
+    "game_id": "arcane_platformer_slice"
+  },
   "version": 2
 }

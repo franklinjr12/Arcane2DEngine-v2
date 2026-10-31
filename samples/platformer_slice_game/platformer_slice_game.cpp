@@ -23,7 +23,9 @@
 #include "arcane/node.hpp"
 #include "arcane/particles.hpp"
 #include "arcane/input.hpp"
+#include "arcane/log.hpp"
 #include "arcane/physics.hpp"
+#include "arcane/save_game.hpp"
 #include "arcane/scene_flow.hpp"
 
 namespace {
@@ -33,6 +35,54 @@ namespace {
 // subtree along. The goal stores the score here and the next level's on_start consumes it (so a standalone load of
 // any level starts at 0); restarting a level re-stores the score it began with.
 int g_carried_score = 0;
+
+constexpr const char* kLog = "platformer_slice";
+constexpr const char* kMenuScene = "scenes/menu.scene.json";
+constexpr const char* kSaveSlot = "progress";  // key "best_score" (project.json "save" names the game folder)
+
+// Best score from the "progress" save. Saves are off in headless/replay runs (the load then errors), which just
+// reads as 0; an error with saves on is logged.
+int load_best_score() {
+  auto* context = arcane::active_game_context();
+  if (!context) return 0;
+  auto save = context->load_save(kSaveSlot);
+  if (!save) {
+    if (context->saves_enabled()) ARCANE_LOG_WARN(kLog, "cannot read the best score: {}", save.error());
+    return 0;
+  }
+  return save->get_int("best_score", 0);
+}
+
+// Writes `score` if it beats the stored best; returns the best score afterwards. Save errors are logged, not fatal.
+int record_best_score(int score) {
+  const int best = load_best_score();
+  if (score <= best) return best;
+  auto* context = arcane::active_game_context();
+  if (!context) return best;
+  auto save = context->load_save(kSaveSlot);
+  arcane::SaveData data = save ? *save : arcane::SaveData{};
+  data.set("best_score", score);
+  if (auto written = context->write_save(kSaveSlot, data); !written) {
+    if (context->saves_enabled()) ARCANE_LOG_WARN(kLog, "cannot write the best score: {}", written.error());
+    return best;
+  }
+  return score;
+}
+
+arcane::HudButton make_button(const char* id, const char* label, float offset_y) {
+  arcane::HudButton button;
+  button.id = id;
+  button.label = label;
+  button.anchor = arcane::HudAnchor::Center;
+  button.offset_y = offset_y;
+  button.width = 200.0f;
+  button.height = 40.0f;
+  return button;
+}
+
+constexpr const char* kResumeId = "pause_resume";
+constexpr const char* kRestartId = "pause_restart";
+constexpr const char* kMenuId = "pause_menu";
 
 class SliceRules : public arcane::Component {
  public:
@@ -65,6 +115,15 @@ class SliceRules : public arcane::Component {
     if (player_) respawn_ = player_->world_transform().position;
     score_ = entry_score_ = g_carried_score;
     g_carried_score = 0;
+    best_ = load_best_score();
+  }
+
+  // Menu buttons are HUD elements this component added: leaving the scene must not leave them behind.
+  void on_destroy() override {
+    if (paused_) {
+      if (auto* context = arcane::active_game_context()) context->set_time_scale(1.0f);
+    }
+    set_menu_open(false, false);
   }
 
   // Called by SliceTrigger when the Player enters the sensor `trigger` of the given kind.
@@ -114,8 +173,12 @@ class SliceRules : public arcane::Component {
 
     arcane::Hud* hud = arcane::active_hud();
     if (hud && hud->clicked("restart")) restart();
+    if (hud && hud->contains(kResumeId) && hud->clicked(kResumeId)) set_paused(false);
+    else if (hud && hud->contains(kRestartId) && hud->clicked(kRestartId)) restart();
+    else if (hud && hud->contains(kMenuId) && hud->clicked(kMenuId)) go_to_menu();
     auto* input = arcane::active_input_map();
     if (input && input->pressed("pause") && !won_ && !dead()) set_paused(!paused_);
+    if (dead()) finish_run();
     hurt_timer_ = std::max(0.0f, hurt_timer_ - dt);
 
     if (!won_ && !dead()) {
@@ -142,6 +205,8 @@ class SliceRules : public arcane::Component {
   // Restart reloads the authored scene (coins, player, this component) through the runner; without a game
   // context only the counters can be reset.
   void restart() {
+    set_paused(false);
+    set_menu_open(false, false);  // a reload does not run on_destroy
     // Under a SceneManager the level being played may not be the project's main scene, which is all the runner's
     // restart reloads, so reload this one through the manager (applied after the current tick, without a fade).
     if (auto* manager = arcane::active_scene_manager(); manager && !manager->current_scene_path().empty()) {
@@ -156,33 +221,60 @@ class SliceRules : public arcane::Component {
     score_ = 0;
     health_ = 1.0f;
     won_ = false;
+    finished_ = false;
     hurt_timer_ = 0.0f;
   }
 
   void go_to_next_level() {
     auto* manager = arcane::active_scene_manager();
-    if (next_scene.empty() || !manager || switching_) return;
+    if (next_scene.empty() || !manager) {  // the last level: the run is over
+      finish_run();
+      return;
+    }
+    if (switching_) return;
     switching_ = true;
     g_carried_score = score_;
     manager->request_switch(next_scene);
   }
 
-  // Deactivates every gameplay node (all of the Level's children and any other root) except the camera, the Level
-  // node itself and the HUD, remembering exactly which ones so a resume wakes only those.
+  // The run is over (YOU WIN on the last level, or GAME OVER): record the best score and offer Restart and Menu.
+  void finish_run() {
+    if (finished_) return;
+    finished_ = true;
+    best_ = record_best_score(score_);
+    set_menu_open(true, false);
+  }
+
+  void go_to_menu() {
+    if (auto* manager = arcane::active_scene_manager()) manager->request_switch(kMenuScene);
+  }
+
+  // Pausing is the game context's time scale: the scene keeps updating at dt 0 (so `pause` and the buttons are still
+  // read) while physics and every dt-driven component stand still. Without a GameContext there is nothing to scale.
   void set_paused(bool paused) {
+    auto* context = arcane::active_game_context();
+    if (paused == paused_ || !context) return;
     paused_ = paused;
-    if (!paused) {
-      for (arcane::NodeId id : frozen_) if (auto* held = scene()->find_node(id)) held->set_active(true);
-      frozen_.clear();
-      return;
+    context->set_time_scale(paused ? 0.0f : 1.0f);
+    set_menu_open(paused, true);
+  }
+
+  // The pause / end-of-run menu: a centred column of HUD buttons, removed again on close. The level HUD's own
+  // RESTART button is disabled while it is open, so D-pad down (which focuses the first enabled button) lands on the
+  // menu's first button rather than the screen corner.
+  void set_menu_open(bool open, bool resumable) {
+    arcane::Hud* hud = arcane::active_hud();
+    if (!hud) return;
+    for (const char* id : {kResumeId, kRestartId, kMenuId}) hud->remove(id);
+    if (auto* corner = hud->find_button("restart")) corner->enabled = !open;
+    if (!open) return;
+    float y = 10.0f;
+    if (resumable) {
+      hud->add(make_button(kResumeId, "RESUME", y));
+      y += 50.0f;
     }
-    auto hold = [this](arcane::Node& candidate) {
-      if (&candidate == node() || !candidate.active() || candidate.find_component("Camera2D")) return;
-      frozen_.push_back(candidate.id());
-      candidate.set_active(false);
-    };
-    for (const auto& child : node()->children()) hold(*child);
-    for (const auto& root : scene()->roots()) hold(*root);
+    hud->add(make_button(kRestartId, "RESTART", y));
+    hud->add(make_button(kMenuId, "MENU", y + 50.0f));
   }
 
   static arcane::Node* find_named(arcane::Node& root, const std::string& name) {
@@ -242,6 +334,7 @@ class SliceRules : public arcane::Component {
     if (auto* text = hud->find_text("score")) text->text = std::format("SCORE {}", score_);
     if (auto* text = hud->find_text("banner")) text->text = won_ ? (switching_ ? "" : "YOU WIN") : (dead() ? "GAME OVER" : (paused_ ? "PAUSED" : ""));
     if (auto* bar = hud->find_bar("health")) bar->fraction = health_;
+    if (auto* text = hud->find_text("best")) text->text = best_ > 0 ? std::format("BEST {}", best_) : std::string();
   }
 
   static constexpr float kStompHeight = 24.0f;      // player centre this far above the enemy centre = on top
@@ -255,8 +348,9 @@ class SliceRules : public arcane::Component {
   bool won_ = false;
   bool paused_ = false;
   bool switching_ = false;
+  bool finished_ = false;
+  int best_ = 0;
   int entry_score_ = 0;  // score when this level began (restart returns to it)
-  std::vector<arcane::NodeId> frozen_;
   int checkpoints_ = 0;
   arcane::Vec2 respawn_{};
   arcane::Node* player_ = nullptr;
@@ -313,6 +407,71 @@ class PatrolEnemy : public arcane::Component {
   float dir_ = 1.0f;
 };
 
+// The menu scene (scenes/menu.scene.json): title, best score and a PLAY button, all HUD elements this component adds
+// on start and removes on destroy. The level HUD from project.json is set aside while the menu is up and put back
+// when the scene is left, so the project's hud stays the level HUD.
+class MenuController : public arcane::Component {
+ public:
+  std::string title = "PLATFORMER SLICE";
+  std::string play_scene = "scenes/main.scene.json";
+
+  void on_start() override {
+    arcane::Hud* hud = arcane::active_hud();
+    if (!hud) return;
+    for (const char* id : {"score", "health", "banner", "restart", "best"}) {
+      for (const auto& element : hud->elements()) {
+        if (element_id(element) == id) {
+          stashed_.push_back(element);
+          break;
+        }
+      }
+      hud->remove(id);
+    }
+    arcane::HudText heading;
+    heading.id = "menu_title";
+    heading.text = title;
+    heading.anchor = arcane::HudAnchor::Center;
+    heading.offset_y = -90.0f;
+    heading.font_scale = 5.0f;
+    heading.color = {1.0f, 0.9f, 0.3f, 1.0f};
+    hud->add(heading);
+    arcane::HudText best;
+    best.id = "menu_best";
+    best.text = std::format("BEST {}", load_best_score());
+    best.anchor = arcane::HudAnchor::Center;
+    best.offset_y = -30.0f;
+    best.font_scale = 3.0f;
+    best.color = {1.0f, 1.0f, 1.0f, 1.0f};
+    hud->add(best);
+    hud->add(make_button("menu_play", "PLAY", 30.0f));
+  }
+
+  void on_update(float) override {
+    arcane::Hud* hud = arcane::active_hud();
+    auto* manager = arcane::active_scene_manager();
+    if (hud && manager && !switching_ && hud->contains("menu_play") && hud->clicked("menu_play")) {
+      switching_ = true;
+      manager->request_switch(play_scene);
+    }
+  }
+
+  void on_destroy() override {
+    arcane::Hud* hud = arcane::active_hud();
+    if (!hud) return;
+    for (const char* id : {"menu_title", "menu_best", "menu_play"}) hud->remove(id);
+    for (auto& element : stashed_) hud->add(std::move(element));
+    stashed_.clear();
+  }
+
+ private:
+  static const std::string& element_id(const arcane::HudElement& element) {
+    return std::visit([](const auto& e) -> const std::string& { return e.id; }, element);
+  }
+
+  std::vector<arcane::HudElement> stashed_;
+  bool switching_ = false;
+};
+
 void register_types(arcane::ComponentRegistry& registry) {
   using arcane::PropertyType;
   registry.register_component(
@@ -324,6 +483,12 @@ void register_types(arcane::ComponentRegistry& registry) {
           arcane::make_property<SliceRules>("hurt_cooldown", PropertyType::Float, &SliceRules::hurt_cooldown),
           arcane::make_property<SliceRules>("enemy_value", PropertyType::Int, &SliceRules::enemy_value),
           arcane::make_property<SliceRules>("next_scene", PropertyType::String, &SliceRules::next_scene),
+      });
+  registry.register_component(
+      "MenuController", [] { return std::make_unique<MenuController>(); },
+      {
+          arcane::make_property<MenuController>("title", PropertyType::String, &MenuController::title),
+          arcane::make_property<MenuController>("play_scene", PropertyType::String, &MenuController::play_scene),
       });
   registry.register_component(
       "SliceTrigger", [] { return std::make_unique<SliceTrigger>(); },

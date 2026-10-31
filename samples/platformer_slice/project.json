@@ -3,6 +3,15 @@
   "name": "platformer_slice",
   "main_scene": "scenes/main.scene.json",
   "module": "platformer_slice_game.so",
+  "display": {
+    "design_width": 640,
+    "design_height": 360,
+    "scale_mode": "letterbox"
+  },
+  "save": {
+    "game_id": "arcane_platformer_slice",
+    "data_version": 1
+  },
   "input_actions": {
     "format_version": 1,
     "actions": [
@@ -16,6 +25,17 @@
           {
             "device": "keyboard",
             "code": 263
+          },
+          {
+            "device": "gamepad_button",
+            "code": 14
+          },
+          {
+            "device": "gamepad_axis",
+            "code": 0,
+            "axis_sign": -1,
+            "deadzone": 0.2,
+            "threshold": 0.5
           }
         ]
       },
@@ -29,6 +49,17 @@
           {
             "device": "keyboard",
             "code": 262
+          },
+          {
+            "device": "gamepad_button",
+            "code": 12
+          },
+          {
+            "device": "gamepad_axis",
+            "code": 0,
+            "axis_sign": 1,
+            "deadzone": 0.2,
+            "threshold": 0.5
           }
         ]
       },
@@ -38,6 +69,10 @@
           {
             "device": "keyboard",
             "code": 32
+          },
+          {
+            "device": "gamepad_button",
+            "code": 0
           }
         ]
       },
@@ -51,6 +86,10 @@
           {
             "device": "keyboard",
             "code": 256
+          },
+          {
+            "device": "gamepad_button",
+            "code": 7
           }
         ]
       }
@@ -73,6 +112,23 @@
           1,
           1,
           1,
+          1
+        ]
+      },
+      {
+        "type": "text",
+        "id": "best",
+        "text": "",
+        "anchor": "top_left",
+        "offset": [
+          16,
+          52
+        ],
+        "font_scale": 2.0,
+        "color": [
+          1,
+          0.9,
+          0.3,
           1
         ]
       },
