@@ -76,14 +76,14 @@ Component: an integer component id, or a type name attached exactly once.
 | `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
 | `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |
 | `transition.get` | none | `{fade_out_seconds, fade_in_seconds, color}` from `project.json` |
-| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `transition.set` with the previous values |
+| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; edits the project in memory like `project.set` (the CLI persists `project.json`, the editor undoes it and File > Save writes it); inverse is `transition.set` with the previous values |
 | `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
-| `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `debug.set` with the previous values |
+| `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; edits the project in memory like `project.set`; inverse is `debug.set` with the previous values |
 | `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
 | `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
 | `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |
 | `save.config_get` | none | `{game_id, data_version, directory}` |
-| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; writes `project.json` at once; inverse restores the previous values |
+| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; edits the project in memory like `project.set`; inverse restores the previous values |
 | `save.list` | `dir?` | `{directory, slots:[{slot, data_version, valid}]}` |
 | `save.get` | `slot`, `key?`, `dir?` | `{data_version, values}` or `{key, value, data_version}` |
 | `save.set` | `slot`, `key`, `value`, `create?`, `dir?` | `{slot, key, value, previous}`; atomic write; `create` makes a missing slot at the project's `data_version` |
@@ -156,6 +156,8 @@ problems and the file is never changed). Their inverses are the matching tileset
 | `tilemap.add_layer` (mutating) | `node` | index of the new empty layer |
 | `tileset.create` | `tileset`, `texture`, `tile_width`, `tile_height`, `columns`, `tile_count`, `overwrite?` | writes the tileset file at once |
 | `tileset.info` | `tileset` | sheet layout, per-tile solid/terrain flags and terrain rules |
+| `tileset.replace` | `tileset`, sheet layout as `tileset.create`, `tiles?` `[{id, solid?, terrain?}]`, `terrains?` `[{terrain, tiles[16]}]` | writes the whole file at once (the editor's Save tileset); inverse `tileset.restore` |
+| `tileset.restore` | `tileset`, `content` or `absent=true` | puts the file back; only used as an inverse |
 | `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?` | writes the file at once |
 | `tileset.set_rule` | `tileset`, `terrain`, `tiles` (16 ids by neighbour mask) | adds or replaces the rule; writes the file at once |
 | `tileset.remove_rule` | `tileset`, `terrain` | removes the rule; writes the file at once |

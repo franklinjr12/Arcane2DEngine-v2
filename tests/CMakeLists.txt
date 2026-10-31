@@ -211,6 +211,7 @@ add_test(NAME test_tooling_commands COMMAND test_tooling_commands)
 # AF5B: editor edit path (EditSession): GUI-vs-CLI parity, undo/redo, drag coalescing, save point, direct-write lint.
 add_executable(test_edit_session test_edit_session.cpp)
 target_link_libraries(test_edit_session PRIVATE arcane_tooling)
+target_include_directories(test_edit_session SYSTEM PRIVATE ${TP}/stb)
 target_compile_definitions(test_edit_session PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
   ARCANE_EDITOR_SOURCE_PATH="${CMAKE_SOURCE_DIR}/editor/app/editor_main.cpp")

@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <map>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -320,13 +321,14 @@ struct ClipPanelState {
 };
 
 // Authors a clip from a sprite sheet grid: pick the sheet, set the grid, add/reorder
-// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it). The draft is transient;
-// Save runs clip.create (overwrite) through `run_clip`, which returns an error message or nullopt on success.
+// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it). The draft is transient view state;
+// Open clip reads with clip.info and Save runs clip.create (overwrite, one undoable step) through `run_clip`, which
+// returns the command result or an error message.
 // `saved` is called after a successful save so the caller can rescan assets.
 void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
                      const std::vector<arcane::editor::AssetEntry>& images, const std::filesystem::path& project_dir,
                      const std::filesystem::path& assets_dir, float dt,
-                     const std::function<std::optional<std::string>(const arcane::tooling::Invocation&)>& run_clip,
+                     const std::function<std::expected<arcane::tooling::CommandResult, std::string>(const arcane::tooling::Invocation&)>& run_clip,
                      const std::function<void()>& saved) {
   auto& d = st.draft;
   const arcane::editor::AssetEntry* sheet_entry = nullptr;
@@ -395,14 +397,28 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
     const std::filesystem::path rel(st.file_name);
     if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
       st.status = "invalid file name";
-    } else if (auto loaded = arcane::editor::load_clip_file(assets_dir / rel); !loaded) {
-      st.status = loaded.error();
-    } else if (auto reopened = arcane::editor::draft_from_clip(*loaded, d.grid, tex->width(), tex->height()); !reopened) {
-      st.status = "cannot reopen on this grid: " + reopened.error();
+    } else if (!sheet_entry) {
+      st.status = "the sheet is not in the asset list";
     } else {
-      d = std::move(*reopened);
-      std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
-      st.status = "opened " + rel.string();
+      // clip.info with the sheet and grid reopens the clip on that grid (frames off the grid are an error).
+      const std::string clip_path = (std::filesystem::relative(assets_dir, project_dir) / rel).generic_string();
+      const std::string sheet_path = std::filesystem::relative(sheet_entry->absolute_path, project_dir).generic_string();
+      auto opened = run_clip({"clip.info",
+                              {{"clip", clip_path}, {"sheet", sheet_path}, {"columns", d.grid.columns}, {"rows", d.grid.rows},
+                               {"frame_width", d.grid.frame_width}, {"frame_height", d.grid.frame_height},
+                               {"margin", d.grid.margin}, {"spacing", d.grid.spacing}}});
+      if (!opened) {
+        st.status = "cannot reopen on this grid: " + opened.error();
+      } else {
+        const auto& v = opened->value;
+        d.name = v["name"].get<std::string>();
+        d.loop = v["loop"].get<bool>();
+        d.fps = v["fps"].get<float>();
+        d.cells = v["cells"].get<std::vector<int>>();
+        d.durations = v["durations"].get<std::vector<float>>();
+        std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
+        st.status = "opened " + rel.string();
+      }
     }
   }
   ImGui::SameLine();
@@ -423,9 +439,9 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
            {"frame_width", d.grid.frame_width}, {"frame_height", d.grid.frame_height}, {"margin", d.grid.margin},
            {"spacing", d.grid.spacing}, {"cells", d.cells}, {"fps", d.fps}, {"durations", d.durations},
            {"loop", d.loop}, {"name", d.name}, {"overwrite", true}}};
-      const auto failure = run_clip(call);
-      st.status = failure ? *failure : "saved " + rel.string();
-      if (!failure) saved();
+      const auto done = run_clip(call);
+      st.status = done ? "saved " + rel.string() : done.error();
+      if (done) saved();
     }
   }
   if (!st.status.empty()) ImGui::TextUnformatted(st.status.c_str());
@@ -924,11 +940,23 @@ int main(int argc, char** argv) {
       if (ImGui::TreeNode("Open tileset")) {
         for (const auto& asset : arcane::editor::list_animation_clip_assets(session.assets_dir())) {
           if (ImGui::Selectable(asset.relative_path.c_str())) {
-            std::ifstream in(asset.absolute_path);
-            std::string content((std::istreambuf_iterator<char>(in)), {});
-            auto loaded = arcane::load_tileset_from_json(content);
-            if (loaded) { tileset_draft = *loaded; tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear(); }
-            else tileset_message = loaded.error();
+            const std::string file = std::filesystem::relative(asset.absolute_path, (*context)->project_dir()).generic_string();
+            auto info = commands.execute(**context, {"tileset.info", {{"tileset", file}}});
+            if (info) {
+              const auto& v = info->value;
+              arcane::Tileset loaded;
+              loaded.texture = v["texture"]; loaded.tile_width = v["tile_width"]; loaded.tile_height = v["tile_height"];
+              loaded.columns = v["columns"]; loaded.tile_count = v["tile_count"];
+              loaded.tiles.resize(static_cast<std::size_t>(loaded.tile_count));
+              for (const auto& tile : v["tiles"]) {
+                loaded.tiles[tile["id"].get<std::size_t>() - 1] = {tile["solid"].get<bool>(), tile["terrain"].get<int>()};
+              }
+              for (const auto& rule : v["terrains"]) {
+                arcane::TerrainRule r; r.terrain = rule["terrain"]; r.tiles = rule["tiles"].get<decltype(r.tiles)>();
+                loaded.terrains.push_back(r);
+              }
+              tileset_draft = std::move(loaded); tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear();
+            } else tileset_message = info.error().message;
           }
         }
         ImGui::TreePop();
@@ -968,28 +996,21 @@ int main(int argc, char** argv) {
           ImGui::TreePop();
         }
         if (ImGui::Button("Save tileset")) {
-          // The draft is written by the same tileset.* commands the CLI uses: create (overwrite), then tile flags and rules.
+          // One tileset.replace through the EditSession: a single undoable step (Edit > Undo restores the old file).
           using arcane::tooling::Json;
-          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
-          std::string failure;
-          auto step = [&](const char* command, Json call_args) {
-            if (!failure.empty()) return;
-            auto done = commands.execute(**context, {command, std::move(call_args)});
-            if (!done) failure = done.error().message;
-          };
-          step("tileset.create", {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
-                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
-                                  {"tile_count", tileset_draft.tile_count}, {"overwrite", true}});
+          Json tiles = Json::array(), terrains = Json::array();
           for (std::size_t i = 0; i < tileset_draft.tiles.size(); ++i) {
             const auto& tile = tileset_draft.tiles[i];
-            if (tile.solid || tile.terrain != 0) {
-              step("tileset.set_tile", {{"tileset", file}, {"tile", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
-            }
+            if (tile.solid || tile.terrain != 0) tiles.push_back({{"id", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
           }
-          for (const auto& rule : tileset_draft.terrains) {
-            step("tileset.set_rule", {{"tileset", file}, {"terrain", rule.terrain}, {"tiles", rule.tiles}});
-          }
-          tileset_message = failure.empty() ? "Saved." : "Could not save tileset: " + failure;
+          for (const auto& rule : tileset_draft.terrains) terrains.push_back({{"terrain", rule.terrain}, {"tiles", rule.tiles}});
+          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
+          auto done = edits.run({"tileset.replace",
+                                 {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
+                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
+                                  {"tile_count", tileset_draft.tile_count}, {"tiles", tiles}, {"terrains", terrains}}});
+          edits.end_gesture();
+          tileset_message = done ? "Saved." : "Could not save tileset: " + done.error().message;
           tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
           tilesets.refresh();
         }
@@ -1003,10 +1024,12 @@ int main(int argc, char** argv) {
       ImGui::BeginDisabled(!editable);
       draw_clip_panel(clip_panel, textures, arcane::editor::list_image_assets(session.assets_dir()),
                       (*context)->project_dir(), session.assets_dir(), static_cast<float>(delta_seconds),
-                      [&](const arcane::tooling::Invocation& call) -> std::optional<std::string> {
-                        auto done = commands.execute(**context, call);  // immediate file write, no scene history
-                        if (!done) return done.error().message;
-                        return std::nullopt;
+                      [&](const arcane::tooling::Invocation& call) -> std::expected<arcane::tooling::CommandResult, std::string> {
+                        // clip.info is a read; clip.create goes through the EditSession (one undoable file write).
+                        auto done = call.command == "clip.info" ? commands.execute(**context, call) : edits.run(call);
+                        edits.end_gesture();
+                        if (!done) return std::unexpected(done.error().message);
+                        return *done;
                       },
                       [&] { clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir())); });
       ImGui::EndDisabled();
@@ -1090,23 +1113,59 @@ int main(int argc, char** argv) {
       ImGui::BeginDisabled(!editable);
       // Edits are project.set commands; a field shows the project value until it is being typed in, and one
       // typing gesture (same coalesce key) is one undo step.
-      auto project_field = [&](const char* label, const char* key, const std::string& current) {
+      auto project_field = [&](const char* label, const char* command, const char* key, const std::string& current) {
         static std::map<std::string, std::string> buffers;
-        std::string& buffer = buffers[key];
+        std::string& buffer = buffers[std::string(command) + key];
         if (buffer.empty() || !ImGui::IsAnyItemActive()) buffer = current;
         char text[512] = {};
         std::snprintf(text, sizeof(text), "%s", buffer.c_str());
         if (ImGui::InputText(label, text, sizeof(text))) {
           buffer = text;
-          run_edit({"project.set", {{key, buffer}}}, std::string("project.") + key);
+          run_edit({command, {{key, buffer}}}, std::string(command) + "." + key);
         }
         if (ImGui::IsItemDeactivated()) edits.end_gesture();
       };
       const auto& project = session.project();
-      project_field("Name", "name", project.name);
-      project_field("Main scene", "main_scene", project.main_scene);
-      project_field("Module", "module", project.module);
+      project_field("Name", "project.set", "name", project.name);
+      project_field("Main scene", "project.set", "main_scene", project.main_scene);
+      project_field("Module", "project.set", "module", project.module);
       ImGui::TextDisabled("Main scene and module take effect on next open.");
+
+      // Scene transition, save and debug settings: transition.set / save.config_set / debug.set, in the same history.
+      using arcane::tooling::Json;
+      ImGui::SeparatorText("Scene transition");
+      float fade_out = project.transition.fade_out_seconds, fade_in = project.transition.fade_in_seconds;
+      if (ImGui::DragFloat("Fade out (s)", &fade_out, 0.01f, 0.0f, 60.0f)) {
+        run_edit({"transition.set", {{"fade_out_seconds", fade_out}}}, "transition.fade_out");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      if (ImGui::DragFloat("Fade in (s)", &fade_in, 0.01f, 0.0f, 60.0f)) {
+        run_edit({"transition.set", {{"fade_in_seconds", fade_in}}}, "transition.fade_in");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      float fade_color[4] = {project.transition.color.r, project.transition.color.g, project.transition.color.b, project.transition.color.a};
+      if (ImGui::ColorEdit4("Fade colour", fade_color)) {
+        run_edit({"transition.set", {{"color", Json::array({fade_color[0], fade_color[1], fade_color[2], fade_color[3]})}}},
+                 "transition.color");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+
+      ImGui::SeparatorText("Save");
+      project_field("Game id", "save.config_set", "game_id", project.save.game_id);
+      int data_version = project.save.data_version;
+      if (ImGui::InputInt("Data version", &data_version) && data_version >= 1) {
+        run_edit({"save.config_set", {{"data_version", data_version}}}, "save.data_version");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+
+      ImGui::SeparatorText("Debug overlay");
+      bool overlay_visible = project.debug.overlay_visible;
+      if (ImGui::Checkbox("Visible at start", &overlay_visible)) run_edit({"debug.set", {{"overlay_visible", overlay_visible}}});
+      float font_scale = project.debug.overlay_font_scale;
+      if (ImGui::DragFloat("Font scale", &font_scale, 0.01f, 0.1f, 8.0f)) {
+        run_edit({"debug.set", {{"overlay_font_scale", font_scale}}}, "debug.font_scale");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
       ImGui::EndDisabled();
     }
     ImGui::End();
