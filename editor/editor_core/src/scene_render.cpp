@@ -180,7 +180,7 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     }
 
     const auto world = node->world_transform();
-    renderer.draw(SpriteDraw{
+    SpriteDraw draw{
         .texture = texture,
         .x = world.position.x,
         .y = world.position.y,
@@ -189,7 +189,36 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         .rotation_radians = world.rotation_radians,
         .tint = sprite->tint,
         .uv = uv,
-    });
+    };
+    const auto* parallax = static_cast<ParallaxLayer*>(node->find_component("ParallaxLayer"));
+    if (!parallax) {
+      renderer.draw(draw);
+      return;
+    }
+    // Shift by camera * (1 - factor), then repeat the sprite over the visible world rectangle.
+    draw.x += cam_x * (1.0f - parallax->factor.x);
+    draw.y += cam_y * (1.0f - parallax->factor.y);
+    const float view_w = static_cast<float>(width) / cam_zoom, view_h = static_cast<float>(height) / cam_zoom;
+    const float period_x = std::fabs(draw.width), period_y = std::fabs(draw.height);
+    constexpr int kMaxRepeats = 256;  // guards against a tiny sprite on a huge view
+    auto repeat_range = [&](bool repeat, float origin, float period, float cam, float view, int& first, int& last) {
+      first = last = 0;
+      if (!repeat || period < 1e-3f) return;
+      first = static_cast<int>(std::floor((cam - view * 0.5f - origin) / period));
+      last = static_cast<int>(std::floor((cam + view * 0.5f - origin) / period)) + 1;
+      if (last - first > kMaxRepeats) last = first + kMaxRepeats;
+    };
+    int x0, x1, y0, y1;
+    repeat_range(parallax->repeat_x, draw.x, period_x, cam_x, view_w, x0, x1);
+    repeat_range(parallax->repeat_y, draw.y, period_y, cam_y, view_h, y0, y1);
+    const float base_x = draw.x, base_y = draw.y;
+    for (int iy = y0; iy <= y1; ++iy) {
+      for (int ix = x0; ix <= x1; ++ix) {
+        draw.x = base_x + static_cast<float>(ix) * period_x;
+        draw.y = base_y + static_cast<float>(iy) * period_y;
+        renderer.draw(draw);
+      }
+    }
   });
 
   if (hud_renderer && hud) hud_renderer->draw(*hud, renderer, width, height);

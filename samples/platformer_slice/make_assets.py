@@ -46,6 +46,13 @@ def coin(x, y):
     return (250, 210, 40, 255) if (x - 7.5) ** 2 + (y - 7.5) ** 2 <= 49 else (0, 0, 0, 0)
 write_png(A + "coin.png", 16, 16, sheet(16, 16, coin))
 
+# sky.png: 128x600 backdrop tile (repeats horizontally as a ParallaxLayer): gradient sky with two hill bumps
+def sky(x, y):
+    hill = 430 - int(50 * math.sin(x / 128 * 2 * math.pi) ** 2) - (30 if 40 < x < 90 else 0)
+    if y >= hill: return (60, 110, 90, 255)
+    return (110 + y // 12, 170 + y // 20, 235, 255)
+write_png(A + "sky.png", 128, 600, sheet(128, 600, sky))
+
 def beep(name, freq, secs):
     w = wave.open(A + name, "wb"); w.setnchannels(1); w.setsampwidth(2); w.setframerate(22050)
     w.writeframes(b"".join(struct.pack("<h", int(8000 * math.sin(2 * math.pi * freq * i / 22050) * (1 - i / (22050 * secs))))
@@ -74,8 +81,10 @@ white = [1.0, 1.0, 1.0, 1.0]
 level = node("Level", (0, 0), 0, [("SliceRules", {
     "idle_clip": fnv1a("hero_idle.json"), "run_clip": fnv1a("hero_run.json"),
     "win_x": 1300.0, "pit_y": 700.0, "coin_value": 10, "hurt_cooldown": 1.0})])
-node("MainCamera", (400, 300), level, [("Camera", {"zoom": 1.0, "primary": True})])
-node("Player", (64, 340), level, [
+node("Sky", (400, 300), level, [
+    ("Sprite", {"texture": fnv1a("sky.png"), "width": 128.0, "height": 600.0, "tint": white}),
+    ("ParallaxLayer", {"factor": [0.3, 1.0], "repeat_x": True, "repeat_y": False})])
+player = node("Player", (64, 340), level, [
     ("Sprite", {"texture": fnv1a("hero.png"), "width": 32.0, "height": 48.0, "tint": white}),
     ("AnimatedSprite", {"clip": fnv1a("hero_idle.json"), "speed": 1.0, "playing": True}),
     ("RigidBody2D", {"body_type": 2, "linear_velocity": [0.0, 0.0], "gravity_scale": 1.0, "fixed_rotation": True}),
@@ -85,6 +94,12 @@ node("Player", (64, 340), level, [
         "air_control": 0.6, "jump_speed": 420.0, "fall_gravity_scale": 1.6, "jump_cut": 0.5, "max_fall_speed": 700.0,
         "coyote_time": 0.1, "jump_buffer_time": 0.1, "left_action": "move_left", "right_action": "move_right",
         "jump_action": "jump"})])
+# Follows the Player; the 800x600 design view is kept inside the 1280-wide level (the old left floor of 400).
+node("MainCamera", (400, 300), level, [("Camera2D", {
+    "primary": True, "zoom": 1.0, "target": player, "smoothing": 8.0, "deadzone": [16.0, 100.0],
+    "look_ahead": [40.0, 0.0], "bounds_tilemap": 0, "bounds_enabled": True,
+    "bounds_min": [0.0, 0.0], "bounds_max": [1280.0, 600.0], "pixel_snap": False,
+    "shake_amplitude": 0.0, "shake_duration": 0.0, "shake_seed": 1})])
 W, H = 40, 2
 cells = [[0] * W for _ in range(H)]
 for x in range(W):

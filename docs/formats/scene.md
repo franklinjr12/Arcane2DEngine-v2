@@ -64,6 +64,12 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 
 `bounds_enabled`, `bounds_min`, and `bounds_max` define an explicit world rectangle, including tilemap extents if entered by the author. The viewport is clamped inside it; if the viewport is larger than an axis of the rectangle, that axis is centered. `pixel_snap` rounds the final center to screen-pixel increments at the current zoom. `shake_amplitude`, `shake_duration`, and integer `shake_seed` configure a deterministic, linearly decaying shake starting at Play; C++ can restart it with `start_shake()`. Camera tracking and shake advance on fixed scene ticks; transient state is not serialized. Clamp precedes pixel snapping, so snapping can move the view by at most half a screen pixel beyond a bound.
 
+`look_ahead` (Vec2, world units) leads the followed target in the direction it last moved on each axis (standing still keeps the previous lead). `bounds_tilemap` is a node ID whose `Tilemap` world rectangle (`tile size * cells * node scale`, from the node position) replaces `bounds_min`/`bounds_max`; 0 or a node without a Tilemap falls back to the explicit rectangle. Both are plain registered properties (`prop.set`, Inspector).
+
+## ParallaxLayer
+
+`ParallaxLayer` sits on a node with a `Sprite` and draws it shifted by `camera * (1 - factor)` per axis (`factor` Vec2, default `[0.5, 0.5]`): 1 moves with the world, 0 stays fixed on screen. `repeat_x` / `repeat_y` tile the sprite (its scaled width/height is the period) across the whole visible rectangle, so it works with any `Camera2D.zoom` and viewport size. Layers draw in scene order like any Sprite: put background nodes before the level. Modules can read the view size with `GameContext::viewport_size()`.
+
 Every Camera2D property can be read and set with the shared `prop.get` / `prop.set` commands (`docs/commands.md`), which validate the value encoding before writing; `tests/test_tooling_commands.cpp` round-trips all settings, including a seeded shake that replays identically after reopening the project. Gap: the `arcane` CLI (AF4) and node/component creation commands do not exist yet, so adding a Camera2D to a scene still happens in the editor or by editing canonical scene JSON, and the editor Inspector does not yet route through the commands.
 
 ## AudioSource

@@ -1199,6 +1199,7 @@ int main(int argc, char** argv) {
       viewport_origin = {image_min.x, image_min.y};
       viewport_w = viewport.width();
       viewport_h = viewport.height();
+      game_context.set_viewport_size(viewport_w, viewport_h);
 
       if (paint_mode && paint_map) {
         const bool left = ImGui::IsMouseDown(ImGuiMouseButton_Left);

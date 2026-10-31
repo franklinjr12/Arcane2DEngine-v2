@@ -77,6 +77,14 @@ void test_teleport_moves_body_and_stops_it() {
   ARCANE_ASSERT_TRUE(body->linear_velocity.y < 20.0f);  // the old fall speed is gone
 }
 
+void test_viewport_size() {
+  auto registry = make_registry();
+  arcane::GameContext context(std::filesystem::temp_directory_path(), registry);
+  ARCANE_ASSERT_TRUE(context.viewport_size().width == 800 && context.viewport_size().height == 600);
+  context.set_viewport_size(1280, 720);
+  ARCANE_ASSERT_TRUE(context.viewport_size().width == 1280 && context.viewport_size().height == 720);
+}
+
 void test_destroy_and_spawn_during_update_keep_bodies_in_sync() {
   auto registry = make_registry();
   arcane::GameContext context(std::filesystem::temp_directory_path(), registry);
@@ -179,6 +187,7 @@ void test_restart_reloads_authored_scene() {
 
 int main() {
   test_teleport_moves_body_and_stops_it();
+  test_viewport_size();
   test_destroy_and_spawn_during_update_keep_bodies_in_sync();
   test_scene_pointer_survives_moves();
   test_asset_lookup_and_audio_by_id();

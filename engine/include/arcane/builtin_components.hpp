@@ -42,6 +42,8 @@ class ARCANE_API Camera2D : public Component {
   EntityId target = 0;
   float smoothing = 0.0f;  // exponential rate per second; zero follows immediately
   Vec2 deadzone{};         // half-size in world units
+  Vec2 look_ahead{};       // world units the view leads the target's last horizontal/vertical movement direction
+  EntityId bounds_tilemap = 0;  // node with a Tilemap whose world rectangle becomes the bounds (0 = use bounds_min/max)
   bool bounds_enabled = false;
   Vec2 bounds_min{};
   Vec2 bounds_max{};
@@ -57,12 +59,29 @@ class ARCANE_API Camera2D : public Component {
   void on_start() override;
 
  private:
+  void resolve_tilemap_bounds(const Scene& scene);
   Vec2 center_{};
   Vec2 shake_offset_{};
+  Vec2 last_target_{};
+  Vec2 lead_dir_{};
+  bool has_last_target_ = false;
+  Vec2 tilemap_min_{};
+  Vec2 tilemap_max_{};
+  bool tilemap_bounds_ = false;
   float shake_remaining_ = 0.0f;
   float shake_total_ = 0.0f;
   std::uint32_t random_state_ = 1;
   bool initialized_ = false;
+};
+
+// Background layer: the node's Sprite is drawn shifted by camera * (1 - factor), so factor 1 moves with the world,
+// 0 stays fixed on screen and values between give depth. repeat_x/repeat_y tile the sprite (its scaled width/height
+// is the period) across the whole view. Drawn in scene order like any Sprite, so put background nodes first.
+class ARCANE_API ParallaxLayer : public Component {
+ public:
+  Vec2 factor{0.5f, 0.5f};
+  bool repeat_x = false;
+  bool repeat_y = false;
 };
 
 // Registers Sprite and Camera into `registry` under the type names "Sprite"

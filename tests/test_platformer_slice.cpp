@@ -8,6 +8,7 @@
 
 #include "arcane/animation.hpp"
 #include "arcane/audio.hpp"
+#include "arcane/builtin_components.hpp"
 #include "arcane/game_context.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -84,7 +85,7 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
 
   out.player_x = player->world_transform().position.x;
   out.player_y = player->world_transform().position.y;
-  out.camera_x = camera->world_transform().position.x;
+  out.camera_x = static_cast<arcane::Camera2D*>(camera->find_component("Camera2D"))->view_center(800, 600).x;
   int texts = 0;
   for (const auto& e : hud.elements()) {
     if (const auto* t = std::get_if<arcane::HudText>(&e)) (texts++ == 0 ? out.score_text : out.banner_text) = t->text;
@@ -128,7 +129,8 @@ void test_play_simulation() {
   ARCANE_ASSERT_TRUE(a.score_text != "SCORE 0");           // HUD score updated by gameplay
   ARCANE_ASSERT_TRUE(a.saw_run_clip);                      // animation clip switched to "run"
   ARCANE_ASSERT_TRUE(a.saw_particles);                     // pickup burst
-  ARCANE_ASSERT_TRUE(a.camera_x >= 400.0f);
+  ARCANE_ASSERT_TRUE(a.camera_x >= 400.0f && a.camera_x <= 880.0f);  // Camera2D follows inside its 0..1280 bounds
+  ARCANE_ASSERT_TRUE(a.camera_x > 450.0f);                            // and actually left the start position
   ARCANE_ASSERT_TRUE(a.health >= 0.0f && a.health <= 1.0f);
 
   const Outcome b = simulate(600);  // fixed step + fixed seeds: identical result

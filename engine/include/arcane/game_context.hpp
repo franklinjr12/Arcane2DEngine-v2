@@ -43,6 +43,12 @@ class ARCANE_API GameContext {
   // `parent`. The new nodes first update on the scene's next tick; physics bodies appear at the next step.
   std::expected<Node*, std::string> spawn_prefab(Scene& scene, const std::string& asset, Node* parent = nullptr);
 
+  // Size in pixels of the view being drawn (window, editor viewport or `arcane render` image); 800x600 until a runner
+  // sets it. With Camera2D::zoom the visible world rectangle is size / zoom.
+  struct ViewportSize { int width = 800, height = 600; };
+  void set_viewport_size(int width, int height) noexcept { viewport_ = {width, height}; }
+  ViewportSize viewport_size() const noexcept { return viewport_; }
+
   // The runner's physics world (null if none): raycast / overlap_aabb / overlap_point for gameplay, see physics.hpp.
   void set_physics(PhysicsWorld* physics) noexcept { physics_ = physics; }
   PhysicsWorld* physics() const noexcept { return physics_; }
@@ -76,6 +82,7 @@ class ARCANE_API GameContext {
   const ComponentRegistry* registry_;
   std::unordered_map<AssetId, std::filesystem::path> known_assets_;
   bool restart_requested_ = false;
+  ViewportSize viewport_;
   PhysicsWorld* physics_ = nullptr;
   std::vector<std::string> collision_layers_;
   std::unordered_map<AssetId, std::optional<Tileset>> tilesets_;

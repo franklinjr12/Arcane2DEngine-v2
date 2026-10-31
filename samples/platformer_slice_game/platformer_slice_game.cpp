@@ -62,12 +62,10 @@ class SliceRules : public arcane::Component {
     std::vector<arcane::Node*> nodes;
     collect(*node(), nodes);
     arcane::Node* player = nullptr;
-    arcane::Node* camera = nullptr;
     arcane::Node* goal = nullptr;
     arcane::Node* burst_node = nullptr;
     for (arcane::Node* n : nodes) {
       if (n->name() == "Player") player = n;
-      else if (n->name() == "MainCamera") camera = n;
       else if (n->name() == "Goal") goal = n;
       else if (n->name() == "PickupBurst") burst_node = n;
     }
@@ -109,10 +107,6 @@ class SliceRules : public arcane::Component {
     }
 
     animate(*player);
-    if (camera) {
-      // Follow with a floor on the left edge so the level start fills the view.
-      camera->local_transform().position.x = std::max(400.0f, player->world_transform().position.x);
-    }
     refresh_hud(hud);
   }
 
