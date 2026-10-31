@@ -98,6 +98,10 @@ editor Inspector.
 
 `Collider2D.one_way` (boolean, default false; absent in older scenes) marks a static box collider as one-way: bodies land on it from above and pass through from below. `PlatformerController2D.down_action` (string, default `move_down`) and `drop_duration` (float seconds, default 0.5) let a grounded character hold down and press jump to drop through for that interval; the drop timer is runtime-only and never saved. All three are ordinary registered properties, so `prop.get` / `prop.set` read and write them and `tests/test_tooling_commands.cpp` round-trips them through a saved scene; landing, passing from below and dropping are covered headlessly by `tests/test_platformer.cpp`. Not done: a per-tile one-way flag (tilemap colliders are merged solid boxes) and slopes. The `arcane` CLI does not exist yet, so there is no CLI spelling beyond the registry commands.
 
+## Top-down controller
+
+`TopDownController2D` (registered with the physics components) moves a node's sibling `RigidBody2D` in four directions; give the body `gravity_scale` 0 and `fixed_rotation`. Properties: `max_speed` (float px/s, default 160), `acceleration` (1200) and `deceleration` (1600) in px/s^2, `normalize_diagonal` (bool, default true), `left_action`/`right_action`/`up_action`/`down_action` (strings, defaults `left`/`right`/`up`/`down`) and `flip_sprite` (bool, default false; sets the sibling `Sprite.flip_x` from the horizontal facing). Facing and moving state are runtime-only and never saved. Covered by `tests/test_topdown_controller.cpp`.
+
 ## `Tween` component properties
 
 `Tween` is an ordinary component (`"type": "Tween"`) animating one property of its own node in Play.
