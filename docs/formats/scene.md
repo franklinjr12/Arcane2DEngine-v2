@@ -102,6 +102,10 @@ editor Inspector.
 
 `TopDownController2D` (registered with the physics components) moves a node's sibling `RigidBody2D` in four directions; give the body `gravity_scale` 0 and `fixed_rotation`. Properties: `max_speed` (float px/s, default 160), `acceleration` (1200) and `deceleration` (1600) in px/s^2, `normalize_diagonal` (bool, default true), `left_action`/`right_action`/`up_action`/`down_action` (strings, defaults `left`/`right`/`up`/`down`) and `flip_sprite` (bool, default false; sets the sibling `Sprite.flip_x` from the horizontal facing). Facing and moving state are runtime-only and never saved. Covered by `tests/test_topdown_controller.cpp`.
 
+## Steering agent
+
+`SteeringAgent2D` (registered with the physics components) moves a node's sibling `RigidBody2D` (give it `gravity_scale` 0 and `fixed_rotation`) toward the node named by `target` (string). Properties: `behavior` (int: 0 seek, 1 arrive, 2 flee; default 0), `max_speed` (float px/s, default 90), `max_acceleration` (600 px/s^2), `slow_radius` (48, arrive only), `stop_distance` (4; seek/arrive stop this close to the target), `use_pathfinding` (bool, default true; seek/arrive follow a grid A* path, flee ignores paths), `repath_interval` (seconds, default 0.5), `tilemap` (string node name of the map to plan on; empty = first node with a `Tilemap`) and `allow_diagonal` (bool, default true). Cells with a solid tile in any layer of the tilemap are blocked. The path, waypoint index, repath timer and any `set_target_position` override are runtime-only and never saved. Covered by `tests/test_navigation.cpp`.
+
 ## `Tween` component properties
 
 `Tween` is an ordinary component (`"type": "Tween"`) animating one property of its own node in Play.

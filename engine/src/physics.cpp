@@ -12,6 +12,7 @@
 
 #include "arcane/builtin_components.hpp"
 #include "arcane/component_registry.hpp"
+#include "arcane/navigation.hpp"
 #include "arcane/node.hpp"
 #include "arcane/platformer.hpp"
 #include "arcane/scene.hpp"
@@ -224,6 +225,7 @@ void register_physics_components(ComponentRegistry& registry) {
       });
   register_platformer_components(registry);
   register_topdown_components(registry);
+  register_navigation_components(registry);
 }
 
 struct PhysicsWorld::Impl {
