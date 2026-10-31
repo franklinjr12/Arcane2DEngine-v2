@@ -34,6 +34,7 @@
 #include "arcane_editor/clip_authoring.hpp"
 
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
@@ -575,7 +576,10 @@ int main(int argc, char** argv) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
     return 1;
   }
+  arcane::GameContext game_context(session.project_dir(), registry);
   auto begin_play = [&] {
+    game_context.take_restart_request();
+    arcane::set_active_game_context(&game_context);
     input_map = session.project().input_actions;
     play_stop.play(session.scene(), registry);
     audio->clear_commands();
@@ -597,6 +601,7 @@ int main(int argc, char** argv) {
     audio->stop_all();
     play_stop.stop();
     arcane::set_active_input_map(nullptr);
+    arcane::set_active_game_context(nullptr);
     arcane::set_active_audio_system(nullptr);
     arcane::set_active_hud(nullptr);
   };
@@ -641,6 +646,10 @@ int main(int argc, char** argv) {
       for (int i = 0; i < steps; ++i) {
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
         ++play_tick_count;
+        if (game_context.take_restart_request()) {  // gameplay asked for a restart: replay from the authored scene
+          play_stop.stop();
+          play_stop.play(session.scene(), registry);
+        }
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
         end_play();

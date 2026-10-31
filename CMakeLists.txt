@@ -109,6 +109,8 @@ add_library(arcane_runtime SHARED
   engine/src/renderer.cpp
   engine/src/node.cpp
   engine/src/scene.cpp
+  engine/src/assets.cpp
+  engine/src/game_context.cpp
   engine/src/scene_io.cpp
   engine/src/prefab.cpp
   engine/src/component_registry.cpp
@@ -150,7 +152,6 @@ set_target_properties(arcane_runtime PROPERTIES
 # --- editor core (testable, no GUI deps) ------------------------------------
 add_library(arcane_editor_core STATIC
   editor/editor_core/src/project_session.cpp
-  editor/editor_core/src/asset_catalog.cpp
   editor/editor_core/src/project_runtime.cpp
   editor/editor_core/src/scene_render.cpp
   editor/editor_core/src/tile_paint.cpp

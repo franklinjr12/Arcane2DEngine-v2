@@ -8,6 +8,7 @@
 
 #include "arcane/animation.hpp"
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/node.hpp"
@@ -50,6 +51,8 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   auto audio = arcane::AudioSystem::create(true);
   ARCANE_ASSERT_TRUE(audio.has_value());
   arcane::set_active_audio_system(&*audio);
+  arcane::GameContext context(ARCANE_SLICE_PROJECT_DIR, runtime->registry());
+  arcane::set_active_game_context(&context);
   arcane::PhysicsWorld physics;
   physics.rebuild(scene);
   arcane::InputActionMap input = runtime->session().project().input_actions;
@@ -92,6 +95,7 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
     if (cmd.file.filename() == "hurt.wav") ++out.hurt_cues;
   }
   arcane::set_active_input_map(nullptr);
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   return out;
@@ -141,7 +145,7 @@ void test_spikes_and_pit() {
   const Outcome fell = simulate(600, /*jump=*/false, /*spikes=*/false);
   ARCANE_ASSERT_TRUE(fell.health == 0.0f);
   ARCANE_ASSERT_TRUE(fell.banner_text == "GAME OVER");
-  ARCANE_ASSERT_TRUE(fell.hurt_cues == 1);
+  ARCANE_ASSERT_TRUE(fell.hurt_cues == 2);  // first fall respawns at the start, the second ends the game
 }
 
 }  // namespace

@@ -8,17 +8,17 @@ Exercises: tilemap level (2 maps, solid tiles, pit), `PlatformerController2D`, a
 
 Gaps found while building it (most important first). Each has the workaround used in the slice.
 
-1. **No teleport / node→body position sync.** `PhysicsWorld` only writes body→node after `rebuild`. Respawn and
+1. **(FIXED in GP1: `RigidBody2D::teleport`; pit falls respawn.)** No teleport / node→body position sync.** `PhysicsWorld` only writes body→node after `rebuild`. Respawn and
    checkpoints are impossible; "Restart" resets score/health only.
-2. **Components cannot reach their `Scene`.** No `destroy_node`/spawn from gameplay code. Workaround: collected coins
+2. **(FIXED in GP1: `Component::scene()`, coins use `destroy_node`.)** Components cannot reach their `Scene`.** No `destroy_node`/spawn from gameplay code. Workaround: collected coins
    are parked at (-100000, -100000). Needs a scene accessor on `Component`/`Node` (or a `GameContext` in `on_update`).
 3. **No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
    tests against hard-coded sizes duplicated from the scene.
 4. **HUD text/bar elements have no ids** (only buttons). The module finds them by order (first text = score).
-5. **No runtime asset-id → path resolution.** Audio cues use a literal `"assets/coin.wav"` string; `AudioSource` has no
+5. **(FIXED in GP1: `arcane/assets.hpp`, `GameContext::play_sound`, `AudioSource::play`; the `idle_clip`/`run_clip` properties remain as authored data.)** No runtime asset-id → path resolution.** Audio cues use a literal `"assets/coin.wav"` string; `AudioSource` has no
    "play now" call and `asset_id_for_relative_path` lives in the editor library, so the module also receives clip ids as
    scene properties (`idle_clip`, `run_clip`). On a real audio device the relative path would depend on the cwd.
-6. **No scene reload / restart API**, so full level reset (coins, player) is not possible (see 1, 2).
+6. **(FIXED in GP1: `GameContext::request_restart`; Restart button reloads the level.)** No scene reload / restart API**, so full level reset (coins, player) is not possible (see 1, 2).
 7. **Sprite flip is only negative `scale.x`** on the node. Not verified visually (no screenshot tooling run tonight),
    and the collider is not mirrored.
 8. **No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)

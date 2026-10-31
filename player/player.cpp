@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -157,6 +158,8 @@ int run_project(const Args& args) {
     return 1;
   }
   arcane::set_active_audio_system(&*audio);
+  arcane::GameContext game_context(runtime->session().project_dir(), runtime->registry());
+  arcane::set_active_game_context(&game_context);
   arcane::editor::start_play_on_start_sounds(runtime->session().scene(), *audio,
                                               arcane::editor::list_audio_assets(runtime->session().assets_dir()));
 
@@ -236,6 +239,11 @@ int run_project(const Args& args) {
       if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
       scene.update(step_dt);
       physics.step(scene, step_dt);
+      if (game_context.take_restart_request()) {
+        auto reloaded = arcane::reload_scene_file(scene, runtime->session().main_scene_path(), runtime->registry());
+        if (reloaded) physics.rebuild(scene);
+        else ARCANE_LOG_ERROR(kLogCategory, "scene restart failed: {}", reloaded.error());
+      }
     }
     if (replay) trace.push_back(arcane::hash_scene_state(scene, runtime->registry()));
 
@@ -288,6 +296,7 @@ int run_project(const Args& args) {
     }
   }
 
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
@@ -308,6 +317,8 @@ int run_project_headless(const Args& args) {
     return 1;
   }
   arcane::set_active_audio_system(&*audio);
+  arcane::GameContext game_context(runtime->session().project_dir(), runtime->registry());
+  arcane::set_active_game_context(&game_context);
   arcane::Hud hud = runtime->session().project().hud;  // authored layout; gameplay may add more, never drawn
   arcane::set_active_hud(&hud);
 
@@ -317,6 +328,7 @@ int run_project_headless(const Args& args) {
     auto loaded = text ? arcane::load_recording_json(*text) : std::unexpected(text.error());
     if (!loaded) {
       ARCANE_LOG_ERROR(kLogCategory, "cannot use replay '{}': {}", args.replay_file, loaded.error());
+      arcane::set_active_game_context(nullptr);
       arcane::set_active_audio_system(nullptr);
       arcane::set_active_hud(nullptr);
       return 1;
@@ -333,6 +345,9 @@ int run_project_headless(const Args& args) {
   }
   if (runtime->module_api()) {
     options.before_step = [&](float dt) { runtime->module_api()->on_update(dt); };
+  }
+  if (auto authored = arcane::read_text_file(runtime->session().main_scene_path())) {
+    options.restart_scene_json = std::move(*authored);
   }
   auto result = arcane::run_fixed_frames(runtime->session().scene(), runtime->registry(), input_map, options);
   int exit_code = 0;
@@ -363,6 +378,7 @@ int run_project_headless(const Args& args) {
       }
     }
   }
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
