@@ -34,6 +34,11 @@ void SceneManager::set_scene(Scene scene) {
   }
 }
 
+void SceneManager::set_scene(Scene scene, std::string scene_path) {
+  set_scene(std::move(scene));
+  current_path_ = std::move(scene_path);
+}
+
 bool SceneManager::set_persistent(NodeId id, bool persistent) {
   if (!scene_) return false;
   Node* node = scene_->find_node(id);

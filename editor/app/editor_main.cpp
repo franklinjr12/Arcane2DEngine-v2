@@ -759,11 +759,16 @@ int main(int argc, char** argv) {
     return 1;
   }
   arcane::GameContext game_context(session.project_dir(), registry);
+  // Runs the authored scene under a SceneManager (fades, request_switch, persistent roots).
+  auto start_runtime = [&] {
+    return play_stop.play(session.scene(), registry, session.project_dir(), session.project().transition,
+                          session.project().main_scene);
+  };
   auto begin_play = [&] {
     game_context.take_restart_request();
     arcane::set_active_game_context(&game_context);
     input_map = session.project().input_actions;
-    play_stop.play(session.scene(), registry);
+    start_runtime();
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
     hud = session.project().hud;
@@ -828,11 +833,17 @@ int main(int argc, char** argv) {
       input_map.update(hud_input.gameplay_backend());
       arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
+        const arcane::Scene* before = play_stop.active_scene(session.scene());
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
         ++play_tick_count;
+        if (arcane::Scene* now_scene = play_stop.active_scene(session.scene()); now_scene != before) {
+          // The scene manager switched scenes: start the new scene's play_on_start sounds.
+          arcane::editor::start_play_on_start_sounds(*now_scene, *audio,
+                                                      arcane::editor::list_audio_assets(session.assets_dir()));
+        }
         if (game_context.take_restart_request()) {  // gameplay asked for a restart: replay from the authored scene
           play_stop.stop();
-          play_stop.play(session.scene(), registry);
+          start_runtime();
         }
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
