@@ -155,5 +155,77 @@ void simulate() {
   ARCANE_ASSERT_TRUE(player_health->current() < 1000.0f && particles);  // enemies reached the player and hurt it
   arcane::set_active_input_map(nullptr); arcane::set_active_hud(nullptr); arcane::set_active_game_context(nullptr);
 }
+void pause_and_restart() {
+  auto runtime = arcane::editor::ProjectRuntime::open(ARCANE_TOPDOWN_PROJECT_DIR, ARCANE_TOPDOWN_MODULE_PATH);
+  ARCANE_ASSERT_TRUE(runtime.has_value());
+  auto& scene = runtime->session().scene();
+  auto* player = find(*scene.roots().front(), "Player");
+  auto* health = static_cast<arcane::Health*>(player->find_component("Health"));
+  arcane::GameContext context(ARCANE_TOPDOWN_PROJECT_DIR, runtime->registry());
+  arcane::set_active_game_context(&context);
+  arcane::Hud hud = runtime->session().project().hud;
+  arcane::InputActionMap input = runtime->session().project().input_actions;
+  arcane::FakeInputBackend keys;
+  arcane::set_active_hud(&hud); arcane::set_active_input_map(&input);
+  arcane::PhysicsWorld physics; physics.rebuild(scene);
+  using arcane::InputDevice;
+  constexpr int kP = 80, kR = 82;
+  auto frame = [&](int key) {
+    keys.set_down(InputDevice::Keyboard, kP, key == kP);
+    keys.set_down(InputDevice::Keyboard, kR, key == kR);
+    keys.set_down(InputDevice::Keyboard, arcane::Keys::kSpace, key == arcane::Keys::kSpace);
+    input.update(keys); runtime->module_api()->on_update(1.0f/60.0f);
+    scene.update(1.0f/60.0f); physics.step(scene, 1.0f/60.0f);
+  };
+  auto positions = [&] {
+    std::vector<arcane::Vec2> out{player->world_transform().position};
+    for (auto* e : live(scene, "Enemy")) out.push_back(e->world_transform().position);
+    return out;
+  };
+  auto same = [](const std::vector<arcane::Vec2>& a, const std::vector<arcane::Vec2>& b) {
+    if (a.size() != b.size()) return false;
+    for (std::size_t i = 0; i < a.size(); ++i) if (a[i].x != b[i].x || a[i].y != b[i].y) return false;
+    return true;
+  };
+  for (int i = 0; i < 90; ++i) frame(arcane::Keys::kD);  // walk while wave 1 runs
+  frame(kP);
+  ARCANE_ASSERT_TRUE(hud.find_text("status_text")->text == "PAUSED");
+  frame(0);  // P released
+  const auto frozen = positions();
+  const auto wave_frozen = hud.find_text("wave_text")->text;
+  for (int i = 0; i < 60; ++i) frame(i % 2 ? arcane::Keys::kSpace : 0);
+  ARCANE_ASSERT_TRUE(same(frozen, positions()) && hud.find_text("wave_text")->text == wave_frozen);
+  frame(kP);  // resume
+  ARCANE_ASSERT_TRUE(hud.find_text("status_text")->text.empty());
+  frame(0);
+  for (int i = 0; i < 30; ++i) frame(arcane::Keys::kD);
+  ARCANE_ASSERT_TRUE(!same(frozen, positions()));
+  // Only what was live before the pause is live again: no parked pool instance came back.
+  for (auto* n : live(scene, "Enemy")) ARCANE_ASSERT_TRUE(n->active_in_hierarchy());
+  ARCANE_ASSERT_TRUE(live(scene, "Enemy").size() <= 3 && live(scene, "Bullet").empty());
+  // Death: game over is shown, R requests the restart.
+  health->kill();
+  frame(0);
+  ARCANE_ASSERT_TRUE(hud.find_text("status_text")->text.rfind("GAME OVER", 0) == 0);
+  ARCANE_ASSERT_TRUE(!context.take_restart_request());
+  frame(kR);
+  ARCANE_ASSERT_TRUE(context.take_restart_request());
+  // The runner reloads the scene; the HUD (project-level) is reset by on_start.
+  auto reloaded = arcane::reload_scene_file(scene, std::string(ARCANE_TOPDOWN_PROJECT_DIR) + "/scenes/main.scene.json", runtime->registry());
+  ARCANE_ASSERT_TRUE(reloaded.has_value());
+  player = find(*scene.roots().front(), "Player");
+  physics.rebuild(scene);
+  frame(0);
+  ARCANE_ASSERT_TRUE(hud.find_text("status_text")->text.empty());
+  ARCANE_ASSERT_TRUE(hud.find_text("score_text")->text == "COINS 0");
+  ARCANE_ASSERT_TRUE(hud.find_text("wave_text")->text.rfind("WAVE 1", 0) == 0);
+  ARCANE_ASSERT_TRUE(hud.find_bar("health_bar")->fraction == 1.0f && player->active());
+  // Without input the game over restarts by itself after restart_delay.
+  static_cast<arcane::Health*>(player->find_component("Health"))->kill();
+  bool requested = false;
+  for (int i = 0; i < 4 * 60 && !requested; ++i) { frame(0); requested = context.take_restart_request(); }
+  ARCANE_ASSERT_TRUE(requested);
+  arcane::set_active_input_map(nullptr); arcane::set_active_hud(nullptr); arcane::set_active_game_context(nullptr);
 }
-int main() { text_roundtrip(); simulate(); }
+}
+int main() { text_roundtrip(); simulate(); pause_and_restart(); }

@@ -1,7 +1,7 @@
 // Top-down arena glue. Movement, pursuit, damage and pooling come from the engine components in the scene
 // (TopDownController2D, SteeringAgent2D, Health/Hurtbox/Hitbox/Projectile, Spawner2D); this component only wires
-// the fire button, the waves (deterministic spawn points from a seeded LCG), coin drops, the HUD, the hit burst and
-// the restart on death.
+// the fire button, the waves (deterministic spawn points from a seeded LCG), coin drops, the HUD, the hit burst,
+// pause, and the game-over screen that ends in a restart.
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -49,6 +49,7 @@ class ArenaRules : public arcane::Component {
   int base_enemies = 3;         // enemies in wave 1
   int enemies_per_wave = 2;     // extra enemies per following wave
   int spawn_seed = 12345;       // seed of the LCG that picks spawn points
+  float restart_delay = 3.0f;   // seconds of game over before the arena restarts by itself
 
   int wave() const noexcept { return wave_; }
   bool in_wave() const noexcept { return in_wave_; }
@@ -69,16 +70,39 @@ class ArenaRules : public arcane::Component {
     if (health_) health_->add_listener([this](const arcane::HealthEvent& event) { on_player_health(event); });
     rng_ = static_cast<std::uint32_t>(spawn_seed);
     wave_ = 1; in_wave_ = true; phase_time_ = 0.0f; spawned_ = 0; score_ = 0.0f;
+    paused_ = false; game_over_ = false; player_died_ = false; game_over_time_ = 0.0f; frozen_.clear();
+    // The HUD is project-level and survives a restart, so every element owned here starts over.
+    if (auto* hud = arcane::active_hud()) {
+      if (auto* text = hud->find_text("status_text")) text->text.clear();
+      if (auto* text = hud->find_text("score_text")) text->text = "COINS 0";
+      if (auto* text = hud->find_text("wave_text")) text->text = std::format("WAVE 1  {}:{:02}", static_cast<int>(wave_duration) / 60, static_cast<int>(wave_duration) % 60);
+      if (health_) {
+        if (auto* text = hud->find_text("health_text")) text->text = std::format("HEALTH {}", static_cast<int>(std::ceil(health_->current())));
+        if (auto* bar = hud->find_bar("health_bar")) bar->fraction = health_->max_health > 0.0f ? health_->current() / health_->max_health : 0.0f;
+      }
+    }
   }
   void on_update(float dt) override {
     auto* input = arcane::active_input_map();
-    if (input && input->pressed("fire") && player_ && controller_ && spawner_ && health_ && !health_->dead()) {
+    if (player_died_ && !game_over_) enter_game_over();
+    if (game_over_) {
+      game_over_time_ += dt;
+      if ((input && input->pressed("restart")) || game_over_time_ >= restart_delay) {
+        if (auto* context = arcane::active_game_context()) context->request_restart();
+      }
+    } else if (input && input->pressed("pause")) {
+      set_paused(!paused_);
+    }
+    const bool frozen = paused_ || game_over_;
+    if (!frozen && input && input->pressed("fire") && player_ && controller_ && spawner_ && health_ && !health_->dead()) {
       if (auto* bullet = spawner_->spawn(player_->world_transform().position))
         if (auto* projectile = component<arcane::Projectile>(bullet, "Projectile"))
           projectile->launch(controller_->facing(), bullet_speed);
     }
-    drop_coins();
-    advance_wave(dt);
+    if (!frozen) {
+      drop_coins();
+      advance_wave(dt);
+    }
     if (auto* hud = arcane::active_hud()) {
       if (health_) {
         if (auto* text = hud->find_text("health_text")) text->text = std::format("HEALTH {}", static_cast<int>(std::ceil(health_->current())));
@@ -90,9 +114,37 @@ class ArenaRules : public arcane::Component {
                               : std::format("BREAK  {}:{:02}", left / 60, left % 60);
       }
       if (auto* text = hud->find_text("score_text")) text->text = std::format("COINS {}", score());
+      if (auto* text = hud->find_text("status_text")) {
+        if (game_over_) text->text = std::format("GAME OVER  WAVE {}  COINS {}\nPRESS R", wave_, score());
+        else text->text = paused_ ? "PAUSED" : "";
+      }
     }
   }
  private:
+  // Freezing deactivates the arena's live nodes and remembers exactly which ones; parked pool instances were
+  // already inactive, so they are never in the list and stay parked on resume.
+  void freeze(bool on) {
+    if (!on) {
+      for (arcane::NodeId id : frozen_) if (auto* frozen = scene()->find_node(id)) frozen->set_active(true);
+      frozen_.clear();
+      return;
+    }
+    auto hold = [this](arcane::Node& candidate) {
+      if (&candidate == node() || !candidate.active() || candidate.find_component("Camera")) return;
+      frozen_.push_back(candidate.id());
+      candidate.set_active(false);
+    };
+    for (const auto& child : node()->children()) hold(*child);
+    for (const auto& root : scene()->roots()) hold(*root);
+  }
+  void set_paused(bool paused) {
+    paused_ = paused;
+    freeze(paused);
+  }
+  void enter_game_over() {
+    game_over_ = true; game_over_time_ = 0.0f;
+    if (paused_) paused_ = false; else freeze(true);
+  }
   int enemy_count() const { return std::max(1, base_enemies + (wave_ - 1) * enemies_per_wave); }
   std::uint32_t next_random() { return rng_ = rng_ * 1664525u + 1013904223u; }
   void advance_wave(float dt) {
@@ -151,8 +203,7 @@ class ArenaRules : public arcane::Component {
       burst_->local_transform().position = player_->world_transform().position;
       if (auto* emitter = component<arcane::ParticleEmitter>(burst_, "ParticleEmitter")) emitter->burst(12);
     }
-    if (event.kind == arcane::HealthEvent::Kind::Died)
-      if (auto* context = arcane::active_game_context()) context->request_restart();
+    if (event.kind == arcane::HealthEvent::Kind::Died) player_died_ = true;  // frozen on the next update, not mid-physics
   }
   arcane::Node* player_ = nullptr;
   arcane::Node* burst_ = nullptr;
@@ -167,7 +218,9 @@ class ArenaRules : public arcane::Component {
   float phase_time_ = 0.0f;
   int spawned_ = 0;
   float score_ = 0.0f;
-  std::vector<arcane::NodeId> enemies_, listened_;
+  float game_over_time_ = 0.0f;
+  bool paused_ = false, game_over_ = false, player_died_ = false;
+  std::vector<arcane::NodeId> enemies_, listened_, frozen_;
   std::vector<arcane::Vec2> pending_coins_;
 };
 // A pooled coin: the Player touching its sensor collider banks `value` in ArenaRules and returns it to CoinSpawner.
@@ -190,7 +243,8 @@ void register_types(arcane::ComponentRegistry& registry) {
     arcane::make_property<ArenaRules>("intermission", PropertyType::Float, &ArenaRules::intermission),
     arcane::make_property<ArenaRules>("base_enemies", PropertyType::Int, &ArenaRules::base_enemies),
     arcane::make_property<ArenaRules>("enemies_per_wave", PropertyType::Int, &ArenaRules::enemies_per_wave),
-    arcane::make_property<ArenaRules>("spawn_seed", PropertyType::Int, &ArenaRules::spawn_seed)});
+    arcane::make_property<ArenaRules>("spawn_seed", PropertyType::Int, &ArenaRules::spawn_seed),
+    arcane::make_property<ArenaRules>("restart_delay", PropertyType::Float, &ArenaRules::restart_delay)});
   registry.register_component("CoinPickup", [] { return std::make_unique<CoinPickup>(); }, {
     arcane::make_property<CoinPickup>("value", PropertyType::Float, &CoinPickup::value)});
 }

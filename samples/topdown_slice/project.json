@@ -86,6 +86,23 @@
         ],
         "text": "COINS 0",
         "type": "text"
+      },
+      {
+        "anchor": "center",
+        "color": [
+          1.0,
+          1.0,
+          1.0,
+          1.0
+        ],
+        "font_scale": 4.0,
+        "id": "status_text",
+        "offset": [
+          0.0,
+          0.0
+        ],
+        "text": "",
+        "type": "text"
       }
     ],
     "format": "arcane.hud",
@@ -137,6 +154,28 @@
           }
         ],
         "name": "fire"
+      },
+      {
+        "bindings": [
+          {
+            "code": 80,
+            "device": "keyboard"
+          },
+          {
+            "code": 256,
+            "device": "keyboard"
+          }
+        ],
+        "name": "pause"
+      },
+      {
+        "bindings": [
+          {
+            "code": 82,
+            "device": "keyboard"
+          }
+        ],
+        "name": "restart"
       }
     ],
     "format": "arcane.input",
