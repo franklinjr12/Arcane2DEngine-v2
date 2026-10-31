@@ -75,47 +75,50 @@ namespace {
 
 std::expected<AnimationClip, std::string> load_clip(const std::string& text, bool strict_unknown) {
   auto parsed = canonical::parse_strict(text);
-  if (!parsed) return std::unexpected(std::format("animation clip: {}", parsed.error()));
+  if (!parsed) return std::unexpected(canonical::at_root("animation clip: " + parsed.error()));
   try {
     const nlohmann::json& j = *parsed;
-    canonical::require_object(j, "animation clip");
+    canonical::require_object(j, "#");
     const canonical::Dialect dialect = canonical::detect_dialect(j, kClipFormat, "animation clip");
     const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
-        canonical::require_only_keys(j, {"format", "version", "name", "loop", "frames"}, "animation clip");
+        canonical::require_only_keys(j, {"format", "version", "name", "loop", "frames"}, "#");
       } else {
-        canonical::require_only_keys(j, {"format_version", "name", "loop", "frames"}, "animation clip");
+        canonical::require_only_keys(j, {"format_version", "name", "loop", "frames"}, "#");
       }
     }
     if (!j.contains("frames") || !j["frames"].is_array()) {
-      return std::unexpected(std::string("animation clip: missing 'frames' array"));
+      return std::unexpected(std::string("#/frames: animation clip is missing a 'frames' array"));
     }
     AnimationClip clip;
-    if (j.contains("name")) clip.name = canonical::as_string(j["name"], "clip 'name'");
-    if (j.contains("loop")) clip.loop = canonical::as_bool(j["loop"], "clip 'loop'");
+    if (j.contains("name")) clip.name = canonical::as_string(j["name"], "#/name");
+    if (j.contains("loop")) clip.loop = canonical::as_bool(j["loop"], "#/loop");
     for (std::size_t i = 0; i < j["frames"].size(); ++i) {
       const auto& f = j["frames"][i];
-      const std::string where = std::format("clip frame {}", i);
+      const std::string where = canonical::pointer_child("#/frames", i);
       canonical::require_object(f, where);
       if (strict) canonical::require_only_keys(f, {"uv", "duration_seconds"}, where);
       if (!f.contains("uv") || !f["uv"].is_array() || f["uv"].size() != 4) {
-        return std::unexpected(std::format("animation clip: {} needs a 'uv' array of 4 numbers", where));
+        return std::unexpected(std::format("{}: animation clip frame needs a 'uv' array of 4 numbers", canonical::pointer_child(where, "uv")));
       }
       AnimationFrame frame;
-      frame.uv = UvRect{canonical::as_float(f["uv"][0], where), canonical::as_float(f["uv"][1], where),
-                        canonical::as_float(f["uv"][2], where), canonical::as_float(f["uv"][3], where)};
+      const std::string uv = canonical::pointer_child(where, "uv");
+      frame.uv = UvRect{canonical::as_float(f["uv"][0], canonical::pointer_child(uv, 0)),
+                        canonical::as_float(f["uv"][1], canonical::pointer_child(uv, 1)),
+                        canonical::as_float(f["uv"][2], canonical::pointer_child(uv, 2)),
+                        canonical::as_float(f["uv"][3], canonical::pointer_child(uv, 3))};
       if (f.contains("duration_seconds")) {
-        frame.duration_seconds = canonical::as_float(f["duration_seconds"], where + " 'duration_seconds'");
+        frame.duration_seconds = canonical::as_float(f["duration_seconds"], canonical::pointer_child(where, "duration_seconds"));
       }
       if (strict && frame.duration_seconds < 0.0f) {
-        return std::unexpected(std::format("animation clip: {} has a negative duration", where));
+        return std::unexpected(std::format("{}: animation clip frame has a negative duration", canonical::pointer_child(where, "duration_seconds")));
       }
       clip.frames.push_back(frame);
     }
     return clip;
   } catch (const canonical::SchemaError& ex) {
-    return std::unexpected(std::format("animation clip: {}", ex.what()));
+    return std::unexpected(std::string(ex.what()));
   }
 }
 
@@ -135,9 +138,9 @@ std::expected<std::string, std::string> migrate_clip_json(const std::string& tex
   auto migrated = save_clip_canonical_json(*clip);
   if (!migrated) return std::unexpected(migrated.error());
   auto reloaded = load_clip_from_json_strict(*migrated);
-  if (!reloaded) return std::unexpected("migrated clip does not reload: " + reloaded.error());
+  if (!reloaded) return std::unexpected("#: migrated clip does not reload: " + reloaded.error());
   auto again = save_clip_canonical_json(*reloaded);
-  if (!again || *again != *migrated) return std::unexpected(std::string("migrated clip is not idempotent"));
+  if (!again || *again != *migrated) return std::unexpected(std::string("#: migrated clip is not idempotent"));
   return migrated;
 }
 

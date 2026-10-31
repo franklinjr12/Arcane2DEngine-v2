@@ -100,6 +100,32 @@ std::vector<Case> cases() {
        "#/nodes/0/components/0/properties/layers: ", "bad tile id"},
       {"migrate_scene", scene_json(R"([{"id":1,"name":"a","components":[{"id":1,"type":"Sprite"}]}])"),
        "#/nodes/0/components/0/id: ", "already used"},
+      // ---- project ----
+      {"project", "{\"name\":", "#: ", "malformed project JSON"},
+      {"project", R"({"format":"arcane.project","version":3,"name":"p","main_scene":"a.json"})", "#/version: ",
+       "newer than supported"},
+      {"project_strict", R"({"format":"arcane.project","version":2,"name":"p","main_scene":"../x.json"})", "#/main_scene: ",
+       "'..' segment"},
+      {"project_strict", R"({"format":"arcane.project","version":2,"name":"p","main_scene":"a.json","extra":1})",
+       "#/extra: ", "unknown field 'extra'"},
+      {"project", R"({"format":"arcane.project","version":2,"name":5,"main_scene":"a.json"})", "#/name: ", "expected a string"},
+      // ---- tileset ----
+      {"tileset", "[1,", "#: ", "tileset: "},
+      {"tileset", R"({"format":"arcane.clip","version":2})", "#/format: ", "expected \"arcane.tileset\""},
+      {"tileset", R"({"format":"arcane.tileset","version":2,"texture":1,"tile_width":8,"tile_height":8,"columns":2,
+        "tile_count":4,"tiles":[{"solid":true},{"terrain":"x"}]})", "#/tiles/1/terrain: ", "expected an integer"},
+      {"tileset_strict", R"({"format":"arcane.tileset","version":2,"texture":1,"tile_width":8,"tile_height":8,"columns":2,
+        "tile_count":4,"bogus":1})", "#/bogus: ", "unknown field 'bogus'"},
+      {"tileset", R"({"format":"arcane.tileset","version":2,"texture":1,"tile_width":8,"tile_height":8,"columns":2,
+        "tile_count":4,"terrains":[{"terrain":1,"tiles":[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,"q"]}]})",
+       "#/terrains/0/tiles/15: ", "expected an integer"},
+      // ---- clip ----
+      {"clip", "{", "#: ", "animation clip"},
+      {"clip", R"({"format":"arcane.tileset","version":2,"frames":[]})", "#/format: ", "expected \"arcane.clip\""},
+      {"clip", R"({"format":"arcane.clip","version":2,"frames":[{"uv":[0,0,1,1]},{"uv":[0,0,1,1],"duration_seconds":"slow"}]})",
+       "#/frames/1/duration_seconds: ", "expected a number"},
+      {"clip", R"({"format":"arcane.clip","version":2,"frames":[{"uv":[0,0,"a",1]}]})", "#/frames/0/uv/2: ", "expected a number"},
+      {"clip_strict", R"({"format":"arcane.clip","version":2,"frames":[],"speed":2})", "#/speed: ", "unknown field 'speed'"},
   };
 }
 

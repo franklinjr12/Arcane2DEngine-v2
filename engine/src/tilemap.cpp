@@ -54,83 +54,84 @@ namespace {
 
 std::expected<Tileset, std::string> load_tileset(const std::string& text, bool strict_unknown) {
   auto parsed = canonical::parse_strict(text);
-  if (!parsed) return std::unexpected(std::format("tileset: {}", parsed.error()));
+  if (!parsed) return std::unexpected(canonical::at_root("tileset: " + parsed.error()));
   try {
     const nlohmann::json& j = *parsed;
-    canonical::require_object(j, "tileset");
+    canonical::require_object(j, "#");
     const canonical::Dialect dialect = canonical::detect_dialect(j, kTilesetFormat, "tileset");
     const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
         canonical::require_only_keys(
             j, {"format", "version", "texture", "tile_width", "tile_height", "columns", "tile_count", "tiles", "terrains"},
-            "tileset");
+            "#");
       } else {
         canonical::require_only_keys(
             j, {"format_version", "texture", "tile_width", "tile_height", "columns", "tile_count", "tiles", "terrains"},
-            "tileset");
+            "#");
       }
     }
     for (const char* key : {"texture", "tile_width", "tile_height", "columns", "tile_count"}) {
-      if (!j.contains(key)) return std::unexpected(std::format("tileset: missing '{}'", key));
+      if (!j.contains(key)) return std::unexpected(std::format("#: tileset is missing '{}'", key));
     }
     Tileset t;
-    t.texture = canonical::as_uint(j["texture"], "tileset 'texture'");
-    t.tile_width = canonical::as_int(j["tile_width"], "tileset 'tile_width'");
-    t.tile_height = canonical::as_int(j["tile_height"], "tileset 'tile_height'");
-    t.columns = canonical::as_int(j["columns"], "tileset 'columns'");
-    t.tile_count = canonical::as_int(j["tile_count"], "tileset 'tile_count'");
+    t.texture = canonical::as_uint(j["texture"], "#/texture");
+    t.tile_width = canonical::as_int(j["tile_width"], "#/tile_width");
+    t.tile_height = canonical::as_int(j["tile_height"], "#/tile_height");
+    t.columns = canonical::as_int(j["columns"], "#/columns");
+    t.tile_count = canonical::as_int(j["tile_count"], "#/tile_count");
     if (t.tile_width <= 0 || t.tile_height <= 0 || t.columns <= 0 || t.tile_count <= 0) {
-      return std::unexpected("tileset: tile size, columns and tile_count must be positive");
+      return std::unexpected("#: tileset tile size, columns and tile_count must be positive");
     }
     if (j.contains("tiles")) {
-      if (!j["tiles"].is_array()) return std::unexpected("tileset: 'tiles' must be an array");
+      if (!j["tiles"].is_array()) return std::unexpected("#/tiles: tileset 'tiles' must be an array");
       if (strict && j["tiles"].size() > static_cast<std::size_t>(t.tile_count)) {
-        return std::unexpected("tileset: more 'tiles' entries than tile_count");
+        return std::unexpected("#/tiles: tileset has more 'tiles' entries than tile_count");
       }
       for (std::size_t i = 0; i < j["tiles"].size(); ++i) {
         const auto& item = j["tiles"][i];
-        const std::string where = std::format("tileset tile {}", i + 1);
+        const std::string where = canonical::pointer_child("#/tiles", i);
         canonical::require_object(item, where);
         if (strict) canonical::require_only_keys(item, {"solid", "terrain"}, where);
         TileInfo info;
-        if (item.contains("solid")) info.solid = canonical::as_bool(item["solid"], where + " 'solid'");
-        if (item.contains("terrain")) info.terrain = canonical::as_int(item["terrain"], where + " 'terrain'");
-        if (strict && info.terrain < 0) return std::unexpected(std::format("tileset: {} has a negative terrain", where));
+        if (item.contains("solid")) info.solid = canonical::as_bool(item["solid"], canonical::pointer_child(where, "solid"));
+        if (item.contains("terrain")) info.terrain = canonical::as_int(item["terrain"], canonical::pointer_child(where, "terrain"));
+        if (strict && info.terrain < 0) return std::unexpected(std::format("{}: tileset tile has a negative terrain", canonical::pointer_child(where, "terrain")));
         t.tiles.push_back(info);
       }
     }
     if (j.contains("terrains")) {
-      if (!j["terrains"].is_array()) return std::unexpected("tileset: 'terrains' must be an array");
+      if (!j["terrains"].is_array()) return std::unexpected("#/terrains: tileset 'terrains' must be an array");
       for (std::size_t i = 0; i < j["terrains"].size(); ++i) {
         const auto& item = j["terrains"][i];
-        const std::string where = std::format("tileset terrain rule {}", i);
+        const std::string where = canonical::pointer_child("#/terrains", i);
         canonical::require_object(item, where);
         if (strict) canonical::require_only_keys(item, {"terrain", "tiles"}, where);
         if (!item.contains("terrain") || !item.contains("tiles")) {
-          return std::unexpected(std::format("tileset: {} needs 'terrain' and 'tiles'", where));
+          return std::unexpected(std::format("{}: tileset terrain rule needs 'terrain' and 'tiles'", where));
         }
+        const std::string tiles_ptr = canonical::pointer_child(where, "tiles");
         TerrainRule rule;
-        rule.terrain = canonical::as_int(item["terrain"], where + " 'terrain'");
+        rule.terrain = canonical::as_int(item["terrain"], canonical::pointer_child(where, "terrain"));
         if (!item["tiles"].is_array() || item["tiles"].size() != 16) {
-          return std::unexpected(std::format("tileset: {} 'tiles' must be an array of 16 tile ids", where));
+          return std::unexpected(std::format("{}: tileset terrain rule 'tiles' must be an array of 16 tile ids", tiles_ptr));
         }
         for (std::size_t m = 0; m < 16; ++m) {
-          rule.tiles[m] = canonical::as_int(item["tiles"][m], where + " 'tiles'");
+          rule.tiles[m] = canonical::as_int(item["tiles"][m], canonical::pointer_child(tiles_ptr, m));
           if (strict && (rule.tiles[m] < 0 || rule.tiles[m] > t.tile_count)) {
-            return std::unexpected(std::format("tileset: {} references tile {} outside 0..{}", where, rule.tiles[m],
-                                                t.tile_count));
+            return std::unexpected(std::format("{}: tileset terrain rule references tile {} outside 0..{}",
+                                                canonical::pointer_child(tiles_ptr, m), rule.tiles[m], t.tile_count));
           }
         }
         if (strict && rule.terrain <= 0) {
-          return std::unexpected(std::format("tileset: {} needs a positive terrain id", where));
+          return std::unexpected(std::format("{}: tileset terrain rule needs a positive terrain id", canonical::pointer_child(where, "terrain")));
         }
         t.terrains.push_back(rule);
       }
     }
     return t;
   } catch (const canonical::SchemaError& ex) {
-    return std::unexpected(std::format("tileset: {}", ex.what()));
+    return std::unexpected(std::string(ex.what()));
   }
 }
 
@@ -148,9 +149,9 @@ std::expected<std::string, std::string> migrate_tileset_json(const std::string& 
   auto migrated = save_tileset_canonical_json(*tileset);
   if (!migrated) return std::unexpected(migrated.error());
   auto reloaded = load_tileset_from_json_strict(*migrated);
-  if (!reloaded) return std::unexpected("migrated tileset does not reload: " + reloaded.error());
+  if (!reloaded) return std::unexpected("#: migrated tileset does not reload: " + reloaded.error());
   auto again = save_tileset_canonical_json(*reloaded);
-  if (!again || *again != *migrated) return std::unexpected(std::string("migrated tileset is not idempotent"));
+  if (!again || *again != *migrated) return std::unexpected(std::string("#: migrated tileset is not idempotent"));
   return migrated;
 }
 

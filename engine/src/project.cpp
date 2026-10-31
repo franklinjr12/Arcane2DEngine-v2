@@ -16,7 +16,7 @@ constexpr const char* kProjectFormat = "arcane.project";
 std::expected<ProjectFile, std::string> load_project(const std::string& text, bool strict_unknown) {
   auto parsed = canonical::parse_strict(text);
   if (!parsed) {
-    return std::unexpected(std::format("malformed project JSON: {}", parsed.error()));
+    return std::unexpected(canonical::at_root("malformed project JSON: " + parsed.error()));
   }
   try {
     const json& root = *parsed;
@@ -25,23 +25,23 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
         canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud"},
-                                     "project");
+                                     "#");
       } else {
         canonical::require_only_keys(
-            root, {"format_version", "name", "main_scene", "module", "input_actions", "hud"}, "project");
+            root, {"format_version", "name", "main_scene", "module", "input_actions", "hud"}, "#");
       }
     }
     if (!root.contains("name") || !root.contains("main_scene")) {
-      return std::unexpected(std::string("project JSON is missing 'name' or 'main_scene'"));
+      return std::unexpected(std::string("#: project JSON is missing 'name' or 'main_scene'"));
     }
 
     ProjectFile project;
-    project.name = canonical::as_string(root["name"], "project 'name'");
-    project.main_scene = canonical::as_string(root["main_scene"], "project 'main_scene'");
-    project.module = root.contains("module") ? canonical::as_string(root["module"], "project 'module'") : std::string();
+    project.name = canonical::as_string(root["name"], "#/name");
+    project.main_scene = canonical::as_string(root["main_scene"], "#/main_scene");
+    project.module = root.contains("module") ? canonical::as_string(root["module"], "#/module") : std::string();
     if (strict) {
-      canonical::require_project_path(project.main_scene, false, "project 'main_scene'");
-      canonical::require_project_path(project.module, true, "project 'module'");
+      canonical::require_project_path(project.main_scene, false, "#/main_scene");
+      canonical::require_project_path(project.module, true, "#/module");
     }
     if (root.contains("input_actions")) {
       auto input_actions = strict ? InputActionMap::load_from_json_strict(root["input_actions"].dump())
@@ -106,11 +106,11 @@ std::expected<std::string, std::string> migrate_project_json(const std::string& 
   }
   auto reloaded = load_project_from_json_strict(*migrated);
   if (!reloaded) {
-    return std::unexpected("migrated project does not reload: " + reloaded.error());
+    return std::unexpected("#: migrated project does not reload: " + reloaded.error());
   }
   auto again = save_project_canonical_json(*reloaded);
   if (!again || *again != *migrated) {
-    return std::unexpected(std::string("migrated project is not idempotent"));
+    return std::unexpected(std::string("#: migrated project is not idempotent"));
   }
   return migrated;
 }
