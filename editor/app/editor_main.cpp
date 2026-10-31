@@ -1464,6 +1464,18 @@ int main(int argc, char** argv) {
       }
       if (ImGui::IsItemDeactivated()) edits.end_gesture();
 
+      ImGui::SeparatorText("Display");
+      int design[2] = {project.display.design_width, project.display.design_height};
+      if (ImGui::InputInt2("Design size (0 = window)", design)) {
+        run_edit({"display.set", {{"design_width", design[0]}, {"design_height", design[1]}}}, "display.design");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      const char* scale_modes[] = {"letterbox", "stretch"};
+      int scale_mode = static_cast<int>(project.display.scale_mode);
+      if (ImGui::Combo("Scale mode", &scale_mode, scale_modes, 2)) {
+        run_edit({"display.set", {{"scale_mode", scale_modes[scale_mode]}}});
+      }
+
       ImGui::SeparatorText("Debug overlay");
       bool overlay_visible = project.debug.overlay_visible;
       if (ImGui::Checkbox("Visible at start", &overlay_visible)) run_edit({"debug.set", {{"overlay_visible", overlay_visible}}});

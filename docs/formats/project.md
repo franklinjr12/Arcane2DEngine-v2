@@ -48,6 +48,17 @@ configure `SceneManager` (`arcane/scene_flow.hpp`), which the windowed player an
 `overlay_font_scale` (number, > 0 and <= 8, default 1.5) is its HUD font scale. Edit with `debug.get` /
 `debug.set`. Unknown fields are errors; the section is omitted when both values are the defaults. See `perf.md`.
 
+### `display`
+
+```json
+"display": { "design_height": 360, "design_width": 640, "scale_mode": "letterbox" }
+```
+
+`design_width` / `design_height` (integers, default 0) are the authored design resolution: both 0 (no design
+resolution, the view is the window) or both within 16..8192. `scale_mode` (`"letterbox"` default, or `"stretch"`)
+says how the design view is fitted to a resized window. Edit with `display.get` / `display.set`. Unknown fields
+are errors; the section is omitted when all values are the defaults.
+
 ### `save`
 
 ```json

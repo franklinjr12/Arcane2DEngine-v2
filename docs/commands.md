@@ -80,6 +80,8 @@ Component: an integer component id, or a type name attached exactly once.
 | `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; edits the project in memory like `project.set` (the CLI persists `project.json`, the editor undoes it and File > Save writes it); inverse is `transition.set` with the previous values |
 | `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
 | `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; edits the project in memory like `project.set`; inverse is `debug.set` with the previous values |
+| `display.get` | none | `{design_width, design_height, scale_mode}` from `project.json` |
+| `display.set` | `design_width?`, `design_height?` (both 0 or both 16..8192), `scale_mode?` (`letterbox`\|`stretch`) | `{changed, previous, display}`; edits the project in memory like `project.set`; inverse is `display.set` with the previous values |
 | `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
 | `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
 | `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |

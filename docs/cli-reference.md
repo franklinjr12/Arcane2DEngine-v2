@@ -547,6 +547,26 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--overlay-font-scale` | number | no |  |
 | `--overlay-visible` | boolean | no |  |
 
+### `arcane display get`
+
+Read the display settings (design resolution, scale mode) from project.json. 0x0 = no design resolution.
+
+Read only.
+
+No arguments.
+
+### `arcane display set`
+
+Change the display settings in project.json; omitted fields keep their value. design_width and design_height are both 0 (none) or both 16..8192. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--design-height` | integer | no |  |
+| `--design-width` | integer | no |  |
+| `--scale-mode` | json | no |  |
+
 ### `arcane docs`
 
 Print the generated command reference (md, the default) or a command list (json).

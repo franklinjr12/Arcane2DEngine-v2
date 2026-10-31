@@ -19,6 +19,16 @@ struct TransitionConfig {
   Color color{0.0f, 0.0f, 0.0f, 1.0f};
 };
 
+// Authored display settings ("display"): the design resolution the game view is
+// laid out in. 0x0 = none (the view is the window). Otherwise both in 16..8192.
+enum class DisplayScaleMode { Letterbox, Stretch };
+
+struct DisplayConfig {
+  int design_width = 0;
+  int design_height = 0;
+  DisplayScaleMode scale_mode = DisplayScaleMode::Letterbox;
+};
+
 // Authored save-game settings ("save"): the folder name under the per-user
 // save directory and the game's current save data version (see save_game.hpp).
 struct SaveConfig {
@@ -26,6 +36,8 @@ struct SaveConfig {
   int data_version = 1;
 };
 
+// Both 0 (no design resolution) or both within 16..8192.
+ARCANE_API bool is_valid_design_size(int width, int height) noexcept;
 ARCANE_API bool is_valid_game_id(const std::string& id) noexcept;
 
 // Top-level project file (analogous to a .sln/.godot file): points the
@@ -46,6 +58,7 @@ struct ProjectFile {
   TransitionConfig transition;
   SaveConfig save;
   DebugConfig debug;
+  DisplayConfig display;
   // Names of collision layers; the index is the layer number used by Collider2D::layer and layer masks.
   // Empty = unnamed (layer 0 only by convention). At most 31 distinct names of [a-z0-9_]{1,32}.
   std::vector<std::string> collision_layers;
