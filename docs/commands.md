@@ -67,6 +67,7 @@ Component: an integer component id, or a type name attached exactly once.
 | `node.rename` (mutating) | `node`, `name` | `{changed, previous, name}`; names must not contain `/` |
 | `node.reparent` (mutating) | `node`, `parent?` | moves the subtree to the end of the new parent (root if omitted); refuses cycles |
 | `node.duplicate` (mutating) | `node`, `name?` (default `<name>_copy`), `parent?` | deep copy with new ids and remapped internal `entity_id` references |
+| `node.set_persistent` (mutating) | `node`, `value` | authored root flag, `{changed, previous, persistent}`; non-root refused |
 | `node.set_transform` (mutating) | `node`, `position?`, `rotation_radians?`, `scale?` | `{changed, previous, transform}` |
 | `component.types` | none | registered types with property names |
 | `component.list` | `node` | `{node, components:[{id,type}]}` |

@@ -205,6 +205,64 @@ void test_scene_manager() {
   ARCANE_ASSERT_TRUE(manager.switch_now("scenes/b.scene.json").has_value() && !has_root(*manager.scene(), "Player"));
 }
 
+void test_authored_persistent() {
+  TempProject p;
+  // A scene authored with a persistent root, plus a plain node with the same name.
+  Scene hub;
+  Node* music = hub.create_node("Music");
+  music->set_persistent(true);
+  Node* kid = hub.create_node("Kid", music);
+  (void)kid;
+  hub.create_node("Menu");
+  const std::string text = hub.save_to_json(p.registry);
+  ARCANE_ASSERT_TRUE(text.find("\"persistent\": true") != std::string::npos);
+  // Round trip keeps the flag; a scene without it never writes the key.
+  auto loaded = Scene::load_from_json(text, p.registry);
+  ARCANE_ASSERT_TRUE(loaded.has_value());
+  ARCANE_ASSERT_TRUE(loaded->roots()[0]->persistent() && !loaded->roots()[1]->persistent());
+  loaded->roots()[0]->set_persistent(false);
+  ARCANE_ASSERT_TRUE(loaded->save_to_json(p.registry).find("persistent") == std::string::npos);
+
+  // Strict: persistent on a non-root node and non-boolean values are rejected.
+  std::string bad = text;
+  const std::size_t kid_at = bad.find("\"name\": \"Kid\"");
+  ARCANE_ASSERT_TRUE(kid_at != std::string::npos);
+  bad.insert(kid_at, "\"persistent\": true, ");
+  auto rejected = Scene::load_from_json(bad, p.registry);
+  ARCANE_ASSERT_TRUE(!rejected.has_value() && rejected.error().find("persistent") != std::string::npos);
+  std::string not_bool = text;
+  not_bool.replace(not_bool.find("\"persistent\": true"), 19, "\"persistent\": 1");
+  ARCANE_ASSERT_TRUE(!Scene::load_from_json(not_bool, p.registry).has_value());
+
+  spit(p.dir / "scenes/hub.scene.json", text);
+  SceneManager manager(p.dir, p.registry);
+  manager.set_scene(load_scene(p, "hub.scene.json"));
+  Node* live = manager.find_persistent("Music");
+  ARCANE_ASSERT_TRUE(live != nullptr);  // marked by set_scene
+  live->local_transform().position = {7.0f, 8.0f};
+
+  // Incoming scene has its own persistent "Music" (destroyed: live one wins) and a plain "Music" (kept).
+  Scene next;
+  Node* dup = next.create_node("Music");
+  dup->set_persistent(true);
+  next.create_node("Music");
+  next.create_node("Level");
+  spit(p.dir / "scenes/next.scene.json", next.save_to_json(p.registry));
+  ARCANE_ASSERT_TRUE(manager.switch_now("scenes/next.scene.json").has_value());
+  int music_count = 0;
+  int persistent_music = 0;
+  for (const auto& root : manager.scene()->roots()) {
+    music_count += root->name() == "Music";
+    persistent_music += root->name() == "Music" && manager.is_persistent(root->id());
+  }
+  ARCANE_ASSERT_TRUE(music_count == 2 && persistent_music == 1 && !has_root(*manager.scene(), "Menu"));
+  Node* kept = manager.find_persistent("Music");
+  ARCANE_ASSERT_TRUE(kept != nullptr && kept->local_transform().position.x == 7.0f && kept->children().size() == 1);
+
+  // Un-persisting clears the authored flag too.
+  ARCANE_ASSERT_TRUE(manager.set_persistent(kept->id(), false) && !kept->persistent());
+}
+
 void test_save_api() {
   const fs::path dir = fs::temp_directory_path() / "arcane_save_api_test";
   std::error_code ec;
@@ -361,6 +419,7 @@ void test_save_commands() {
 int main() {
   test_project_config();
   test_scene_manager();
+  test_authored_persistent();
   test_save_api();
   test_save_commands();
   std::puts("test_scene_flow OK");

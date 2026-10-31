@@ -34,6 +34,12 @@ Schema: `schemas/arcane.scene.schema.json`. Rules shared with all files: `canoni
 - Property value encodings: `bool` → boolean; `int` → integer; `float` → number; `vec2` → `[x, y]`;
   `color` → `[r, g, b, a]`; `string` → string; `asset_id` / `entity_id` → unsigned 64-bit integer.
 - A node may carry a `prefab` link (`prefab.md`); scenes without any remain valid.
+- A root node may carry `"persistent": true` (boolean, written only when true): `SceneManager` carries it
+  over scene switches with its live state. On a node with a `parent_id` the strict reader rejects it and the
+  compatible (legacy) reader ignores it. If a carried root and an authored persistent root of the incoming
+  scene share a name, the incoming one is destroyed (the live object wins); non-persistent incoming nodes
+  with that name stay. Duplicating a node and instancing a prefab do not copy the flag; play/stop scene
+  copies round-trip it with the rest of the scene.
 - Optional on read (defaults): `parent_id` 0, `position` `[0, 0]`, `rotation_radians` 0, `scale`
   `[1, 1]`, `components` empty, `properties` empty, `next_id` derived.
 
