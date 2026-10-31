@@ -326,6 +326,16 @@ if(ARCANE_BUILD_SAMPLES)
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> $<TARGET_FILE:sample_game>
     ${CMAKE_COMMAND} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/samples/sample_project)
   set_tests_properties(test_cli_e2e PROPERTIES TIMEOUT 300)
+  # AF10C: arcane render. Without a display it must fail cleanly with exit 8 (no gl label); the golden run needs GL.
+  add_test(NAME test_render_cli_nodisplay COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh nodisplay
+    $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
+  set_tests_properties(test_render_cli_nodisplay PROPERTIES TIMEOUT 60 ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_render_cli COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh gl
+    $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
+  set_tests_properties(test_render_cli PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
 
 # AF12 rendering evidence: readback + PNG + golden comparison (tolerance documented in the test).

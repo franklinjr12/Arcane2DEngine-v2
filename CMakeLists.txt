@@ -169,6 +169,7 @@ add_library(arcane_tooling STATIC
   tooling/src/offline.cpp
   tooling/src/asset_commands.cpp
   tooling/src/run_commands.cpp
+  tooling/src/render_commands.cpp
   tooling/src/export_commands.cpp
   tooling/src/cli.cpp
   tooling/src/all_commands.cpp

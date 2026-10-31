@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; so far only HY1 (hygiene) has run.
+This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene) and AF10C (`arcane render`) have run so far.
 
 **1. Step-by-step manual checks**
 
@@ -17,15 +17,23 @@ ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pa
 ```
 After a build, `samples/topdown_slice/topdown_slice_game.so` (or `.dll`) appears in the work tree but `git status` stays clean.
 
+AF10C extra check (Linux, needs a display or Xvfb; on Windows run it from a Developer PowerShell with a GL-capable desktop):
+```
+xvfb-run -a build-gcc/bin/arcane --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so render --output out/slice.png --size 320x180 --frames 30
+```
+Expected: JSON with `"ok":true`, `scene_hash`, `backend`; open `samples/platformer_slice/out/slice.png`: yellow coins, brown platform, red bar and score text on a dark background (delete the `out/` folder afterwards). With `env -u DISPLAY -u WAYLAND_DISPLAY` the same command prints `RENDER_UNAVAILABLE` and exits 8.
+
 **2. What you can visibly see**
 
-HY1 only: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
+AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
 
 **3. Enough to merge**
 
 Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Optional: open `arcane_editor --project samples/topdown_slice` and confirm it still loads (the module is rebuilt by CMake).
 
 **4. Known risks**
+
+- AF10C `arcane render` is UNTESTED on native Windows/MSVC (GL offscreen FBO path ran only on Linux Mesa llvmpipe under Xvfb); the golden `tests/golden/render/platformer_slice_f30.png` is llvmpipe-specific and other GPUs may need a regenerated golden or higher tolerance.
 
 - UNTESTED on native Windows/MSVC for this PR (only the mingw cross-build ran).
 - The `.so` stays in the history of PR #7/#8 (commits 49962be, 2e78c85, eb931a1); history was not rewritten, so the repo size is unchanged. The file is only removed from the index.
@@ -34,6 +42,11 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ---
 
 ## Technical detail
+
+### AF10C: `arcane render`
+- New `tooling/src/render_commands.cpp` (command `render`), `render_offscreen` and masked `compare_images` in `engine/include/arcane/screenshot.hpp`, `run_on_copy` shared with `run`/`test` (optional `finish` callback), exit code 8 / `RENDER_UNAVAILABLE`.
+- Tests: `test_render_cli` (gl label: metadata, determinism, golden within tolerance 2, mismatch exit 4, size mismatch exit 4, mask) and `test_render_cli_nodisplay` (exit 8). Golden `tests/golden/render/platformer_slice_f30.png`.
+- Docs: `docs/commands.md` (Render), regenerated `docs/cli-reference.md`, `AGENTS.md`, acceptance-audit row 3, decisions row.
 
 ### HY1: branch sanity, build hygiene, PR body
 - Tip ac03c08 builds and passes `scripts/build-and-test.sh`: gcc Debug PASS, clang ASan/UBSan PASS, mingw cross-build PASS (build only, not run).

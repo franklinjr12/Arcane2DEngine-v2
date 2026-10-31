@@ -302,6 +302,18 @@ context or audio device, and the context scene is never advanced or saved. The t
   and also smoke-runs `frames` frames. Result `{ok, passed, failed, cases, smoke}`; exit 4 when `ok` is false
   (a mismatch reports `first_divergent_frame`; a missing trace fails the case).
 
+## Render
+
+`arcane render --output FILE.png` (`tooling/src/render_commands.cpp`) steps a scene copy like `run` (default `--frames 0`, module
+`on_update` included), then draws it with the editor/player scene renderer and the HUD into an offscreen GL framebuffer
+(`render_offscreen`, `arcane/screenshot.hpp`) and writes the PNG. Arguments: `output` (project-relative, required), `size` `WxH`
+(default `320x180`, max 4096), `frames`, `fixed_hz`, `seed`, `camera` (selector of a Camera/Camera2D node, made the only primary one on
+the copy), `compare` (golden PNG, project-relative), `tolerance` (per RGBA channel, default 2) and `mask` (array of `[x,y,w,h]` pixel
+rectangles ignored by the comparison). The scene file is never changed. Result `{output, scene, frame, fixed_hz, size, scene_hash, camera,
+backend:{api,renderer}, module, compare}`; a failed comparison (size mismatch or differing pixels) is `ok:false`, exit 4. A GL context needs a
+display or Xvfb: without one the error is `RENDER_UNAVAILABLE`, exit 8, nothing is written. Tests: `test_render_cli` (label `gl`, golden
+`tests/golden/render/platformer_slice_f30.png`, Mesa llvmpipe) and `test_render_cli_nodisplay` (exit 8, no display needed).
+
 ## Export
 
 `arcane export OUT [--runtime_dir DIR] [--overwrite] [--validate false]` (`tooling/src/export_commands.cpp`; offline

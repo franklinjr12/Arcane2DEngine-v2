@@ -21,7 +21,7 @@ struct ToolError {
 
 // Process exit status the `arcane` CLI uses for this error: 2 usage,
 // 3 file/project, 4 schema/reference/validation, 5 conflict/ambiguity,
-// 6 module, 7 unsupported version.
+// 6 module, 7 unsupported version, 8 render environment failure.
 int exit_code(const ToolError& error);
 
 // {"ok":false,"error":{"code":...,"message":...,"file":...,"path":...,"hint":...}}

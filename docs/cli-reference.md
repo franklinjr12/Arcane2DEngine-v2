@@ -40,6 +40,7 @@ diagnostic goes to stderr. `arcane docs` prints this reference as raw Markdown.
 | 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |
 | 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |
 | 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |
+| 8 | Render environment failure (no display, GL context or offscreen framebuffer) | `RENDER_UNAVAILABLE` |
 
 ## Selectors
 
@@ -869,6 +870,24 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--name` | string | yes |  |
 | `--node` | string | yes |  |
 | `--value` | json | yes |  |
+
+### `arcane render`
+
+Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--camera` | string | no |  |
+| `--compare` | string | no |  |
+| `--fixed-hz` | integer | no |  |
+| `--frames` | integer | no |  |
+| `--mask` | array | no |  |
+| `--output` | string | yes |  |
+| `--seed` | integer | no |  |
+| `--size` | string | no |  |
+| `--tolerance` | integer | no |  |
 
 ### `arcane replay run`
 
