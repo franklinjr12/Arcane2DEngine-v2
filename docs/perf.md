@@ -79,3 +79,24 @@ simulation alone). Peak live enemies and bullets were not recorded. `arcane_benc
 
 The recorded trace is only valid for the build that produced it: the Release run above reports a divergence from the
 Debug-recorded `arena_60s.trace.json` at frame 60 (determinism is per build and platform, see `docs/formats/replay.md`).
+
+## Platformer slice (GS2)
+
+`samples/platformer_slice` replayed headless for 620 fixed frames (`samples/platformer_slice/tests/level2_run.replay.json`,
+about 10 s of game time). The headless runner has no SceneManager, so this run stays in level 1 (the goal does not
+switch levels; see `docs/slice_platformer_gaps.md` gap 13). Rendering is not measured. Same machine and build as the
+arena numbers above (2 vCPU VM, g++ 15.2.0, Release).
+
+```sh
+env -u DISPLAY build-rel/bin/arcane_player --headless --project samples/platformer_slice \
+  --module build-rel/bin/platformer_slice_game.so --replay samples/platformer_slice/tests/level2_run.replay.json
+```
+
+| Run | wall time, 620 frames (`/usr/bin/time`, 10 ms resolution) |
+| --- | --- |
+| 1 | 0.03 s |
+| 2 | 0.02 s |
+| 3 | 0.02 s |
+
+Under 0.05 ms per frame including process start and module load (an upper bound for the simulation alone). Peak
+enemies and bodies were not recorded.
