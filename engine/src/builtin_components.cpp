@@ -97,6 +97,8 @@ void register_builtin_components(ComponentRegistry& registry) {
       "Sprite", [] { return std::make_unique<Sprite>(); },
       {
           make_property<Sprite>("texture", PropertyType::AssetId, &Sprite::texture),
+          make_property<Sprite>("atlas", PropertyType::AssetId, &Sprite::atlas),
+          make_property<Sprite>("region", PropertyType::String, &Sprite::region),
           make_property<Sprite>("width", PropertyType::Float, &Sprite::width),
           make_property<Sprite>("height", PropertyType::Float, &Sprite::height),
           make_property<Sprite>("tint", PropertyType::Color, &Sprite::tint),

@@ -20,6 +20,9 @@ class Scene;
 class ARCANE_API Sprite : public Component {
  public:
   AssetId texture = 0;
+  // Optional: draw one region of an arcane.atlas asset (docs/formats/atlas.md) instead of the whole texture.
+  AssetId atlas = 0;
+  std::string region;
   float width = 64.0f;
   float height = 64.0f;
   Color tint{1.0f, 1.0f, 1.0f, 1.0f};

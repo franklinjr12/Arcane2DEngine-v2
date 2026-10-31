@@ -66,6 +66,10 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 
 `look_ahead` (Vec2, world units) leads the followed target in the direction it last moved on each axis (standing still keeps the previous lead). `bounds_tilemap` is a node ID whose `Tilemap` world rectangle (`tile size * cells * node scale`, from the node position) replaces `bounds_min`/`bounds_max`; 0 or a node without a Tilemap falls back to the explicit rectangle. Both are plain registered properties (`prop.set`, Inspector).
 
+## Sprite
+
+`Sprite` properties: `texture` (asset id), `atlas` (asset id of an `arcane.atlas` file, 0 = none), `region` (atlas region name, e.g. `hero/idle_0`), `width`, `height`, `tint`, `flip_x`, `flip_y`. With `atlas` and `region` set and resolving, the sprite draws that region of the atlas image; otherwise it draws `texture` (see `atlas.md` for precedence). Older files without `atlas`/`region` load with the defaults (0, empty).
+
 ## ParallaxLayer
 
 `ParallaxLayer` sits on a node with a `Sprite` and draws it shifted by `camera * (1 - factor)` per axis (`factor` Vec2, default `[0.5, 0.5]`): 1 moves with the world, 0 stays fixed on screen. `repeat_x` / `repeat_y` tile the sprite (its scaled width/height is the period) across the whole visible rectangle, so it works with any `Camera2D.zoom` and viewport size. Layers draw in scene order like any Sprite: put background nodes before the level. Modules can read the view size with `GameContext::viewport_size()`.

@@ -89,6 +89,8 @@ Result render(const OfflineEnv& env, const Json& args, bool dry_run) {
   textures.set_assets(editor::list_image_assets(assets));
   editor::AnimationClipCache clips;
   clips.set_assets(editor::list_animation_clip_assets(assets));
+  editor::AtlasCache atlases;
+  atlases.set_assets(editor::list_animation_clip_assets(assets));
   editor::TilesetCache tilesets;
   tilesets.set_assets(editor::list_animation_clip_assets(assets));
 
@@ -106,7 +108,7 @@ Result render(const OfflineEnv& env, const Json& args, bool dry_run) {
       for (const auto& root : scene.roots()) select_camera(*root, chosen);
     }
     auto drawn = render_offscreen(size->first, size->second, [&] {
-      editor::render_scene(scene, *sprites, textures, size->first, size->second, &clips, &*hud_renderer, &hud, &tilesets);
+      editor::render_scene(scene, *sprites, textures, size->first, size->second, &clips, &*hud_renderer, &hud, &tilesets, true, &atlases);
     });
     if (!drawn) return std::unexpected(offline_error("RENDER_UNAVAILABLE", drawn.error()));
     image = std::move(*drawn);

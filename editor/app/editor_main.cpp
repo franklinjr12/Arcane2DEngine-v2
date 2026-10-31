@@ -714,6 +714,8 @@ int main(int argc, char** argv) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   arcane::editor::TilesetCache tilesets;
+  arcane::editor::AtlasCache atlases;
+  atlases.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
   ClipPanelState clip_panel;
@@ -813,9 +815,11 @@ int main(int argc, char** argv) {
       textures.set_assets(arcane::editor::list_image_assets(session.assets_dir()));
       clips.set_assets(clip_assets);
       tilesets.set_assets(clip_assets);
+      atlases.set_assets(clip_assets);
       textures.refresh();
       clips.refresh();
       tilesets.refresh();
+      atlases.refresh();
     }
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
@@ -1466,7 +1470,7 @@ int main(int argc, char** argv) {
       viewport.bind();
       arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
                                   editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud,
-                                  &tilesets, !editable);
+                                  &tilesets, !editable, &atlases);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),
