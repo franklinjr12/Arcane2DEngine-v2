@@ -23,6 +23,8 @@ xvfb-run -a build-gcc/bin/arcane --project samples/platformer_slice --module bui
 ```
 Expected: JSON with `"ok":true`, `scene_hash`, `backend`; open `samples/platformer_slice/out/slice.png`: yellow coins, brown platform, red bar and score text on a dark background (delete the `out/` folder afterwards). With `env -u DISPLAY -u WAYLAND_DISPLAY` the same command prints `RENDER_UNAVAILABLE` and exits 8.
 
+PX1 extra check (prefabs; headless): `ctest --test-dir build -C Debug -R "test_prefab|test_cli|test_edit_session" --output-on-failure` expects all to pass. Editor (needs a display): `arcane_editor --project <copy of a project>`; create a node with a Sprite, select it, Hierarchy > **Save as Prefab** (default `prefabs/<Name>.prefab.json`, Save); open Assets > **Prefabs** and click the file: an instance appears (`[P]` in the Hierarchy, "Prefab: ..." in the Inspector). Change its width in the Inspector: "* overridden" appears; **Revert** next to the listed override restores it; Ctrl+Z/Y undo/redo. **Break prefab link** turns it into plain nodes. Propagation: edit and re-save the prefab (`prefab save ... --overwrite true`, CLI) and reopen the project: non-overridden values of existing instances follow.
+
 AF8C extra check (Linux, or Windows with a GL desktop): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, then
 - Project Settings panel: below Name/Main scene/Module there are now Scene transition (fade out/in, colour), Save (game id, data version) and Debug overlay (visible, font scale). Change one: the title shows modified, Edit > Undo (Ctrl+Z) reverts it, File > Save writes `project.json`.
 - Tileset panel: New tileset / edit fields / Save tileset, then Ctrl+Z: the file disappears again (or returns to its previous content). Animation Clip panel: Save clip then Ctrl+Z likewise; Open clip reloads a saved clip on the current grid.
@@ -37,6 +39,8 @@ GP4 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "
 
 **2. What you can visibly see**
 
+PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
+
 GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
 
 AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
@@ -48,6 +52,8 @@ AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples
 Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Optional: open `arcane_editor --project samples/topdown_slice` and confirm it still loads (the module is rebuilt by CMake).
 
 **4. Known risks**
+
+- PX1: the new prefab widgets (ImGui) are compile-checked only; the command/EditSession paths are tested headless. Propagation happens on load only and ignores added/removed nodes or components; prefab nesting is not supported. UNTESTED on native Windows/MSVC.
 
 - GP4: the Animation Graph panel (ImGui) is compile-checked only and its commands are tested headless; nobody clicked it. Flip visuals are not golden-tested (no sprite sheet with asymmetric art in the render goldens). Adding `Sprite`/`Collider2D` properties changed the canonical text of scenes that contain them (samples and `tests/golden/` were regenerated; old files still load). Rebuilding a mirrored collider on flip can emit one collision exit/enter. UNTESTED on native Windows/MSVC.
 
@@ -62,6 +68,11 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ---
 
 ## Technical detail
+
+### PX1: prefab follow-ups
+- `refresh_prefab_instances` (engine) propagates prefab edits to non-overridden values on load (session open, scene switch, CLI scene override); `test_prefab` covers overridden values kept, missing prefab warning.
+- `prefab.remove` undo restores a scene snapshot (IDs unchanged); `EditSession::set_property/set_transform` use `prefab.override` on instance nodes.
+- Editor: Save as Prefab, Assets > Prefabs, instance header/revert/break link. `docs/editor-command-inventory.md` and `docs/formats/prefab.md` updated; `arcane prefab ...` CLI already generated from `prefab.*`.
 
 ### GP4: animation state machine, sprite flip, HUD lookup (slice gaps 4, 7, 10)
 - `arcane.animgraph` v2 (`docs/formats/animgraph.md`, `schemas/arcane.animgraph.schema.json`, example in `tests/golden/schema_examples/`): parameters (bool/float/trigger), states -> clip ids with speed and frame events, transitions with priority and conditions. `Animator` component drives the sibling `AnimatedSprite`; gameplay calls `set_bool/set_float/set_trigger`; events reach `Component::on_animation_event`. Migration re-checks graphs; `validate` checks them strictly.

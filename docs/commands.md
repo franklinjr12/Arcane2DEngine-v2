@@ -92,7 +92,7 @@ Component: an integer component id, or a type name attached exactly once.
 | `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
 | `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
 | `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
-| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo re-instantiates with new IDs and the same overrides |
+| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo restores the scene snapshot (`scene.restore`), so node and component IDs are unchanged |
 | `prefab.override` (mutating) | `node`, `component?`, `property`, `value` | `{instance_id, local_id, property, value, overridden, changed}` |
 | `prefab.revert` (mutating) | `node`, `component?`, `property` | `{reverted, ...}`; no-op if not overridden |
 | `prefab.break_link` (mutating) | `node` | `{instance_id, nodes}`; inverse is `prefab.relink` |
@@ -106,8 +106,7 @@ Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in
 `node` selectors for override/revert/break_link/remove/info may name any node of an instance.
 `overrides` entries are `{local_id, component?, property, value}` with prefab-local IDs; `name` and
 `position` on `prefab.instantiate` are shortcuts for root overrides. The root's `name`/`position`
-differing from the prefab are ordinary overrides. A stale redo of `prefab.instantiate` creates new
-IDs, so a history entry recorded before an undo/redo cycle may not find the old instance.
+differing from the prefab are ordinary overrides. Undo of `prefab.remove` and redo of `prefab.instantiate` keep the same IDs (snapshot restore; redo resets the ID counter).
 
 Transitions and saves (`docs/formats/project.md`, `docs/formats/save.md`): without `dir` the save commands use
 `save_directory(save.game_id)` and fail with `VALUE_INVALID` if no `game_id` is set. They touch only `project.json`

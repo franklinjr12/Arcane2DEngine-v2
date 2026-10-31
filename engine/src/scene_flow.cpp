@@ -1,5 +1,7 @@
 #include "arcane/scene_flow.hpp"
 
+#include "arcane/prefab.hpp"
+
 #include <algorithm>
 
 #include "arcane/atlas.hpp"
@@ -54,6 +56,7 @@ std::expected<void, std::string> SceneManager::switch_now(const std::string& sce
   if (!text) return std::unexpected(text.error());
   auto next = Scene::load_from_json(*text, *registry_);
   if (!next) return std::unexpected(scene_path + ": " + next.error());
+  refresh_prefab_instances(*next, project_dir_, *registry_);
 
   auto incoming = std::make_unique<Scene>(std::move(*next));
   std::unordered_set<NodeId> carried;

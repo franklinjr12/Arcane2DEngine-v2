@@ -88,14 +88,16 @@ not in the scene history.
 | Input Map actions, player, bindings and fields | `input.add_action/remove_action/set_player/add_binding/remove_binding/set_binding` | Yes (in memory; File > Save writes) | `test_hud_input_commands`, `test_edit_session` |
 | Project Settings: name, main scene, module | `project.set` | Yes | `test_edit_session` (`test_gui_project_settings_match_cli_model`, name typing coalescing) |
 | File > Save | `ProjectSession::save` (same transactional write as `ProjectContext::save`) | n/a | `test_edit_session` (save point), `test_cli` |
+| Hierarchy > Save as Prefab | `prefab.save` (immediate file write) | No: not undoable | `test_prefab` (command side) |
+| Assets > Prefabs (click) | `prefab.instantiate` | Yes | `test_prefab` |
+| Inspector on prefab-instance nodes: edits, Revert, Break prefab link | `prefab.override` (via `EditSession::set_property/set_transform`, name), `prefab.revert`, `prefab.break_link` | Yes | `test_prefab` (`test_edit_session_records_overrides`) |
 | Edit > Undo/Redo, Ctrl+Z/Y | command history | Yes | `test_edit_session` |
 | Save tileset | `tileset.create` (overwrite), `tileset.set_tile`, `tileset.set_rule` | No: immediate file write, not undoable | `test_tilemap_commands` (command side only) |
 | Save clip | `clip.create` (overwrite) | No: immediate file write, not undoable | `test_clip_commands` (command side only) |
 | Selection, panels, brush choice, preview, Play/Stop, F3 overlay | none (view state) | n/a | `test_edit_session` (`test_view_state_is_not_authored`: selection, Play/Stop) |
 | Editor source has no known direct writes | n/a | n/a | `test_edit_session` (`test_editor_source_has_no_direct_scene_writes`) |
 
-CLI-only commands with no editor widget: `transition.set`, `save.config_set`, `debug.set`, `prefab.*` (no save-as-prefab,
-instantiate, override, revert or break-link action in the GUI), `atlas.*`, `asset.*`, `replay.*`; `render` does not exist.
+CLI-only commands with no editor widget: `transition.set`, `save.config_set`, `debug.set`, `atlas.*`, `asset.*`, `replay.*`; `render` does not exist.
 
 ### Still direct / not command-backed
 

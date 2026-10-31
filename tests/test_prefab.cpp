@@ -12,6 +12,7 @@
 #include "arcane/prefab.hpp"
 #include "arcane_editor/project_session.hpp"
 #include "arcane_tooling/command.hpp"
+#include "arcane_tooling/edit_session.hpp"
 #include "test_assert.hpp"
 
 namespace {
@@ -69,6 +70,7 @@ std::unique_ptr<ProjectContext> open(const TempProject& project) {
 CommandRegistry make_registry() {
   CommandRegistry registry;
   register_property_commands(registry);
+  register_scene_commands(registry);
   register_prefab_commands(registry);
   return registry;
 }
@@ -257,9 +259,96 @@ void test_bad_links_refused_and_old_scenes_load() {
   ARCANE_ASSERT_TRUE(!broken("\"local_id\": 1\n", "\"local_id\": 1, \"extra\": 1\n").has_value());
 }
 
+// Undo of prefab.remove brings back the same node and component IDs and overrides.
+void test_remove_undo_keeps_ids() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  auto context = open(project);
+  run(registry, *context, "prefab.save", {{"node", "id:1"}, {"asset", kAsset}});
+  Json a = run(registry, *context, "prefab.instantiate", {{"asset", kAsset}, {"name", "Solo"}});
+  Json b = run(registry, *context, "prefab.instantiate", {{"asset", kAsset}});
+  const std::string root = "id:" + a["instance_id"].dump();
+  const auto text = [&] { return *context->scene().save_canonical_json(context->registry()); };
+  const std::string before = text();
+
+  CommandResult removed;
+  run(registry, *context, "prefab.remove", {{"node", root}}, {.persist = true}, &removed);
+  ARCANE_ASSERT_TRUE(context->scene().find_node(a["instance_id"].get<arcane::NodeId>()) == nullptr);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, *removed.inverse, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(text() == before);
+  ARCANE_ASSERT_TRUE(context->scene().find_node(b["instance_id"].get<arcane::NodeId>()) != nullptr);
+  Json info = run(registry, *context, "prefab.info", {{"node", root}});
+  ARCANE_ASSERT_TRUE(info["linked"] == true && info["overrides"].size() == 1);
+}
+
+// Inspector edits of instance nodes (EditSession) become overrides, undoable.
+void test_edit_session_records_overrides() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  auto context = open(project);
+  run(registry, *context, "prefab.save", {{"node", "id:1"}, {"asset", kAsset}});
+  Json a = run(registry, *context, "prefab.instantiate", {{"asset", kAsset}});
+  const auto hand = a["nodes"][1]["id"].get<arcane::NodeId>();
+  const std::string selector = "id:" + std::to_string(hand);
+
+  EditSession edits(*context, registry);
+  const arcane::Component* sprite = context->scene().find_node(hand)->find_component("Sprite");
+  const arcane::PropertyDescriptor* width = nullptr;
+  for (const auto& d : *context->registry().properties_of("Sprite")) {
+    if (d.name == "width") width = &d;
+  }
+  ARCANE_ASSERT_TRUE(sprite && width);
+  ARCANE_ASSERT_TRUE(edits.set_property(hand, sprite->id(), *width, arcane::PropertyValue{123.0f}).has_value());
+  ARCANE_ASSERT_TRUE(run(registry, *context, "prefab.info", {{"node", selector}})["overrides"].size() == 1);
+  arcane::Transform2D moved = context->scene().find_node(hand)->local_transform();
+  moved.position.x += 5.0f;
+  ARCANE_ASSERT_TRUE(edits.set_transform(hand, moved).has_value());
+  ARCANE_ASSERT_TRUE(run(registry, *context, "prefab.info", {{"node", selector}})["overrides"].size() == 2);
+  ARCANE_ASSERT_TRUE(edits.undo().has_value() && edits.undo().has_value());
+  ARCANE_ASSERT_TRUE(run(registry, *context, "prefab.info", {{"node", selector}})["overrides"].empty());
+}
+
+// Prefab edits reach non-overridden values of existing instances when the project is opened.
+void test_prefab_edit_propagates_on_open() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  arcane::NodeId instance = 0;
+  {
+    auto context = open(project);
+    run(registry, *context, "prefab.save", {{"node", "id:1"}, {"asset", kAsset}});
+    Json a = run(registry, *context, "prefab.instantiate", {{"asset", kAsset}, {"name", "Mine"}});
+    instance = a["instance_id"].get<arcane::NodeId>();
+    const std::string hand = "id:" + a["nodes"][1]["id"].dump();
+    run(registry, *context, "prefab.override", {{"node", hand}, {"component", "Sprite"}, {"property", "width"}, {"value", 77.0}});
+    // Edit the source nodes and re-save the prefab: Hand's Sprite height and width, Rig's position and name.
+    run(registry, *context, "prop.set", {{"node", "id:" + std::to_string(project.child_id)}, {"component", "Sprite"}, {"name", "height"}, {"value", 41.0}});
+    run(registry, *context, "prop.set", {{"node", "id:" + std::to_string(project.child_id)}, {"component", "Sprite"}, {"name", "width"}, {"value", 55.0}});
+    run(registry, *context, "node.rename", {{"node", "id:1"}, {"name", "Renamed"}});
+    run(registry, *context, "prefab.save", {{"node", "id:1"}, {"asset", kAsset}, {"overwrite", true}});
+  }
+  auto context = open(project);
+  const auto get = [&](arcane::NodeId id, const char* name) {
+    return run(registry, *context, "prop.get", {{"node", "id:" + std::to_string(id)}, {"component", "Sprite"}, {"name", name}})["value"];
+  };
+  const arcane::Node* root = context->scene().find_node(instance);
+  ARCANE_ASSERT_TRUE(root && root->name() == "Mine");  // overridden name is kept
+  const arcane::NodeId hand = root->children().front()->id();
+  ARCANE_ASSERT_TRUE(get(hand, "height") == 41.0);     // propagated
+  ARCANE_ASSERT_TRUE(get(hand, "width") == 77.0);      // overridden value kept
+
+  // A missing prefab file leaves the instance as it is.
+  auto scene = arcane::Scene::load_from_json(*context->scene().save_canonical_json(context->registry()), context->registry());
+  ARCANE_ASSERT_TRUE(scene.has_value());
+  auto refresh = arcane::refresh_prefab_instances(*scene, project.dir / "nowhere", context->registry());
+  ARCANE_ASSERT_TRUE(refresh.values_updated == 0 && refresh.warnings.size() == 1);
+}
+
 }  // namespace
 
 int main() {
+  test_remove_undo_keeps_ids();
+  test_edit_session_records_overrides();
+  test_prefab_edit_propagates_on_open();
   test_save_instantiate_override_roundtrip();
   test_break_link_and_relink();
   test_runtime_spawn();
