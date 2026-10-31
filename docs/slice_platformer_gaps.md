@@ -12,7 +12,7 @@ Gaps found while building it (most important first). Each has the workaround use
    checkpoints are impossible; "Restart" resets score/health only.
 2. **(FIXED in GP1: `Component::scene()`, coins use `destroy_node`.)** Components cannot reach their `Scene`.** No `destroy_node`/spawn from gameplay code. Workaround: collected coins
    are parked at (-100000, -100000). Needs a scene accessor on `Component`/`Node` (or a `GameContext` in `on_update`).
-3. **(FIXED in GP2: `on_trigger_enter/exit`, `on_collision_enter/exit`, layers/masks, raycast/overlap queries; the slice still uses its AABB test.)** No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
+3. **(FIXED in GP2: `on_trigger_enter/exit`, `on_collision_enter/exit`, layers/masks, raycast/overlap queries; the slice uses sensor triggers (`SliceTrigger`) for coins, spikes, checkpoints and the goal.)** No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
    tests against hard-coded sizes duplicated from the scene.
 4. **(FIXED in GP4: every HUD element has a stable `id` (already in the v2 format), `Hud::find_text/find_bar/find_image/find_button`; the slice looks up `score`, `health`, `banner`.)** HUD text/bar elements had no ids.**
 5. **(FIXED in GP1: `arcane/assets.hpp`, `GameContext::play_sound`, `AudioSource::play`; the `idle_clip`/`run_clip` properties remain as authored data.)** No runtime asset-id → path resolution.** Audio cues use a literal `"assets/coin.wav"` string; `AudioSource` has no

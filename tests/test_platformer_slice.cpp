@@ -31,6 +31,7 @@ struct Outcome {
   bool saw_flip = false, saw_run_clip = false, saw_particles = false;
   std::size_t coin_cues = 0, hurt_cues = 0;
   int steps_run = 0;
+  float respawn_x = -1.0f;  // player x right after the first backwards jump (a pit respawn)
 };
 
 arcane::Node* find(arcane::Node* n, const std::string& name) {
@@ -55,6 +56,8 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   arcane::set_active_audio_system(&*audio);
   arcane::GameContext context(ARCANE_SLICE_PROJECT_DIR, runtime->registry());
   arcane::set_active_game_context(&context);
+  // The sensor body is built from the node position, so the spikes move away before the world is built.
+  if (!spikes) find(scene.roots().front().get(), "Spikes")->local_transform().position = {-100000.0f, 0.0f};
   arcane::PhysicsWorld physics;
   physics.rebuild(scene);
   arcane::InputActionMap input = runtime->session().project().input_actions;
@@ -67,7 +70,6 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   arcane::Node* camera = find(level, "MainCamera");
   arcane::Node* burst = find(level, "PickupBurst");
   ARCANE_ASSERT_TRUE(player && camera && burst);
-  if (!spikes) find(level, "Spikes")->local_transform().position = {-100000.0f, 0.0f};
   auto* anim = static_cast<arcane::AnimatedSprite*>(player->find_component("AnimatedSprite"));
   auto* emitter = static_cast<arcane::ParticleEmitter*>(burst->find_component("ParticleEmitter"));
   ARCANE_ASSERT_TRUE(anim && emitter);
@@ -75,6 +77,7 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   auto* sprite = static_cast<arcane::Sprite*>(player->find_component("Sprite"));
   ARCANE_ASSERT_TRUE(animator && sprite);
 
+  float last_x = player->world_transform().position.x;
   for (int i = 0; i < steps; ++i) {
     keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kD, true);
     keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kSpace, jump && i % 70 >= 40 && i % 70 < 52);
@@ -86,6 +89,9 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
     out.saw_flip |= !sprite->flip_x;
     out.saw_particles |= !emitter->particles().empty();
     ++out.steps_run;
+    const float x = player->world_transform().position.x;
+    if (out.respawn_x < 0.0f && x < last_x - 50.0f) out.respawn_x = x;
+    last_x = x;
   }
 
   out.player_x = player->world_transform().position.x;
@@ -152,7 +158,34 @@ void test_spikes_and_pit() {
   const Outcome fell = simulate(600, /*jump=*/false, /*spikes=*/false);
   ARCANE_ASSERT_TRUE(fell.health == 0.0f);
   ARCANE_ASSERT_TRUE(fell.banner_text == "GAME OVER");
-  ARCANE_ASSERT_TRUE(fell.hurt_cues == 2);  // first fall respawns at the start, the second ends the game
+  ARCANE_ASSERT_TRUE(fell.hurt_cues == 2);  // first fall respawns at a checkpoint, the second ends the game
+  // Checkpoint0 (x=590) is passed before the pit, so the respawn is there and not at the start (x=64).
+  ARCANE_ASSERT_TRUE(fell.respawn_x > 540.0f && fell.respawn_x < 620.0f);
+}
+
+// Pickups, hazards, checkpoints and the goal are physics sensors that report through SliceTrigger.
+void test_triggers_are_sensors() {
+  auto runtime = arcane::editor::ProjectRuntime::open(ARCANE_SLICE_PROJECT_DIR, ARCANE_SLICE_MODULE_PATH);
+  ARCANE_ASSERT_TRUE(runtime.has_value());
+  arcane::Node* level = runtime->session().scene().roots().front().get();
+  int triggers = 0, checkpoints = 0;
+  for (const char* name : {"Coin0", "Coin1", "Coin2", "Coin3", "Coin4", "Spikes", "Goal", "Checkpoint0", "Checkpoint1"}) {
+    arcane::Node* n = find(level, name);
+    ARCANE_ASSERT_TRUE(n);
+    auto* body = static_cast<arcane::RigidBody2D*>(n->find_component("RigidBody2D"));
+    auto* collider = static_cast<arcane::Collider2D*>(n->find_component("Collider2D"));
+    ARCANE_ASSERT_TRUE(body && collider && n->find_component("SliceTrigger"));
+    ARCANE_ASSERT_TRUE(body->body_type == static_cast<int>(arcane::BodyType::Static) && collider->is_sensor);
+    ++triggers;
+    checkpoints += std::string(name).starts_with("Checkpoint");
+  }
+  ARCANE_ASSERT_TRUE(triggers == 9 && checkpoints == 2);
+
+  // Coins are collected by trigger events: the score is exactly 10 per coin cue even though the module no
+  // longer tests any boxes itself.
+  const Outcome run = simulate(300);
+  ARCANE_ASSERT_TRUE(run.coin_cues >= 1);
+  ARCANE_ASSERT_TRUE(run.score_text == "SCORE " + std::to_string(10 * run.coin_cues));
 }
 
 }  // namespace
@@ -161,5 +194,6 @@ int main() {
   test_project_loads_with_authored_hud();
   test_play_simulation();
   test_spikes_and_pit();
+  test_triggers_are_sensors();
   return 0;
 }
