@@ -72,6 +72,10 @@ class ARCANE_API Node {
   // per-frame transform propagation yet.
   WorldTransform2D world_transform() const noexcept;
 
+  // The scene that owns this node (kept up to date when the Scene is moved). Lets components spawn and destroy
+  // nodes from their hooks: scene()->destroy_node(id) is deferred to the end of the tick.
+  Scene* scene() const noexcept { return scene_; }
+
   Node* parent() const noexcept { return parent_; }
   const std::vector<std::unique_ptr<Node>>& children() const noexcept { return children_; }
 
@@ -96,6 +100,7 @@ class ARCANE_API Node {
   NodeId id_;
   std::string name_;
   Node* parent_ = nullptr;
+  Scene* scene_ = nullptr;
   std::vector<std::unique_ptr<Node>> children_;
   Transform2D local_{};
   std::vector<std::unique_ptr<Component>> components_;

@@ -37,6 +37,10 @@ add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
 
+add_executable(test_game_context test_game_context.cpp)
+target_link_libraries(test_game_context PRIVATE arcane_runtime)
+add_test(NAME test_game_context COMMAND test_game_context)
+
 add_executable(test_physics_components test_physics_components.cpp)
 target_link_libraries(test_physics_components PRIVATE arcane_runtime)
 add_test(NAME test_physics_components COMMAND test_physics_components)

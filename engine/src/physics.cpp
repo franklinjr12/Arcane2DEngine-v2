@@ -82,6 +82,13 @@ bool is_grounded(b2BodyId body) {
 
 }  // namespace
 
+void RigidBody2D::teleport(Vec2 position) noexcept {
+  pending_teleport = position;
+  has_pending_teleport = true;
+  linear_velocity = {};
+  if (node()) node()->local_transform().position = position;
+}
+
 void register_physics_components(ComponentRegistry& registry) {
   registry.register_component(
       "RigidBody2D", [] { return std::make_unique<RigidBody2D>(); },
@@ -112,6 +119,8 @@ struct PhysicsWorld::Impl {
   b2WorldId world = b2_nullWorldId;
   std::unordered_map<NodeId, b2BodyId> bodies;
 
+  void add_node(Node* node);
+
   ~Impl() {
     if (b2World_IsValid(world)) b2DestroyWorld(world);
   }
@@ -129,6 +138,66 @@ PhysicsWorld& PhysicsWorld::operator=(PhysicsWorld&&) noexcept = default;
 
 int PhysicsWorld::body_count() const noexcept { return static_cast<int>(impl_->bodies.size()); }
 
+void PhysicsWorld::Impl::add_node(Node* node) {
+  auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
+  const WorldTransform2D world_transform = node->world_transform();
+  if (!rigid) {
+    // A tilemap without its own body gets one static body holding a box per merged run of solid tiles.
+    auto* tilemap = dynamic_cast<Tilemap*>(node->find_component("Tilemap"));
+    if (!tilemap || !tilemap->collide) return;
+    b2BodyDef body_def = b2DefaultBodyDef();
+    body_def.type = b2_staticBody;
+    body_def.position = px_to_m(world_transform.position);
+    body_def.userData = node_id_to_user_data(node->id());
+    b2BodyId body = b2CreateBody(world, &body_def);
+    bodies[node->id()] = body;
+    b2ShapeDef shape_def = b2DefaultShapeDef();
+    shape_def.enableContactEvents = true;
+    for (const TileRect& r : tilemap->solid_rects()) {
+      const Vec2 half{r.width * world_transform.scale.x * 0.5f, r.height * world_transform.scale.y * 0.5f};
+      const Vec2 center{r.x * world_transform.scale.x + half.x, r.y * world_transform.scale.y + half.y};
+      b2Polygon box = b2MakeOffsetBox(px_to_m(half.x), px_to_m(half.y), px_to_m(center), b2Rot_identity);
+      b2CreatePolygonShape(body, &shape_def, &box);
+    }
+    return;
+  }
+
+  b2BodyDef body_def = b2DefaultBodyDef();
+  body_def.type = static_cast<b2BodyType>(rigid->body_type);
+  body_def.position = px_to_m(world_transform.position);
+  body_def.rotation = b2MakeRot(-world_transform.rotation_radians);
+  body_def.linearVelocity = px_to_m(rigid->linear_velocity);
+  body_def.gravityScale = rigid->gravity_scale;
+  body_def.motionLocks.angularZ = rigid->fixed_rotation;
+  body_def.userData = node_id_to_user_data(node->id());
+
+  b2BodyId body = b2CreateBody(world, &body_def);
+  bodies[node->id()] = body;
+
+  auto* collider = dynamic_cast<Collider2D*>(node->find_component("Collider2D"));
+  if (collider) {
+    b2ShapeDef shape_def = b2DefaultShapeDef();
+    shape_def.density = collider->density;
+    shape_def.material.friction = collider->friction;
+    shape_def.material.restitution = collider->restitution;
+    shape_def.isSensor = collider->is_sensor;
+    shape_def.enableSensorEvents = collider->is_sensor;
+    shape_def.enableContactEvents = true;
+    shape_def.enablePreSolveEvents = collider->one_way;
+    shape_def.userData = collider->one_way ? collider : nullptr;
+    const b2Vec2 offset_m = px_to_m(collider->offset);
+
+    if (static_cast<ColliderShapeType>(collider->shape_type) == ColliderShapeType::Circle) {
+      b2Circle circle{offset_m, px_to_m(collider->radius)};
+      b2CreateCircleShape(body, &shape_def, &circle);
+    } else {
+      b2Polygon box = b2MakeOffsetBox(px_to_m(collider->width) * 0.5f, px_to_m(collider->height) * 0.5f, offset_m,
+                                       b2Rot_identity);
+      b2CreatePolygonShape(body, &shape_def, &box);
+    }
+  }
+}
+
 void PhysicsWorld::rebuild(Scene& scene) {
   b2World_SetPreSolveCallback(impl_->world, one_way_pre_solve, nullptr, &scene);
   for (auto& [id, body] : impl_->bodies) {
@@ -138,69 +207,25 @@ void PhysicsWorld::rebuild(Scene& scene) {
 
   std::vector<Node*> nodes;
   collect_physics_nodes(scene.roots(), nodes);
-
-  for (Node* node : nodes) {
-    auto* rigid = dynamic_cast<RigidBody2D*>(node->find_component("RigidBody2D"));
-    const WorldTransform2D world_transform = node->world_transform();
-    if (!rigid) {
-      // A tilemap without its own body gets one static body holding a box per merged run of solid tiles.
-      auto* tilemap = dynamic_cast<Tilemap*>(node->find_component("Tilemap"));
-      if (!tilemap || !tilemap->collide) continue;
-      b2BodyDef body_def = b2DefaultBodyDef();
-      body_def.type = b2_staticBody;
-      body_def.position = px_to_m(world_transform.position);
-      body_def.userData = node_id_to_user_data(node->id());
-      b2BodyId body = b2CreateBody(impl_->world, &body_def);
-      impl_->bodies[node->id()] = body;
-      b2ShapeDef shape_def = b2DefaultShapeDef();
-      shape_def.enableContactEvents = true;
-      for (const TileRect& r : tilemap->solid_rects()) {
-        const Vec2 half{r.width * world_transform.scale.x * 0.5f, r.height * world_transform.scale.y * 0.5f};
-        const Vec2 center{r.x * world_transform.scale.x + half.x, r.y * world_transform.scale.y + half.y};
-        b2Polygon box = b2MakeOffsetBox(px_to_m(half.x), px_to_m(half.y), px_to_m(center), b2Rot_identity);
-        b2CreatePolygonShape(body, &shape_def, &box);
-      }
-      continue;
-    }
-
-    b2BodyDef body_def = b2DefaultBodyDef();
-    body_def.type = static_cast<b2BodyType>(rigid->body_type);
-    body_def.position = px_to_m(world_transform.position);
-    body_def.rotation = b2MakeRot(-world_transform.rotation_radians);
-    body_def.linearVelocity = px_to_m(rigid->linear_velocity);
-    body_def.gravityScale = rigid->gravity_scale;
-    body_def.motionLocks.angularZ = rigid->fixed_rotation;
-    body_def.userData = node_id_to_user_data(node->id());
-
-    b2BodyId body = b2CreateBody(impl_->world, &body_def);
-    impl_->bodies[node->id()] = body;
-
-    auto* collider = dynamic_cast<Collider2D*>(node->find_component("Collider2D"));
-    if (collider) {
-      b2ShapeDef shape_def = b2DefaultShapeDef();
-      shape_def.density = collider->density;
-      shape_def.material.friction = collider->friction;
-      shape_def.material.restitution = collider->restitution;
-      shape_def.isSensor = collider->is_sensor;
-      shape_def.enableSensorEvents = collider->is_sensor;
-      shape_def.enableContactEvents = true;
-      shape_def.enablePreSolveEvents = collider->one_way;
-      shape_def.userData = collider->one_way ? collider : nullptr;
-      const b2Vec2 offset_m = px_to_m(collider->offset);
-
-      if (static_cast<ColliderShapeType>(collider->shape_type) == ColliderShapeType::Circle) {
-        b2Circle circle{offset_m, px_to_m(collider->radius)};
-        b2CreateCircleShape(body, &shape_def, &circle);
-      } else {
-        b2Polygon box = b2MakeOffsetBox(px_to_m(collider->width) * 0.5f, px_to_m(collider->height) * 0.5f, offset_m,
-                                         b2Rot_identity);
-        b2CreatePolygonShape(body, &shape_def, &box);
-      }
-    }
-  }
+  for (Node* node : nodes) impl_->add_node(node);
 }
 
 void PhysicsWorld::step(Scene& scene, float fixed_dt) {
+  // Nodes destroyed since the last step lose their body; nodes spawned since then gain one.
+  for (auto it = impl_->bodies.begin(); it != impl_->bodies.end();) {
+    if (scene.find_node(it->first)) {
+      ++it;
+      continue;
+    }
+    if (b2Body_IsValid(it->second)) b2DestroyBody(it->second);
+    it = impl_->bodies.erase(it);
+  }
+  std::vector<Node*> nodes;
+  collect_physics_nodes(scene.roots(), nodes);
+  for (Node* node : nodes) {
+    if (!node->pending_destroy() && !impl_->bodies.contains(node->id())) impl_->add_node(node);
+  }
+
   for (auto& [node_id, body] : impl_->bodies) {
     if (!b2Body_IsValid(body)) continue;
     const b2BodyType type = b2Body_GetType(body);
@@ -221,6 +246,12 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
           b2Body_ApplyLinearImpulseToCenter(body, px_to_m(rigid->pending_impulse), true);
         }
         rigid->pending_impulse = {};
+        if (rigid->has_pending_teleport) {
+          b2Body_SetTransform(body, px_to_m(rigid->pending_teleport), b2MakeRot(-node->world_transform().rotation_radians));
+          b2Body_SetLinearVelocity(body, b2Vec2{0.0f, 0.0f});
+          b2Body_SetAwake(body, true);
+          rigid->has_pending_teleport = false;
+        }
       }
     }
   }

@@ -15,6 +15,7 @@
 #include "arcane/builtin_components.hpp"
 #include "arcane/component.hpp"
 #include "arcane/component_registry.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/game_api.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/node.hpp"
@@ -73,7 +74,11 @@ class SliceRules : public arcane::Component {
     if (!player) return;
 
     arcane::Hud* hud = arcane::active_hud();
-    if (hud && hud->clicked("restart")) reset();
+    if (hud && hud->clicked("restart")) restart();
+    if (!has_spawn_) {
+      spawn_ = player->world_transform().position;
+      has_spawn_ = true;
+    }
     hurt_timer_ = std::max(0.0f, hurt_timer_ - dt);
 
     if (!won_ && !dead()) {
@@ -89,10 +94,15 @@ class SliceRules : public arcane::Component {
           }
         }
       }
-      if (player->world_transform().position.y > pit_y) damage(1.0f);
+      if (player->world_transform().position.y > pit_y) {
+        damage(0.5f);
+        if (!dead()) {  // fell into the pit with health left: back to the start
+          if (auto* rb = static_cast<arcane::RigidBody2D*>(player->find_component("RigidBody2D"))) rb->teleport(spawn_);
+        }
+      }
       if (goal && overlaps(body, box_of(*goal, 24.0f, 64.0f))) {
         won_ = true;
-        cue("assets/win.wav");
+        cue("win.wav");
       } else if (player->world_transform().position.x > win_x) {
         won_ = true;  // fallback if the goal node is missing
       }
@@ -107,35 +117,39 @@ class SliceRules : public arcane::Component {
   }
 
  private:
-  void reset() {
+  // Restart reloads the authored scene (coins, player, this component) through the runner; without a game
+  // context only the counters can be reset.
+  void restart() {
+    if (auto* context = arcane::active_game_context()) {
+      context->request_restart();
+      return;
+    }
     score_ = 0;
     health_ = 1.0f;
     won_ = false;
     hurt_timer_ = 0.0f;
-    // Not restored (engine gap): player position/velocity (no teleport), collected coins (no instancing).
   }
 
   void collect_coin(arcane::Node& coin, arcane::Node* burst_node) {
     score_ += coin_value;
-    cue("assets/coin.wav");
+    cue("coin.wav");
     if (burst_node) {
       burst_node->local_transform().position = coin.world_transform().position;
       if (auto* e = static_cast<arcane::ParticleEmitter*>(burst_node->find_component("ParticleEmitter"))) {
         e->burst(12);
       }
     }
-    // A component cannot reach its Scene to destroy_node (gap), so park the collected coin far off-screen.
-    coin.local_transform().position = {-100000.0f, -100000.0f};
+    scene()->destroy_node(coin.id());  // deferred to the end of the tick
   }
 
   void damage(float amount) {
     health_ = std::max(0.0f, health_ - amount);
     hurt_timer_ = hurt_cooldown;
-    cue("assets/hurt.wav");
+    cue("hurt.wav");
   }
 
-  void cue(const char* path) {
-    if (auto* audio = arcane::active_audio_system()) audio->play(path, 1.0f, false, arcane::AudioBus::Sfx);
+  void cue(const char* asset) {
+    if (auto* context = arcane::active_game_context()) context->play_sound(std::string(asset));
   }
 
   void animate(arcane::Node& player) {
@@ -172,6 +186,8 @@ class SliceRules : public arcane::Component {
   float health_ = 1.0f;
   float hurt_timer_ = 0.0f;
   bool won_ = false;
+  bool has_spawn_ = false;
+  arcane::Vec2 spawn_{};
 };
 
 void register_types(arcane::ComponentRegistry& registry) {

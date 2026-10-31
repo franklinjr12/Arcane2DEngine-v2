@@ -7,6 +7,7 @@
 #include "arcane/atlas.hpp"
 #include "arcane/audio.hpp"
 #include "arcane/canonical_json.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/project.hpp"
 #include "arcane/replay.hpp"
@@ -50,10 +51,14 @@ std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRu
   Hud hud = context.session().project().hud;
   auto audio = AudioSystem::create(true);  // null backend: no device
   if (!audio) return std::unexpected(offline_error("IO_ERROR", audio.error()));
+  GameContext game_context(context.project_dir(), context.registry());
+  options.restart_scene_json = *scene_text;
   set_active_audio_system(&*audio);
+  set_active_game_context(&game_context);
   set_active_hud(&hud);
   struct Reset {
     ~Reset() {
+      set_active_game_context(nullptr);
       set_active_audio_system(nullptr);
       set_active_hud(nullptr);
     }

@@ -11,6 +11,7 @@ using ComponentId = std::uint64_t;
 inline constexpr ComponentId kInvalidComponentId = 0;
 
 class Node;
+class Scene;
 
 // Base class for data/behaviour attached to a Node. Owned by the Node it is
 // attached to (destroyed when the node is destroyed). Lifecycle hooks are
@@ -38,6 +39,8 @@ class ARCANE_API Component {
 
   ComponentId id() const noexcept { return id_; }
   Node* node() const noexcept { return node_; }
+  // The scene owning this component's node (null if detached); see Node::scene().
+  Scene* scene() const noexcept;
   const std::string& type_name() const noexcept { return type_name_; }
 
  private:

@@ -1,4 +1,5 @@
 #include "arcane/replay.hpp"
+#include "arcane/game_context.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -352,6 +353,13 @@ std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& s
     if (options.before_step) options.before_step(dt);
     scene.update(dt);
     physics.step(scene, dt);
+    GameContext* context = active_game_context();
+    if (context && context->take_restart_request() && !options.restart_scene_json.empty()) {
+      auto fresh = Scene::load_from_json(options.restart_scene_json, registry);
+      if (!fresh) return std::unexpected(fresh.error());
+      scene = std::move(*fresh);
+      physics.rebuild(scene);
+    }
     hashes.push_back(hash_scene_state(scene, registry));
   }
   set_active_input_map(previous);

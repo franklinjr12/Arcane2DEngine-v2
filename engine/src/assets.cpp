@@ -1,8 +1,9 @@
-#include "arcane_editor/asset_catalog.hpp"
+#include "arcane/assets.hpp"
 
 #include <algorithm>
+#include <cstdint>
 
-namespace arcane::editor {
+namespace arcane {
 
 AssetId asset_id_for_relative_path(const std::string& relative_path) noexcept {
   // FNV-1a 64-bit.
@@ -75,4 +76,12 @@ std::vector<AssetEntry> list_audio_assets(const std::filesystem::path& assets_di
   return list_assets_matching(assets_dir, looks_like_audio);
 }
 
-}  // namespace arcane::editor
+std::optional<std::filesystem::path> find_asset_path(const std::filesystem::path& assets_dir, AssetId id) {
+  const auto all = list_assets_matching(assets_dir, [](const std::filesystem::path&) { return true; });
+  for (const AssetEntry& entry : all) {
+    if (entry.id == id) return entry.absolute_path;
+  }
+  return std::nullopt;
+}
+
+}  // namespace arcane
