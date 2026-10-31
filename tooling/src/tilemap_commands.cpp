@@ -234,7 +234,7 @@ Json tileset_json(const TilesetFile& file) {
   const Tileset& t = file.tileset;
   Json tiles = Json::array(), rules = Json::array();
   for (std::size_t i = 0; i < t.tiles.size(); ++i) {
-    tiles.push_back({{"id", i + 1}, {"solid", t.tiles[i].solid}, {"terrain", t.tiles[i].terrain}});
+    tiles.push_back({{"id", i + 1}, {"solid", t.tiles[i].solid}, {"terrain", t.tiles[i].terrain}, {"tags", t.tiles[i].tags}});
   }
   for (const auto& rule : t.terrains) rules.push_back(rule_json(rule));
   return {{"tileset", file.path}, {"texture", t.texture}, {"tile_width", t.tile_width}, {"tile_height", t.tile_height},
@@ -272,7 +272,8 @@ Json tileset_problems(const Tileset& t) {
 Json tile_state(const Tileset& t, int tile) {
   const bool has = tile <= static_cast<int>(t.tiles.size());
   return {{"solid", has ? t.tiles[static_cast<std::size_t>(tile - 1)].solid : false},
-          {"terrain", has ? t.tiles[static_cast<std::size_t>(tile - 1)].terrain : 0}};
+          {"terrain", has ? t.tiles[static_cast<std::size_t>(tile - 1)].terrain : 0},
+          {"tags", has ? t.tiles[static_cast<std::size_t>(tile - 1)].tags : std::vector<std::string>{}}};
 }
 
 const Json kTilesetArg = {{"type", "string"}};
@@ -571,9 +572,10 @@ void register_tilemap_commands(CommandRegistry& registry) {
 
   registry.add(
       {"tileset.set_tile",
-       "Set the solid flag and/or terrain of tile `tile` (1-based id). Writes the file at once.",
+       "Set the solid flag, terrain and/or gameplay `tags` (e.g. hazard, pickup; a-z 0-9 _, replaces the list) of tile `tile` (1-based id). Writes the file at once.",
        schema({{"tileset", kTilesetArg}, {"tile", {{"type", "integer"}, {"minimum", 1}}}, {"solid", {{"type", "boolean"}}},
-               {"terrain", {{"type", "integer"}, {"minimum", 0}}}},
+               {"terrain", {{"type", "integer"}, {"minimum", 0}}},
+               {"tags", {{"type", "array"}, {"items", {{"type", "string"}}}}}},
               {"tileset", "tile"}),
        {{"type", "object"}}, false},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
@@ -589,10 +591,19 @@ void register_tilemap_commands(CommandRegistry& registry) {
         TileInfo& info = t.tiles[static_cast<std::size_t>(tile - 1)];
         if (args.contains("solid")) info.solid = args["solid"];
         if (args.contains("terrain")) info.terrain = args["terrain"];
+        if (args.contains("tags")) {
+          std::vector<std::string> tags = args["tags"].get<std::vector<std::string>>();
+          for (const std::string& tag : tags) {
+            if (!is_valid_tile_tag(tag)) return std::unexpected(fail("VALUE_INVALID", "tag '" + tag + "' must be 1-32 characters of a-z 0-9 _", "/tags"));
+          }
+          std::sort(tags.begin(), tags.end());
+          tags.erase(std::unique(tags.begin(), tags.end()), tags.end());
+          info.tags = std::move(tags);
+        }
         const Json now = tile_state(t, tile);
         if (now == previous) return CommandResult{{{"changed", false}, {"tile", tile}, {"state", now}}, std::nullopt};
         if (auto ok = write_tileset(context, *file); !ok) return std::unexpected(ok.error());
-        Json inverse_args = {{"tileset", file->path}, {"tile", tile}, {"solid", previous["solid"]}, {"terrain", previous["terrain"]}};
+        Json inverse_args = {{"tileset", file->path}, {"tile", tile}, {"solid", previous["solid"]}, {"terrain", previous["terrain"]}, {"tags", previous["tags"]}};
         return CommandResult{{{"changed", true}, {"tile", tile}, {"state", now}, {"previous", previous}},
                              Invocation{"tileset.set_tile", inverse_args}};
       });

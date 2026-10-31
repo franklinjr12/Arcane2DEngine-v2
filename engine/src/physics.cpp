@@ -3,7 +3,10 @@
 #include <box2d/box2d.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
+#include <optional>
+#include <tuple>
 #include <unordered_map>
 #include <vector>
 
@@ -36,18 +39,86 @@ void collect_physics_nodes(const std::vector<std::unique_ptr<Node>>& nodes, std:
   }
 }
 
-void notify_contact(Scene& scene, b2ShapeId shape_a, b2ShapeId shape_b, bool begin) {
-  const NodeId id_a = user_data_to_node_id(b2Body_GetUserData(b2Shape_GetBody(shape_a)));
-  const NodeId id_b = user_data_to_node_id(b2Body_GetUserData(b2Shape_GetBody(shape_b)));
-  Node* node_a = scene.find_node(id_a);
-  Node* node_b = scene.find_node(id_b);
-  if (!node_a || !node_b) return;
-  for (const auto& component : node_a->components()) {
-    if (begin) component->on_contact_begin(*node_b); else component->on_contact_end(*node_b);
-  }
-  for (const auto& component : node_b->components()) {
-    if (begin) component->on_contact_begin(*node_a); else component->on_contact_end(*node_a);
-  }
+enum class EventKind { CollisionExit, TriggerExit, CollisionEnter, TriggerEnter };
+
+struct PhysicsEvent {
+  EventKind kind;
+  NodeId first, second;  // for triggers: sensor node, visitor node
+};
+
+NodeId shape_node(b2ShapeId shape) { return user_data_to_node_id(b2Body_GetUserData(b2Shape_GetBody(shape))); }
+
+void queue_event(std::vector<PhysicsEvent>& out, EventKind kind, b2ShapeId a, b2ShapeId b) {
+  if (!b2Shape_IsValid(a) || !b2Shape_IsValid(b)) return;
+  NodeId first = shape_node(a), second = shape_node(b);
+  const bool trigger = kind == EventKind::TriggerEnter || kind == EventKind::TriggerExit;
+  if (!trigger && first > second) std::swap(first, second);
+  out.push_back({kind, first, second});
+}
+
+void deliver(Scene& scene, const PhysicsEvent& event) {
+  Node* first = scene.find_node(event.first);
+  Node* second = scene.find_node(event.second);
+  if (!first || !second) return;
+  auto call = [&](Node& self, Node& other) {
+    for (const auto& component : self.components()) {
+      switch (event.kind) {
+        case EventKind::CollisionEnter: component->on_collision_enter(other); break;
+        case EventKind::CollisionExit: component->on_collision_exit(other); break;
+        case EventKind::TriggerEnter: component->on_trigger_enter(other); break;
+        case EventKind::TriggerExit: component->on_trigger_exit(other); break;
+      }
+    }
+  };
+  call(*first, *second);
+  call(*second, *first);
+}
+
+b2Filter shape_filter(const Collider2D& collider) {
+  b2Filter filter = b2DefaultFilter();
+  filter.categoryBits = 1ull << std::clamp(collider.layer, 0, kMaxCollisionLayers - 1);
+  filter.maskBits = static_cast<std::uint32_t>(collider.mask);
+  return filter;
+}
+
+b2QueryFilter query_filter(int layers) {
+  b2QueryFilter filter = b2DefaultQueryFilter();
+  filter.maskBits = static_cast<std::uint32_t>(layers);
+  return filter;
+}
+
+struct RayContext {
+  b2ShapeId closest = b2_nullShapeId;
+  Vec2 point{};
+  Vec2 normal{};
+  float fraction = 2.0f;
+};
+
+float ray_callback(b2ShapeId shape, b2Pos point, b2Vec2 normal, float fraction, void* context) {
+  auto* ray = static_cast<RayContext*>(context);
+  if (b2Shape_IsSensor(shape)) return -1.0f;
+  ray->closest = shape;
+  ray->point = m_to_px(b2Vec2{static_cast<float>(point.x), static_cast<float>(point.y)});
+  ray->normal = Vec2{normal.x, -normal.y};
+  ray->fraction = fraction;
+  return fraction;
+}
+
+bool collect_overlap(b2ShapeId shape, void* context) {
+  if (!b2Shape_IsSensor(shape)) static_cast<std::vector<NodeId>*>(context)->push_back(shape_node(shape));
+  return true;
+}
+
+std::vector<NodeId> overlap_box(b2WorldId world, Vec2 min, Vec2 max, int layers) {
+  const b2Vec2 a = px_to_m(Vec2{min.x, max.y});  // y flips: the top edge in engine space is the upper bound
+  const b2Vec2 b = px_to_m(Vec2{max.x, min.y});
+  const b2Vec2 corners[4] = {{a.x, a.y}, {b.x, a.y}, {b.x, b.y}, {a.x, b.y}};
+  const b2ShapeProxy proxy = b2MakeProxy(corners, 4, 0.0f);
+  std::vector<NodeId> ids;
+  b2World_OverlapShape(world, b2Pos_zero, &proxy, query_filter(layers), collect_overlap, &ids);
+  std::sort(ids.begin(), ids.end());
+  ids.erase(std::unique(ids.begin(), ids.end()), ids.end());
+  return ids;
 }
 
 // Shape user data marks one-way colliders; body user data is the scene node id.
@@ -111,6 +182,8 @@ void register_physics_components(ComponentRegistry& registry) {
           make_property<Collider2D>("restitution", PropertyType::Float, &Collider2D::restitution),
           make_property<Collider2D>("is_sensor", PropertyType::Bool, &Collider2D::is_sensor),
           make_property<Collider2D>("one_way", PropertyType::Bool, &Collider2D::one_way),
+          make_property<Collider2D>("layer", PropertyType::Int, &Collider2D::layer),
+          make_property<Collider2D>("mask", PropertyType::Int, &Collider2D::mask),
       });
   register_platformer_components(registry);
 }
@@ -153,6 +226,7 @@ void PhysicsWorld::Impl::add_node(Node* node) {
     bodies[node->id()] = body;
     b2ShapeDef shape_def = b2DefaultShapeDef();
     shape_def.enableContactEvents = true;
+    shape_def.enableSensorEvents = true;
     for (const TileRect& r : tilemap->solid_rects()) {
       const Vec2 half{r.width * world_transform.scale.x * 0.5f, r.height * world_transform.scale.y * 0.5f};
       const Vec2 center{r.x * world_transform.scale.x + half.x, r.y * world_transform.scale.y + half.y};
@@ -181,7 +255,8 @@ void PhysicsWorld::Impl::add_node(Node* node) {
     shape_def.material.friction = collider->friction;
     shape_def.material.restitution = collider->restitution;
     shape_def.isSensor = collider->is_sensor;
-    shape_def.enableSensorEvents = collider->is_sensor;
+    shape_def.enableSensorEvents = true;
+    shape_def.filter = shape_filter(*collider);
     shape_def.enableContactEvents = true;
     shape_def.enablePreSolveEvents = collider->one_way;
     shape_def.userData = collider->one_way ? collider : nullptr;
@@ -276,13 +351,43 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
     }
   }
 
+  std::vector<PhysicsEvent> queue;
   const b2ContactEvents events = b2World_GetContactEvents(impl_->world);
-  for (int i = 0; i < events.beginCount; ++i) {
-    notify_contact(scene, events.beginEvents[i].shapeIdA, events.beginEvents[i].shapeIdB, /*begin=*/true);
-  }
   for (int i = 0; i < events.endCount; ++i) {
-    notify_contact(scene, events.endEvents[i].shapeIdA, events.endEvents[i].shapeIdB, /*begin=*/false);
+    queue_event(queue, EventKind::CollisionExit, events.endEvents[i].shapeIdA, events.endEvents[i].shapeIdB);
   }
+  for (int i = 0; i < events.beginCount; ++i) {
+    queue_event(queue, EventKind::CollisionEnter, events.beginEvents[i].shapeIdA, events.beginEvents[i].shapeIdB);
+  }
+  const b2SensorEvents sensors = b2World_GetSensorEvents(impl_->world);
+  for (int i = 0; i < sensors.endCount; ++i) {
+    queue_event(queue, EventKind::TriggerExit, sensors.endEvents[i].sensorShapeId, sensors.endEvents[i].visitorShapeId);
+  }
+  for (int i = 0; i < sensors.beginCount; ++i) {
+    queue_event(queue, EventKind::TriggerEnter, sensors.beginEvents[i].sensorShapeId, sensors.beginEvents[i].visitorShapeId);
+  }
+  // Exits before enters, then by node ids, so the order never depends on Box2D's internal contact ordering.
+  std::stable_sort(queue.begin(), queue.end(), [](const PhysicsEvent& l, const PhysicsEvent& r) {
+    return std::tie(l.kind, l.first, l.second) < std::tie(r.kind, r.first, r.second);
+  });
+  for (const PhysicsEvent& event : queue) deliver(scene, event);
+}
+
+std::optional<PhysicsWorld::RayHit> PhysicsWorld::raycast(Vec2 origin, Vec2 end, int layers) const {
+  const b2Vec2 from = px_to_m(origin);
+  RayContext ray;
+  b2World_CastRay(impl_->world, from, b2Sub(px_to_m(end), from), query_filter(layers), ray_callback, &ray);
+  if (!b2Shape_IsValid(ray.closest)) return std::nullopt;
+  const float length = std::hypot(end.x - origin.x, end.y - origin.y);
+  return RayHit{shape_node(ray.closest), ray.point, ray.normal, ray.fraction, ray.fraction * length};
+}
+
+std::vector<NodeId> PhysicsWorld::overlap_aabb(Vec2 min, Vec2 max, int layers) const {
+  return overlap_box(impl_->world, min, max, layers);
+}
+
+std::vector<NodeId> PhysicsWorld::overlap_point(Vec2 point, int layers) const {
+  return overlap_box(impl_->world, {point.x - 0.01f, point.y - 0.01f}, {point.x + 0.01f, point.y + 0.01f}, layers);
 }
 
 }  // namespace arcane

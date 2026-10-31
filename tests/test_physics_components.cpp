@@ -16,8 +16,8 @@ class ContactRecorder : public arcane::Component {
  public:
   int begin_count = 0;
   int end_count = 0;
-  void on_contact_begin(arcane::Node&) override { ++begin_count; }
-  void on_contact_end(arcane::Node&) override { ++end_count; }
+  void on_collision_enter(arcane::Node&) override { ++begin_count; }
+  void on_collision_exit(arcane::Node&) override { ++end_count; }
 };
 
 arcane::ComponentRegistry make_registry() {
@@ -28,7 +28,7 @@ arcane::ComponentRegistry make_registry() {
 }
 
 // A dynamic box falls under gravity and comes to rest on a static box below
-// it, and both sides see on_contact_begin exactly once.
+// it, and both sides see on_collision_enter exactly once.
 void test_falling_body_lands_on_static_box() {
   arcane::ComponentRegistry registry = make_registry();
   arcane::Scene scene;

@@ -384,6 +384,19 @@ void test_project_get_set() {
       ARCANE_ASSERT_TRUE(!context->dirty() && slurp(file) == original);
     }
 
+    // Collision layers: validated, saved, undone by the inverse.
+    for (const Json& layers : {Json::array({"a", "a"}), Json::array({"Bad"}), Json::array({""})}) {
+      auto r = registry.execute(*context, {"project.set", {{"collision_layers", layers}}}, persist);
+      ARCANE_ASSERT_TRUE(!r.has_value() && r.error().code == "VALUE_INVALID");
+    }
+    auto layered = registry.execute(*context, {"project.set", {{"collision_layers", Json::array({"world", "player", "enemy"})}}}, persist);
+    ARCANE_ASSERT_TRUE(layered.has_value() && layered->inverse.has_value());
+    ARCANE_ASSERT_TRUE(slurp(file).find("\"collision_layers\"") != std::string::npos);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value["collision_layers"].size() == 3);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, *layered->inverse, persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+    ARCANE_ASSERT_TRUE(slurp(file) == original);
+
     // Dry run leaves project.json and memory alone.
     Json change = {{"name", "Renamed"}, {"main_scene", "scenes/other.scene.json"}};
     auto dry = registry.execute(*context, {"project.set", change}, ExecuteOptions{.persist = true, .dry_run = true});

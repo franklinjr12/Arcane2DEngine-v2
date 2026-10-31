@@ -30,12 +30,14 @@ class ARCANE_API Component {
   virtual void on_update(float fixed_dt) { (void)fixed_dt; }
   virtual void on_destroy() {}
 
-  // Physics contact notifications (see arcane/physics.hpp): called on every
-  // component attached to either node when their Collider2D shapes start or
-  // stop touching, during Play only. Default no-op so most components never
-  // need to know about these.
-  virtual void on_contact_begin(Node& other) { (void)other; }
-  virtual void on_contact_end(Node& other) { (void)other; }
+  // Physics notifications (see arcane/physics.hpp), during Play only, called on every component of both nodes
+  // after the step that caused them, ordered by node ids. Collision events are for solid shapes that start or
+  // stop touching; trigger events are for a sensor Collider2D and the shape that starts or stops overlapping it
+  // (the sensor's node gets the visitor as `other` and vice versa). Default no-ops.
+  virtual void on_collision_enter(Node& other) { (void)other; }
+  virtual void on_collision_exit(Node& other) { (void)other; }
+  virtual void on_trigger_enter(Node& other) { (void)other; }
+  virtual void on_trigger_exit(Node& other) { (void)other; }
 
   ComponentId id() const noexcept { return id_; }
   Node* node() const noexcept { return node_; }

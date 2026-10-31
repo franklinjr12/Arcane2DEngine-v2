@@ -13,6 +13,8 @@
 #include "arcane/canonical_json.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/prefab.hpp"
+#include "arcane/project.hpp"
+#include "arcane/tilemap.hpp"
 #include "arcane/replay.hpp"
 #include "arcane/save_game.hpp"
 #include "arcane_tooling/error.hpp"
@@ -226,6 +228,17 @@ void check_readers(const fs::path& dir) {
     auto trace = arcane::load_trace_json(read(dir / "replay_trace.example.json"));
     ARCANE_ASSERT_TRUE(trace.has_value());
     ARCANE_ASSERT_TRUE(trace->size() == 2);
+  }
+  {
+    auto project = arcane::load_project_from_json(read(dir / "project.example.json"));
+    ARCANE_ASSERT_TRUE(project.has_value());
+    ARCANE_ASSERT_TRUE(project->collision_layers.size() == 4);
+    int mask = 0;
+    ARCANE_ASSERT_TRUE(arcane::collision_layer_mask(*project, {"player", "pickup"}, mask) && mask == 0b1010);
+    ARCANE_ASSERT_TRUE(!arcane::collision_layer_mask(*project, {"nope"}, mask));
+    auto tileset = arcane::load_tileset_from_json(read(dir / "tileset.example.json"));
+    ARCANE_ASSERT_TRUE(tileset.has_value());
+    ARCANE_ASSERT_TRUE(tileset->has_tag(2, "pickup") && tileset->has_tag(3, "water") && !tileset->has_tag(1, "pickup"));
   }
   {
     arcane::ComponentRegistry registry;

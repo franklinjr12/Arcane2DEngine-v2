@@ -350,3 +350,7 @@ target_compile_definitions(test_render_golden PRIVATE ARCANE_GOLDEN_DIR="${CMAKE
 add_test(NAME test_render_golden COMMAND test_render_golden)
 set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_physics_events test_physics_events.cpp)
+target_link_libraries(test_physics_events PRIVATE arcane_runtime)
+add_test(NAME test_physics_events COMMAND test_physics_events)

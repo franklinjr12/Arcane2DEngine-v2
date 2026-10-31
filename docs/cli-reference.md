@@ -805,12 +805,13 @@ Writes files; honors `--dry-run`.
 
 ### `arcane project set`
 
-Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
+Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none), `collision_layers` (array of layer names, index = layer number used by Collider2D layer/mask; a-z 0-9 _, max 31, replaces the list). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
 
 Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
+| `--collision-layers` | array | no |  |
 | `--main-scene` | string | no |  |
 | `--module` | string | no |  |
 | `--name` | string | no |  |
@@ -1291,13 +1292,14 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 
 ### `arcane tileset set-tile`
 
-Set the solid flag and/or terrain of tile `tile` (1-based id). Writes the file at once.
+Set the solid flag, terrain and/or gameplay `tags` (e.g. hazard, pickup; a-z 0-9 _, replaces the list) of tile `tile` (1-based id). Writes the file at once.
 
 Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
 | `--solid` | boolean | no |  |
+| `--tags` | array | no |  |
 | `--terrain` | integer | no |  |
 | `--tile` | integer | yes |  |
 | `--tileset` | string | yes |  |

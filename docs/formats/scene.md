@@ -78,6 +78,8 @@ editor Inspector.
 
 ## One-way platforms
 
+`Collider2D.layer` (integer 0..30, default 0) and `Collider2D.mask` (integer bit mask of layers it reacts to, default 2147483647 = all) filter collisions, trigger events and spatial queries; layer names live in `project.json` `collision_layers`. A sensor (`is_sensor`) never pushes; it raises `Component::on_trigger_enter/exit` on itself and the visitor, and solid shapes raise `on_collision_enter/exit` (dispatched after each step, exits before enters, ordered by node id). `PhysicsWorld::raycast/overlap_aabb/overlap_point` (also via `GameContext::physics()`) take a layer mask and ignore sensors. Covered by `tests/test_physics_events.cpp`.
+
 `Collider2D.one_way` (boolean, default false; absent in older scenes) marks a static box collider as one-way: bodies land on it from above and pass through from below. `PlatformerController2D.down_action` (string, default `move_down`) and `drop_duration` (float seconds, default 0.5) let a grounded character hold down and press jump to drop through for that interval; the drop timer is runtime-only and never saved. All three are ordinary registered properties, so `prop.get` / `prop.set` read and write them and `tests/test_tooling_commands.cpp` round-trips them through a saved scene; landing, passing from below and dropping are covered headlessly by `tests/test_platformer.cpp`. Not done: a per-tile one-way flag (tilemap colliders are merged solid boxes) and slopes. The `arcane` CLI does not exist yet, so there is no CLI spelling beyond the registry commands.
 
 ## `Tween` component properties

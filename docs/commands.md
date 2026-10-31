@@ -158,7 +158,7 @@ problems and the file is never changed). Their inverses are the matching tileset
 | `tileset.info` | `tileset` | sheet layout, per-tile solid/terrain flags and terrain rules |
 | `tileset.replace` | `tileset`, sheet layout as `tileset.create`, `tiles?` `[{id, solid?, terrain?}]`, `terrains?` `[{terrain, tiles[16]}]` | writes the whole file at once (the editor's Save tileset); inverse `tileset.restore` |
 | `tileset.restore` | `tileset`, `content` or `absent=true` | puts the file back; only used as an inverse |
-| `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?` | writes the file at once |
+| `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?`, `tags?` (array of `a-z0-9_` gameplay labels such as `hazard`, `pickup`; replaces the list) | writes the file at once |
 | `tileset.set_rule` | `tileset`, `terrain`, `tiles` (16 ids by neighbour mask) | adds or replaces the rule; writes the file at once |
 | `tileset.remove_rule` | `tileset`, `terrain` | removes the rule; writes the file at once |
 | `tileset.validate` | `tileset` | `ok:false` (exit 4) lists problems; never changes the file |
@@ -252,7 +252,7 @@ Registered by `register_project_commands`; see `tooling/src/project_commands.cpp
 | Command | Arguments | Result |
 | --- | --- | --- |
 | `project.get` | none | `{name, main_scene, module}` |
-| `project.set` (mutating) | `name?`, `main_scene?`, `module?` (at least one) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+| `project.set` (mutating) | `name?`, `main_scene?`, `module?`, `collision_layers?` (array of layer names, index = layer number; at least one argument) | `{changed, previous, project}`; inverse `project.set` with the previous values |
 | `project.new` | `path`, `name?` | creates a project folder with `project.json`, an empty main scene and `assets/` (file-level, works without an openable project) |
 | `project.info` | none | name, main scene, module, format, scene count, transition/save/debug settings |
 | `project.settings_get` | none | `{name, main_scene, module}` read from `project.json` |

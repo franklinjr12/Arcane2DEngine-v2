@@ -26,6 +26,7 @@ Schema: `schemas/arcane.project.schema.json`. Rules shared with all files: `cano
 | `transition` | object | optional scene-switch fade, below; omitted when all defaults |
 | `save` | object | optional save-game settings, below; omitted when unset |
 | `debug` | object | optional debug overlay settings, below; omitted when default |
+| `collision_layers` | array of strings | optional names of collision layers (`a-z0-9_`, 1-32 chars, unique, at most 31); the index is the layer number used by `Collider2D.layer` / `mask`; omitted when empty. Edit with `project.set --collision_layers` |
 
 ### `transition`
 
