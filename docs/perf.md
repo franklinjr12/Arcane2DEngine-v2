@@ -88,15 +88,15 @@ most 3 draw calls), `test_render_cull` (visibility rules and stats), the PF1 cas
 timing), and `bench_cli_render_smoke` (`--render 1`, skips on exit 8). None asserts wall-clock time.
 
 **Measured numbers.** Noisy: one machine (2 vCPU, g++ 15.2.0), Release, 300 frames, 5000 sprites, 2000 particles,
-500 bodies, three runs for the default mode and the runs listed for `--render 1`. The machine was shared with other
+500 bodies, three runs per mode. The machine was shared with other
 builds. These come from Mesa llvmpipe (software GL) under Xvfb, not real GPU hardware, so the render times say
 nothing about GPU speed. Windows was not measured.
 
 | Mode | avg frame ms (runs) | max frame ms (runs) |
 | --- | --- | --- |
 | default (update + physics, no render) | 3.31, 3.79, 4.05 | 8.97, 13.03, 9.52 |
-| `--render 1`, update part (`update_avg_ms`) | 1.87, 1.76 | n/a |
-| `--render 1`, `render_avg_frame_ms` | 554, 545 | 842, 730 |
+| `--render 1`, update part (`update_avg_ms`) | 1.87, 1.76, 1.65 | n/a |
+| `--render 1`, `render_avg_frame_ms` | 554, 545, 457 | 842, 730, 730 |
 
 In the render runs: 4850 sprites drawn, 2150 culled, 2 draw calls (1280x720 view).
 
