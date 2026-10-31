@@ -258,3 +258,12 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
   therefore reported before a missing display (exit 1 instead of 77).
 - Gap: the editor Play viewport is an ImGui-embedded offscreen texture sized to the panel with its own origin
   mapping, so it still plays at the panel size and ignores `display`; letterboxing it is left for a later step.
+
+### GP6: platformer pause menu, menu scene, best score (ENG-026)
+
+- Pause is `GameContext::set_time_scale(0)`; the pause menu buttons are `pause_resume/pause_restart/pause_menu` (the project HUD already has a
+  `restart`), added and removed at runtime. The corner RESTART is disabled while the menu is open so D-pad nav starts at the menu.
+- The menu is a scene with a `MenuController` that swaps the HUD, but it is not `main_scene`: the replay, render golden and headless
+  runners start from `main_scene` and cannot leave a menu. Best score lives in the `progress` save slot (`best_score`).
+- `display` 640x360 letterbox is set on the platformer slice only; `arcane render` tests pass an explicit `--size`, so the golden is unchanged.
+  The top-down slice keeps its node-deactivation pause (switching it was optional and not attempted in this step).

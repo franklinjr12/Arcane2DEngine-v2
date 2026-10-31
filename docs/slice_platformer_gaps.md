@@ -16,7 +16,8 @@ GS2 (v2 of the slice) now also exercises:
 - **Camera follow + parallax in both levels:** `Camera2D` look-ahead and `bounds_tilemap`, plus a `ParallaxLayer` sky.
 - **Animgraph states:** `hero.animgraph.json` drives idle/run/jump/fall/hurt through the `Animator`.
 - **Enemy:** `PatrolEnemy` walks between two x limits; landing on it stomps it, any other contact hurts.
-- **Pause:** the `pause` action (P / Escape) freezes gameplay by deactivating nodes; it resumes exactly those.
+- **Pause:** the `pause` action (P / Escape / gamepad Start) sets the game time scale to 0 (GP6) and opens a Resume / Restart / Menu
+  button column; resuming restores time scale 1 and removes the buttons.
 - **Scene switch:** the goal calls `SceneManager::request_switch` to `scenes/level2.scene.json`; the score carries over;
   Restart reloads the current level.
 
@@ -47,14 +48,25 @@ Gaps found while building it (most important first). Each has the workaround use
 11. **Player has no module render hook with scene/renderer access**, and `arcane_player` builds `TilesetCache` from
     `list_animation_clip_assets` (works only because both are `.json`): a dedicated tileset catalog is missing.
 12. **(PARTLY FIXED in GS2: pause and scene switching are covered, headlessly in `test_platformer_slice` and in a replay
-    through the windowed player.)** Still not covered: gamepad play-through, save data, a menu, window resize
-    behaviour, visual checks (the slice has one render golden, `tests/golden/render/platformer_slice_f30.png`, and nobody
+    through the windowed player; GP6 added the time-scale pause menu, a menu scene, best-score save data and the 640x360
+    letterbox.)** Still not covered: a gamepad play-through on real hardware (bindings and D-pad/A menu navigation are
+    tested with the fake backend), window resize looked at by a human, visual checks (the slice has one render golden, `tests/golden/render/platformer_slice_f30.png`, and nobody
     has looked at the other frames), native Windows/MSVC.
 13. **`arcane_player --headless`, `arcane run` and `arcane test` own no `SceneManager`**, so a level switch cannot happen
     there: the goal does nothing in those runs (the replay regression has to use the windowed player, hence GL).
     Gameplay that needs `active_scene_manager()` has no display-free test path.
-14. **Pause is a node-by-node `set_active(false)` sweep** done by the module (everything but the Level node, camera and
-    HUD). There is no engine-level time scale or paused-scene flag, so anything spawned while paused is not frozen.
+14. **(FIXED in GP6: `GameContext::set_time_scale`; the slice pauses with scale 0 and the runners skip physics at dt 0.)**
+    Pause was a node-by-node `set_active(false)` sweep** with no engine-level time scale, so anything spawned while paused
+    was not frozen.
 15. **Carry-over between levels is a module-level static** (`g_carried_score`), because `SceneManager` only carries
     roots flagged `persistent`, not plain values. It is not saved and would leak between two `GameContext`s in one
     process.
+16. **The player does not start on the menu.** `scenes/menu.scene.json` (a `MenuController` with title, `BEST <n>` and PLAY)
+    is reached from the pause menu's MENU button and from the win/game-over menu, but `project.json` keeps
+    `main_scene = scenes/main.scene.json`. The replay trace (`level2_run`), the render golden, `arcane run/test/render`
+    and the headless runners all start from `main_scene` and none of them owns the HUD interaction or a `SceneManager`
+    needed to leave a menu, so a menu startup scene would break them. A game that wants a title screen first would
+    need a separate "start scene" setting or a runner flag.
+17. **Best score is read and written by the module through `GameContext::load_save/write_save`**, only in the windowed
+    player and editor Play (saves are off for `--replay`, `--headless`, `arcane run/test/render`), so those runs show no
+    `BEST` text. A failed save is logged and ignored.

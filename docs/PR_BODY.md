@@ -39,6 +39,8 @@ GP4 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "
 
 GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_topdown_controller|test_navigation|test_spawner|test_combat|test_topdown_slice|test_topdown_commands" --output-on-failure` expects all six to pass. To play (needs a display or Xvfb): `build-gcc/bin/arcane_player --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so`, move with WASD and shoot with Space (the bullet flies where you last moved). The red enemy walks around the interior wall to reach you (each touch costs 1 health, shown in the HUD with a particle burst); three bullets kill it; at 0 health the scene restarts. CLI: `arcane --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so prefab info --node path:/Arena/Enemy`.
 
+GP6 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_platformer_slice|test_schema_examples|test_cli|test_migration" --output-on-failure` expects all to pass; with Xvfb or a GL desktop also `-R "test_platformer_replay|test_render"` (the replay trace and the render golden are unchanged). Live: `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, press P/Escape (or gamepad Start): the game freezes and RESUME / RESTART / MENU buttons appear (D-pad down + A, or the mouse); MENU opens the menu scene, PLAY starts the level. Resize the window: the 640x360 view letterboxes with black bars and the buttons are still clicked where they are drawn.
+
 **2. What you can visibly see**
 
 PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
@@ -48,6 +50,8 @@ GS2: the platformer sample now has sensor-trigger pickups/spikes/goal, checkpoin
 GS1: the top-down sample is now an arena with waves, coin pickups, HUD, pause, game over/restart, a 60 s replay test (`test_topdown_replay_60s`) and perf numbers in `docs/perf.md`.
 
 GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner, an enemy that paths around an interior wall, player health in the HUD, restart on death.
+
+GP6: the platformer pauses through a game time scale (physics, animation and enemies stop; the player stays put), with a centred Resume/Restart/Menu column navigable with the D-pad and A; the gamepad can also move (D-pad or left stick), jump (A) and pause (Start). `scenes/menu.scene.json` shows the title, `BEST <n>` and PLAY; winning or game over writes the best score (saves are on only in the windowed player and editor Play) and shows it as `BEST <n>` under the score. The window is resizable with letterbox bars at 640x360.
 
 GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
 
@@ -64,6 +68,8 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - PX1: the new prefab widgets (ImGui) are compile-checked only; the command/EditSession paths are tested headless. Propagation happens on load only and ignores added/removed nodes or components; prefab nesting is not supported. UNTESTED on native Windows/MSVC.
 
 - GP5: UNTESTED on native Windows/MSVC. Nobody played the top-down slice by hand: the GL tests (`test_export_topdown_slice`, `test_player_topdown_frames`) and the fixed-frame run only prove it loads and steps, and `test_topdown_slice` drives it with fake input. Not covered: enemy spawner waves, line of sight, knockback, melee swings, steering around other enemies (no separation in the slice).
+
+- GP6: UNTESTED on native Windows/MSVC. The gamepad bindings and D-pad/A navigation are tested with the fake input backend only, not with real hardware (Start is GLFW button 7, which `arcane::GamepadButtons` has no constant for). The menu scene is not the startup scene (see `docs/slice_platformer_gaps.md`). Resizing and the letterbox bars were not looked at on a real window. The level HUD's own RESTART button is disabled while the pause menu is open.
 
 - GP4: the Animation Graph panel (ImGui) is compile-checked only and its commands are tested headless; nobody clicked it. Flip visuals are not golden-tested (no sprite sheet with asymmetric art in the render goldens). Adding `Sprite`/`Collider2D` properties changed the canonical text of scenes that contain them (samples and `tests/golden/` were regenerated; old files still load). Rebuilding a mirrored collider on flip can emit one collision exit/enter. UNTESTED on native Windows/MSVC.
 
@@ -135,3 +141,12 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - `GameContext::viewport_size()` for modules (player, editor and `arcane render` set it; default 800x600).
 - platformer_slice: the module no longer moves the camera; `MainCamera` is a Camera2D following the Player (smoothing, dead zone, look-ahead, bounds 0..1280 x 0..600) and a `Sky` ParallaxLayer (new `assets/sky.png`, factor 0.3, repeat_x). Goldens `tests/golden/render/platformer_slice_f30.png` and `tests/golden/platformer_slice/scenes/main.scene.json` regenerated; `test_render_cli` also checks that changing the parallax factor changes the render.
 - UNTESTED on native Windows/MSVC (Linux gcc/clang/mingw only); the render golden assumes Mesa llvmpipe.
+
+## GP6: pause menu, menu scene, best score, design resolution (platformer slice)
+
+- `SliceRules::set_paused` now calls `GameContext::set_time_scale(0/1)` (no more node deactivation); the runners keep updating components at dt 0, so `pause` and the HUD buttons are still read. Without a `GameContext` pausing is a no-op.
+- Pause/end-of-run menu: HUD buttons `pause_resume`, `pause_restart`, `pause_menu` (prefixed because the project HUD already owns `restart`) added with `Hud::add` and removed with `Hud::remove` on resume, restart, scene switch (`on_destroy`) and reload. The corner `restart` button is disabled while the menu is open so D-pad down starts at the first menu button (`HudInput` only focuses on a nav press, never on its own).
+- `MenuController` (module component, `scenes/menu.scene.json`): sets the level HUD elements aside, adds `menu_title`, `menu_best`, `menu_play`, and restores the level HUD in `on_destroy`; PLAY switches to `scenes/main.scene.json`. Reached from the pause menu's MENU and from the win/game-over menu.
+- Best score: `project.json` `save` (`arcane_platformer_slice`), slot `progress`, key `best_score`; written on the final level's goal or game over only if higher; save errors are logged (warning only when saves are enabled).
+- `project.json` also gets `display` 640x360 letterbox and gamepad bindings (D-pad/left stick move, A jump, Start pause). Replay trace and render golden stay valid (`arcane render` passes `--size` in the test); `tests/golden/platformer_slice/project.json` was regenerated for the new keys. `make_assets.py` generates `project.json` and the menu scene.
+- Tests: `test_platformer_slice` (time scale 0 pause, buttons appear/disappear, D-pad + A and mouse Resume, Restart/Menu/PLAY flow with the HUD swap, best score written/kept/raised under `ARCANE_SAVE_DIR`, saves off writes nothing). Top-down pause unchanged.
