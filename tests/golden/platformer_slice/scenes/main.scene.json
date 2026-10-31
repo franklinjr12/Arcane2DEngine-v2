@@ -1,6 +1,6 @@
 {
   "format": "arcane.scene",
-  "next_id": 35,
+  "next_id": 66,
   "nodes": [
     {
       "components": [
@@ -406,6 +406,48 @@
             "width": 20.0
           },
           "type": "Sprite"
+        },
+        {
+          "id": 21,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 22,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 20.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 20.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 23,
+          "properties": {
+            "kind": "coin"
+          },
+          "type": "SliceTrigger"
         }
       ],
       "id": 19,
@@ -424,7 +466,7 @@
     {
       "components": [
         {
-          "id": 22,
+          "id": 25,
           "properties": {
             "atlas": 0,
             "flip_x": false,
@@ -441,118 +483,55 @@
             "width": 20.0
           },
           "type": "Sprite"
+        },
+        {
+          "id": 26,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 27,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 20.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 20.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 28,
+          "properties": {
+            "kind": "coin"
+          },
+          "type": "SliceTrigger"
         }
       ],
-      "id": 21,
+      "id": 24,
       "name": "Coin1",
       "parent_id": 1,
       "position": [
         290.0,
-        372.0
-      ],
-      "rotation_radians": 0.0,
-      "scale": [
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "components": [
-        {
-          "id": 24,
-          "properties": {
-            "atlas": 0,
-            "flip_x": false,
-            "flip_y": false,
-            "height": 20.0,
-            "region": "",
-            "texture": 1617945095526466553,
-            "tint": [
-              1.0,
-              1.0,
-              1.0,
-              1.0
-            ],
-            "width": 20.0
-          },
-          "type": "Sprite"
-        }
-      ],
-      "id": 23,
-      "name": "Coin2",
-      "parent_id": 1,
-      "position": [
-        450.0,
-        270.0
-      ],
-      "rotation_radians": 0.0,
-      "scale": [
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "components": [
-        {
-          "id": 26,
-          "properties": {
-            "atlas": 0,
-            "flip_x": false,
-            "flip_y": false,
-            "height": 20.0,
-            "region": "",
-            "texture": 1617945095526466553,
-            "tint": [
-              1.0,
-              1.0,
-              1.0,
-              1.0
-            ],
-            "width": 20.0
-          },
-          "type": "Sprite"
-        }
-      ],
-      "id": 25,
-      "name": "Coin3",
-      "parent_id": 1,
-      "position": [
-        520.0,
-        270.0
-      ],
-      "rotation_radians": 0.0,
-      "scale": [
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "components": [
-        {
-          "id": 28,
-          "properties": {
-            "atlas": 0,
-            "flip_x": false,
-            "flip_y": false,
-            "height": 20.0,
-            "region": "",
-            "texture": 1617945095526466553,
-            "tint": [
-              1.0,
-              1.0,
-              1.0,
-              1.0
-            ],
-            "width": 20.0
-          },
-          "type": "Sprite"
-        }
-      ],
-      "id": 27,
-      "name": "Coin4",
-      "parent_id": 1,
-      "position": [
-        900.0,
         372.0
       ],
       "rotation_radians": 0.0,
@@ -569,6 +548,237 @@
             "atlas": 0,
             "flip_x": false,
             "flip_y": false,
+            "height": 20.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 31,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 32,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 20.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 20.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 33,
+          "properties": {
+            "kind": "coin"
+          },
+          "type": "SliceTrigger"
+        }
+      ],
+      "id": 29,
+      "name": "Coin2",
+      "parent_id": 1,
+      "position": [
+        450.0,
+        270.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 35,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 20.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 36,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 37,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 20.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 20.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 38,
+          "properties": {
+            "kind": "coin"
+          },
+          "type": "SliceTrigger"
+        }
+      ],
+      "id": 34,
+      "name": "Coin3",
+      "parent_id": 1,
+      "position": [
+        520.0,
+        270.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 40,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 20.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 20.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 41,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 42,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 20.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 20.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 43,
+          "properties": {
+            "kind": "coin"
+          },
+          "type": "SliceTrigger"
+        }
+      ],
+      "id": 39,
+      "name": "Coin4",
+      "parent_id": 1,
+      "position": [
+        900.0,
+        372.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 45,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
             "height": 28.0,
             "region": "",
             "texture": 1617945095526466553,
@@ -581,9 +791,51 @@
             "width": 28.0
           },
           "type": "Sprite"
+        },
+        {
+          "id": 46,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 47,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 28.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 28.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 48,
+          "properties": {
+            "kind": "spikes"
+          },
+          "type": "SliceTrigger"
         }
       ],
-      "id": 29,
+      "id": 44,
       "name": "Spikes",
       "parent_id": 1,
       "position": [
@@ -599,7 +851,161 @@
     {
       "components": [
         {
-          "id": 32,
+          "id": 50,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 40.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              0.6,
+              0.6,
+              0.9,
+              1.0
+            ],
+            "width": 12.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 51,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 52,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 40.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 12.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 53,
+          "properties": {
+            "kind": "checkpoint"
+          },
+          "type": "SliceTrigger"
+        }
+      ],
+      "id": 49,
+      "name": "Checkpoint0",
+      "parent_id": 1,
+      "position": [
+        590.0,
+        380.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 55,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 40.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              0.6,
+              0.6,
+              0.9,
+              1.0
+            ],
+            "width": 12.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 56,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 57,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 40.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 12.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 58,
+          "properties": {
+            "kind": "checkpoint"
+          },
+          "type": "SliceTrigger"
+        }
+      ],
+      "id": 54,
+      "name": "Checkpoint1",
+      "parent_id": 1,
+      "position": [
+        1000.0,
+        380.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 60,
           "properties": {
             "atlas": 0,
             "flip_x": false,
@@ -616,9 +1022,51 @@
             "width": 24.0
           },
           "type": "Sprite"
+        },
+        {
+          "id": 61,
+          "properties": {
+            "body_type": 0,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 62,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 64.0,
+            "is_sensor": true,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 24.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 63,
+          "properties": {
+            "kind": "goal"
+          },
+          "type": "SliceTrigger"
         }
       ],
-      "id": 31,
+      "id": 59,
       "name": "Goal",
       "parent_id": 1,
       "position": [
@@ -634,7 +1082,7 @@
     {
       "components": [
         {
-          "id": 34,
+          "id": 65,
           "properties": {
             "angle_max": 360.0,
             "angle_min": 0.0,
@@ -674,7 +1122,7 @@
           "type": "ParticleEmitter"
         }
       ],
-      "id": 33,
+      "id": 64,
       "name": "PickupBurst",
       "parent_id": 1,
       "position": [

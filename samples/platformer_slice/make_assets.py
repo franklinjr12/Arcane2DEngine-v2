@@ -123,12 +123,22 @@ node("Ground", (0, 400), level, [("Tilemap", {
 node("Platform", (400, 300), level, [("Tilemap", {
     "tileset": fnv1a("tiles_set.json"), "tile_width": 32.0, "tile_height": 32.0, "width": 4, "height": 1,
     "collide": True, "solid_tiles": "1,2,3", "layers": "3,3,3,3"})])
+def sensor(name, pos, w, h, tint, kind):
+    """A pickup/hazard/goal/checkpoint: a Static body with a sensor Collider2D; SliceTrigger reports the Player's entry."""
+    node(name, pos, level, [
+        ("Sprite", {"texture": fnv1a("coin.png"), "width": w, "height": h, "tint": tint}),
+        ("RigidBody2D", {"body_type": 0, "linear_velocity": [0.0, 0.0], "gravity_scale": 0.0, "fixed_rotation": True}),
+        ("Collider2D", {"shape_type": 0, "width": w, "height": h, "radius": 16.0, "offset": [0.0, 0.0],
+                        "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": True,
+                        "mirror_with_sprite": False}),
+        ("SliceTrigger", {"kind": kind})])
 for n, (x, y) in enumerate([(220, 372), (290, 372), (450, 270), (520, 270), (900, 372)]):
-    node(f"Coin{n}", (x, y), level, [("Sprite", {"texture": fnv1a("coin.png"), "width": 20.0, "height": 20.0, "tint": white})])
-node("Spikes", (620, 384), level, [("Sprite", {"texture": fnv1a("coin.png"), "width": 28.0, "height": 28.0,
-                                               "tint": [1.0, 0.2, 0.2, 1.0]})])
-node("Goal", (1150, 360), level, [("Sprite", {"texture": fnv1a("coin.png"), "width": 24.0, "height": 64.0,
-                                              "tint": [0.3, 1.0, 0.5, 1.0]})])
+    sensor(f"Coin{n}", (x, y), 20.0, 20.0, white, "coin")
+sensor("Spikes", (620, 384), 28.0, 28.0, [1.0, 0.2, 0.2, 1.0], "spikes")
+# Checkpoint flags (the coin texture as a small tinted bar) stand on the ground before the pit and before the goal.
+sensor("Checkpoint0", (590, 380), 12.0, 40.0, [0.6, 0.6, 0.9, 1.0], "checkpoint")
+sensor("Checkpoint1", (1000, 380), 12.0, 40.0, [0.6, 0.6, 0.9, 1.0], "checkpoint")
+sensor("Goal", (1150, 360), 24.0, 64.0, [0.3, 1.0, 0.5, 1.0], "goal")
 node("PickupBurst", (0, 0), level, [("ParticleEmitter", {
     "emitting": False, "rate": 0.0, "burst_count": 0, "lifetime_min": 0.3, "lifetime_max": 0.6, "speed_min": 40.0,
     "speed_max": 120.0, "angle_min": 0.0, "angle_max": 360.0, "gravity": [0.0, 200.0],
