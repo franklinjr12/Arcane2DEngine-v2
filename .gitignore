@@ -381,4 +381,5 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
-Export
+Export/samples/topdown_slice/topdown_slice_game.so
+/samples/topdown_slice/topdown_slice_game.dll
