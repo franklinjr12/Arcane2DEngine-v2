@@ -8,6 +8,7 @@
 #include "arcane/canonical_json.hpp"
 #include "arcane/component.hpp"
 #include "arcane/migration.hpp"
+#include "arcane/prefab.hpp"
 #include "arcane/property.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
@@ -156,6 +157,62 @@ void set_tile_layers(Tilemap& map, const json& value, bool strict, const std::st
   }
 }
 
+json prefab_link_to_json(const PrefabLink& link, const ComponentRegistry& registry) {
+  json out;
+  out["asset"] = link.asset;
+  out["instance_id"] = link.instance_id;
+  out["local_id"] = link.local_id;
+  if (!link.overrides.empty()) {
+    json overrides = json::array();
+    for (const PrefabOverride& o : link.overrides) {
+      json entry;
+      entry["local_id"] = o.local_id;
+      if (!o.component.empty()) entry["component"] = o.component;
+      entry["property"] = o.property;
+      const auto type = prefab_override_type(registry, o.component, o.property);
+      entry["value"] = type ? property_value_to_json(*type, o.value) : json(nullptr);
+      overrides.push_back(std::move(entry));
+    }
+    out["overrides"] = std::move(overrides);
+  }
+  return out;
+}
+
+PrefabLink prefab_link_from_json(const json& j, const ComponentRegistry& registry, const std::string& where) {
+  canonical::require_object(j, where + " 'prefab'");
+  canonical::require_only_keys(j, {"asset", "instance_id", "local_id", "overrides"}, where + " 'prefab'");
+  for (const char* key : {"asset", "instance_id", "local_id"}) {
+    if (!j.contains(key)) canonical::fail(std::format("{} 'prefab': missing '{}'", where, key));
+  }
+  PrefabLink link;
+  link.asset = canonical::as_string(j["asset"], where + " prefab 'asset'");
+  link.instance_id = canonical::as_uint(j["instance_id"], where + " prefab 'instance_id'");
+  link.local_id = canonical::as_uint(j["local_id"], where + " prefab 'local_id'");
+  canonical::require_project_path(link.asset, false, where + " prefab 'asset'");
+  if (link.instance_id == 0 || link.local_id == 0) {
+    canonical::fail(std::format("{} 'prefab': instance_id and local_id must be set", where));
+  }
+  if (!j.contains("overrides")) return link;
+  if (!j["overrides"].is_array()) canonical::fail(where + " prefab 'overrides' must be an array");
+  for (const json& o : j["overrides"]) {
+    const std::string owhere = where + " prefab override";
+    canonical::require_object(o, owhere);
+    canonical::require_only_keys(o, {"local_id", "component", "property", "value"}, owhere);
+    if (!o.contains("local_id") || !o.contains("property") || !o.contains("value")) {
+      canonical::fail(owhere + ": needs 'local_id', 'property' and 'value'");
+    }
+    PrefabOverride entry;
+    entry.local_id = canonical::as_uint(o["local_id"], owhere + " 'local_id'");
+    if (o.contains("component")) entry.component = canonical::as_string(o["component"], owhere + " 'component'");
+    entry.property = canonical::as_string(o["property"], owhere + " 'property'");
+    const auto type = prefab_override_type(registry, entry.component, entry.property);
+    if (!type) canonical::fail(std::format("{}: '{}.{}' is not an overridable property", owhere, entry.component, entry.property));
+    entry.value = property_value_from_json(*type, o["value"], owhere + " 'value'");
+    link.overrides.push_back(std::move(entry));
+  }
+  return link;
+}
+
 void serialize_node(const Node& node, const ComponentRegistry& registry, json& out_nodes) {
   json entry;
   entry["id"] = node.id();
@@ -184,6 +241,8 @@ void serialize_node(const Node& node, const ComponentRegistry& registry, json& o
     components.push_back(std::move(c));
   }
   entry["components"] = std::move(components);
+  if (node.persistent() && !node.parent()) entry["persistent"] = true;
+  if (node.prefab_link()) entry["prefab"] = prefab_link_to_json(*node.prefab_link(), registry);
   out_nodes.push_back(std::move(entry));
 
   for (const auto& child : node.children()) {
@@ -262,7 +321,9 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
       const std::string where = std::format("node {}", id);
       if (strict) {
         canonical::require_only_keys(
-            entry, {"id", "name", "parent_id", "position", "rotation_radians", "scale", "components"}, where);
+            entry, {"id", "name", "parent_id", "position", "rotation_radians", "scale", "components", "prefab",
+                     "persistent"},
+            where);
       }
       Node* node = scene.create_node_with_id(id, canonical::as_string(entry["name"], where + " 'name'"), nullptr);
       max_id = std::max(max_id, id);
@@ -274,6 +335,11 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
       }
       if (entry.contains("scale")) transform.scale = canonical::as_vec2(entry["scale"], where + " 'scale'");
       node->local_transform() = transform;
+      if (entry.contains("persistent")) {
+        if (!entry["persistent"].is_boolean()) return std::unexpected(where + ": 'persistent' must be a boolean");
+        node->set_persistent(entry["persistent"].get<bool>());
+      }
+      if (entry.contains("prefab")) node->set_prefab_link(prefab_link_from_json(entry["prefab"], registry, where));
 
       if (!entry.contains("components")) continue;
       if (!entry["components"].is_array()) {
@@ -343,12 +409,32 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
       if (parent_id == kInvalidNodeId) {
         continue;
       }
+      if (Node* child = scene.find_node(id); child && child->persistent()) {
+        if (strict) return std::unexpected(std::format("node {}: 'persistent' is only allowed on a root node", id));
+        child->set_persistent(false);  // compatible load: ignored on non-root nodes
+      }
       Node* parent = scene.find_node(parent_id);
       if (!parent) {
         return std::unexpected(std::format("node {} references unknown parent_id {}", id, parent_id));
       }
       if (!scene.reparent(scene.find_node(id), parent)) {
         return std::unexpected(std::format("node {} has a cyclic or invalid parent_id {}", id, parent_id));
+      }
+    }
+
+    // A link must point at a real instance root that carries the same asset.
+    for (const auto& entry : root["nodes"]) {
+      const Node* node = scene.find_node(entry["id"].get<NodeId>());
+      if (!node->prefab_link()) continue;
+      const PrefabLink& link = *node->prefab_link();
+      const Node* instance = scene.find_node(link.instance_id);
+      if (!instance || !instance->prefab_link() || instance->prefab_link()->instance_id != link.instance_id ||
+          instance->prefab_link()->asset != link.asset) {
+        return std::unexpected(std::format("node {} has a prefab link to a missing instance root {}", node->id(),
+                                           link.instance_id));
+      }
+      if (!link.overrides.empty() && node != instance) {
+        return std::unexpected(std::format("node {}: only an instance root can hold prefab overrides", node->id()));
       }
     }
 

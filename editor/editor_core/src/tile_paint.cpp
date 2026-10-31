@@ -52,7 +52,12 @@ int TilePaintTool::terrain_mask(const Tilemap& map, const Tileset& tileset, int 
 bool TilePaintTool::terrain_brush(Tilemap& map, const Tileset& tileset, const WorldTransform2D& world_transform,
                                   Vec2 world, int terrain, bool erase) {
   int cx = 0, cy = 0;
-  if (!map.world_to_cell(world_transform, world, cx, cy) || layer < 0 || layer >= map.layer_count()) return false;
+  if (!map.world_to_cell(world_transform, world, cx, cy)) return false;
+  return terrain_cell(map, tileset, cx, cy, terrain, erase);
+}
+
+bool TilePaintTool::terrain_cell(Tilemap& map, const Tileset& tileset, int cx, int cy, int terrain, bool erase) {
+  if (!map.in_bounds(cx, cy) || layer < 0 || layer >= map.layer_count()) return false;
   const int replacement = erase ? 0 : tileset.tile_for_mask(terrain, terrain_mask(map, tileset, layer, cx, cy, terrain));
   if (!erase && !replacement) return false;
   const bool own = !stroke_open_;

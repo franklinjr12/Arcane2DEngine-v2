@@ -53,9 +53,26 @@ void test_hud_keeps_insertion_order() {
   ARCANE_ASSERT_TRUE(hud.elements().empty());
 }
 
+void test_remove_and_contains() {
+  arcane::Hud hud;
+  hud.add(arcane::HudText{.id = "t", .text = "a"});
+  hud.add(arcane::HudProgressBar{.id = "bar"});
+  arcane::HudButton button;
+  button.id = "btn";
+  hud.add(button);
+  ARCANE_ASSERT_TRUE(hud.contains("t") && hud.contains("bar") && hud.contains("btn"));
+  ARCANE_ASSERT_TRUE(!hud.contains("nope"));
+  ARCANE_ASSERT_TRUE(hud.remove("bar"));  // any kind
+  ARCANE_ASSERT_TRUE(!hud.contains("bar") && hud.elements().size() == 2);
+  ARCANE_ASSERT_TRUE(!hud.remove("bar"));  // already gone
+  ARCANE_ASSERT_TRUE(hud.remove("btn") && hud.remove("t"));
+  ARCANE_ASSERT_TRUE(hud.elements().empty());
+}
+
 }  // namespace
 
 int main() {
+  test_remove_and_contains();
   test_scale_follows_screen_height();
   test_anchors_place_corners_and_center();
   test_layout_scales_with_resolution();

@@ -11,8 +11,11 @@
 
 namespace arcane {
 
+struct DisplayViewport;  // display.hpp
+
 struct Color {
   float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
+  friend bool operator==(const Color&, const Color&) = default;
 };
 
 // Normalized UV sub-rectangle within a texture: (u0, v0, u1, v1).
@@ -62,6 +65,12 @@ struct SpriteDraw {
   UvRect uv{};
 };
 
+// Per-frame counters, reset by begin_frame (shown by the debug overlay).
+struct RenderStats {
+  int draw_calls = 0;  // GL draw calls issued
+  int sprites = 0;     // draw() calls accepted
+};
+
 // Small batched 2D sprite renderer: shader-based textured quads with an
 // orthographic camera. Draw calls are batched per contiguous run of the
 // same texture and flushed on texture change or end_frame().
@@ -80,6 +89,11 @@ class ARCANE_API SpriteRenderer {
   void set_camera(float x, float y, float zoom = 1.0f);
 
   void begin_frame(int framebuffer_width, int framebuffer_height, const Color& clear_color);
+  // Letterboxed frame: clears the whole framebuffer (`framebuffer_width` x
+  // `framebuffer_height`) to black, then restricts drawing to the viewport
+  // rectangle, clears it to `clear_color` and projects with the logical size.
+  void begin_frame(int framebuffer_width, int framebuffer_height, const DisplayViewport& viewport,
+                   const Color& clear_color);
   void draw(const SpriteDraw& sprite);
   // Draws everything batched so far (using the current camera). Lets callers
   // change the camera mid-frame, e.g. world pass then screen-space HUD pass.
@@ -89,6 +103,9 @@ class ARCANE_API SpriteRenderer {
   // Test helper: reads back a single pixel from the currently bound
   // framebuffer as RGBA in [0, 1]. Only meaningful right after end_frame().
   Color read_pixel(int x, int y) const;
+
+  // Counters of the current (or just finished) frame.
+  const RenderStats& stats() const noexcept;
 
  private:
   SpriteRenderer();

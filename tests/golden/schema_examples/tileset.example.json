@@ -1,0 +1,31 @@
+{
+  "columns": 4,
+  "format": "arcane.tileset",
+  "terrains": [],
+  "texture": 6606372916662563687,
+  "tile_count": 4,
+  "tile_height": 16,
+  "tile_width": 16,
+  "tiles": [
+    {
+      "solid": true,
+      "terrain": 0
+    },
+    {
+      "solid": false,
+      "tags": [
+        "pickup"
+      ],
+      "terrain": 0
+    },
+    {
+      "solid": false,
+      "tags": [
+        "hazard",
+        "water"
+      ],
+      "terrain": 0
+    }
+  ],
+  "version": 2
+}

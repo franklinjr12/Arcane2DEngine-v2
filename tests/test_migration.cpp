@@ -61,7 +61,8 @@ void check_sample(const std::string& source, const std::string& module, const st
   auto dry = arcane::migrate_project(dir, legacy->registry(), {.dry_run = true});
   ARCANE_ASSERT_TRUE(dry.has_value() && !dry->applied);
   ARCANE_ASSERT_TRUE(dry->files.size() >= 3 && dry->files[0].path == "project.json" && dry->files[0].changed);
-  for (const auto& file : dry->files) ARCANE_ASSERT_TRUE(file.changed);  // legacy sample: every file migrates
+  // Legacy sample: every file migrates, except animation graphs, which have no legacy dialect.
+  for (const auto& file : dry->files) ARCANE_ASSERT_TRUE(file.changed || file.path.ends_with(".animgraph.json"));
   std::size_t asset_files = 0;
   for (const auto& file : dry->files) {
     if (file.path.starts_with("assets/")) ++asset_files;
@@ -74,6 +75,14 @@ void check_sample(const std::string& source, const std::string& module, const st
   ARCANE_ASSERT_TRUE(!has_staged_files(dir));
   const std::string project_v2 = read(dir / "project.json");
   const std::string scene_v2 = read(dir / "scenes/main.scene.json");
+  // Further scenes (the platformer slice's level 2) migrate with the project and are pinned like main.
+  const bool has_level2 = fs::exists(dir / "scenes/level2.scene.json");
+  const std::string level2_v2 = has_level2 ? read(dir / "scenes/level2.scene.json") : std::string();
+  ARCANE_ASSERT_TRUE(has_level2 == (name == "platformer_slice"));
+  if (has_level2) {
+    ARCANE_ASSERT_TRUE(level2_v2.find("\"format_version\"") == std::string::npos);
+    ARCANE_ASSERT_TRUE(arcane::canonicalize_json(level2_v2).value() == level2_v2);
+  }
   // Same meaning: migrated files equal what the legacy load re-serialized to.
   ARCANE_ASSERT_TRUE(project_v2 == legacy_project);
   ARCANE_ASSERT_TRUE(project_v2.find("format_version") == std::string::npos);  // nested HUD/input are v2 too
@@ -108,6 +117,7 @@ void check_sample(const std::string& source, const std::string& module, const st
     fs::create_directories(golden / "scenes");
     write(golden / "project.json", project_v2);
     write(golden / "scenes/main.scene.json", scene_v2);
+    if (fs::exists(dir / "scenes/level2.scene.json")) write(golden / "scenes/level2.scene.json", level2_v2);
     for (const auto& file : report->files) {
       if (!file.path.starts_with("assets/")) continue;
       fs::create_directories((golden / file.path).parent_path());
@@ -123,6 +133,7 @@ void check_sample(const std::string& source, const std::string& module, const st
   }
   ARCANE_ASSERT_TRUE(read(golden / "project.json") == project_v2);
   ARCANE_ASSERT_TRUE(read(golden / "scenes/main.scene.json") == scene_v2);
+  if (has_level2) ARCANE_ASSERT_TRUE(read(golden / "scenes/level2.scene.json") == level2_v2);
 
   // --- failures leave a fresh legacy copy untouched ---
   const fs::path bad = copy_project(source, name + "_bad");
