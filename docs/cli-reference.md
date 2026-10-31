@@ -392,9 +392,9 @@ No arguments.
 
 ### `arcane debug set`
 
-Change the debug overlay settings in project.json; omitted fields keep their value. Writes at once.
+Change the debug overlay settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -939,9 +939,9 @@ No arguments.
 
 ### `arcane save config-set`
 
-Change the authored save settings in project.json (game_id: A-Z a-z 0-9 . _ -, empty clears; data_version >= 1). Writes at once.
+Change the authored save settings in project.json (game_id: A-Z a-z 0-9 . _ -, empty clears; data_version >= 1). Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -1248,6 +1248,35 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 | `--terrain` | integer | yes |  |
 | `--tileset` | string | yes |  |
 
+### `arcane tileset replace`
+
+Write a whole tileset in one step (the editor's Save tileset): sheet layout like tileset.create, `tiles` [{id, solid?, terrain?}] (1-based ids, others default) and `terrains` [{terrain, tiles[16]}]. Creates or overwrites the file at once; the inverse is tileset.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--columns` | integer | yes |  |
+| `--terrains` | array | no |  |
+| `--texture` | id or name | yes |  |
+| `--tile-count` | integer | yes |  |
+| `--tile-height` | integer | yes |  |
+| `--tile-width` | integer | yes |  |
+| `--tiles` | array | no |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset restore`
+
+Put a tileset file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. Used as the inverse of the other tileset.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--content` | string | no |  |
+| `--tileset` | string | yes |  |
+
 ### `arcane tileset set-rule`
 
 Add or replace the auto-tile rule of a terrain: `tiles` is 16 tile ids indexed by neighbour mask (N=1 E=2 S=4 W=8; 0 = no tile). Run tileset.validate afterwards to check the tiles are marked with the terrain.
@@ -1293,9 +1322,9 @@ No arguments.
 
 ### `arcane transition set`
 
-Change the authored scene-transition settings in project.json; omitted fields keep their value. Writes at once.
+Change the authored scene-transition settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |

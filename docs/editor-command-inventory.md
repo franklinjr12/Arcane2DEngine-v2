@@ -1,5 +1,18 @@
 # Editor authoring command inventory
 
+**AF8C update (current):** no authored data action is direct any more. Open clip is `clip.info` (with the panel's sheet and grid)
+and Open tileset is `tileset.info`; Save clip is `clip.create` (overwrite) and Save tileset is one `tileset.replace`, both run
+through `EditSession`, so each Save is **one undoable step** (undo restores the previous file bytes or removes a new file via
+`clip.restore`/`tileset.restore`) and sets `*modified*`. The panels keep a draft model on purpose: edits to the draft fields
+before Save (grid, frames, tile flags, terrain rules, New tileset) are unsaved view state like a text box, not authored data; the
+authored change is the Save. Project Settings now also edits the scene transition (fade out/in, colour), save (game id, data
+version) and debug overlay (visible, font scale) through `transition.set`, `save.config_set` and `debug.set`. Those three edit the
+project data in memory like `project.set` (AF8C changed them from immediate `project.json` writes, which would have conflicted with
+File > Save), so they undo/redo, coalesce slider drags and are written by File > Save (CLI: persisted per command). Covered by
+`test_edit_session` (`test_gui_flow_settings_match_cli_model`, `test_tileset_save_is_one_undoable_command`,
+`test_clip_open_and_save_through_commands`) and the extended source lint. The tables below are history; where they say
+"No: immediate file write" for tileset/clip Save, "Still direct" or "no editor widget" for transition/save/debug, AF8C supersedes them.
+
 **AF5B update:** the core scene paths below (hierarchy create/delete/reparent,
 node name/transform, Add Component, Inspector properties incl. module types,
 asset assignment to Sprite/ParticleEmitter/AnimatedSprite/AudioSource/Tilemap) now run

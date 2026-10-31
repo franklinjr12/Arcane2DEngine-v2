@@ -1,7 +1,8 @@
 // transition.* / save.* / debug.* commands (docs/formats/project.md, docs/formats/save.md,
-// docs/commands.md). The config commands read and write project.json and the
-// save commands read and write save files; neither touches the open scene, so
-// they ignore `persist`/`dry_run` like the other asset-file commands.
+// docs/commands.md). The config commands edit the project data in memory
+// (session().mutable_project(), like project.set and hud.*): the CLI persists them with project.json,
+// the editor undoes them and File > Save writes them. The save commands read and write save
+// files and ignore `persist`/`dry_run` like the other asset-file commands.
 #include <filesystem>
 
 #include "arcane/canonical_json.hpp"
@@ -17,24 +18,10 @@ ToolError args_error(std::string message, std::string path, std::string hint = {
   return ToolError{"ARGS_INVALID", std::move(message), "", std::move(path), std::move(hint)};
 }
 
+// A copy of the in-memory project data (what the editor shows and File > Save writes).
 constexpr const char* kProjectFile = "project.json";
 
-std::expected<ProjectFile, ToolError> load_project_file(ProjectContext& context) {
-  auto text = read_text_file(context.project_dir() / kProjectFile);
-  if (!text) return std::unexpected(ToolError{"IO_ERROR", text.error(), kProjectFile, "", ""});
-  auto project = load_project_from_json_strict(*text);
-  if (!project) return std::unexpected(ToolError{"SCHEMA_INVALID", project.error(), kProjectFile, "", ""});
-  return std::move(*project);
-}
-
-std::expected<void, ToolError> store_project_file(ProjectContext& context, const ProjectFile& project) {
-  auto text = save_project_canonical_json(project);
-  if (!text) return std::unexpected(ToolError{"VALUE_INVALID", text.error(), kProjectFile, "", ""});
-  if (auto ok = write_text_file_atomic(context.project_dir() / kProjectFile, *text); !ok) {
-    return std::unexpected(ToolError{"IO_ERROR", ok.error(), kProjectFile, "", ""});
-  }
-  return {};
-}
+std::expected<ProjectFile, ToolError> load_project_file(ProjectContext& context) { return context.session().project(); }
 
 Json transition_json(const TransitionConfig& t) {
   return {{"fade_out_seconds", t.fade_out_seconds},
@@ -126,7 +113,7 @@ void register_flow_commands(CommandRegistry& registry) {
 
   registry.add(
       {"transition.set",
-       "Change the authored scene-transition settings in project.json; omitted fields keep their value. Writes at once.",
+       "Change the authored scene-transition settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.",
        {{"type", "object"},
         {"properties",
          {{"fade_out_seconds", {{"type", "number"}, {"minimum", 0}, {"maximum", 60}}},
@@ -134,12 +121,10 @@ void register_flow_commands(CommandRegistry& registry) {
           {"color", {{"type", "array"}}}}},
         {"additionalProperties", false}},
        {{"type", "object"}},
-       false},
+       true},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
-        auto project = load_project_file(context);
-        if (!project) return std::unexpected(project.error());
-        const Json previous = transition_json(project->transition);
-        TransitionConfig& t = project->transition;
+        const Json previous = transition_json(context.session().project().transition);
+        TransitionConfig t = context.session().project().transition;
         if (args.contains("fade_out_seconds")) t.fade_out_seconds = args["fade_out_seconds"].get<float>();
         if (args.contains("fade_in_seconds")) t.fade_in_seconds = args["fade_in_seconds"].get<float>();
         if (args.contains("color")) {
@@ -152,7 +137,8 @@ void register_flow_commands(CommandRegistry& registry) {
         }
         const Json now = transition_json(t);
         if (now != previous) {
-          if (auto ok = store_project_file(context, *project); !ok) return std::unexpected(ok.error());
+          context.session().mutable_project().transition = t;
+          context.mark_project_dirty();
         }
         return CommandResult{{{"changed", now != previous}, {"previous", previous}, {"transition", now}},
                              now != previous ? std::optional<Invocation>(Invocation{"transition.set", previous})
@@ -173,29 +159,29 @@ void register_flow_commands(CommandRegistry& registry) {
   registry.add(
       {"save.config_set",
        "Change the authored save settings in project.json (game_id: A-Z a-z 0-9 . _ -, empty clears; data_version >= 1). "
-       "Writes at once.",
+       "Edits the project in memory; the CLI saves it, the editor's File > Save writes it.",
        {{"type", "object"},
         {"properties", {{"game_id", {{"type", "string"}}}, {"data_version", {{"type", "integer"}, {"minimum", 1}}}}},
         {"additionalProperties", false}},
        {{"type", "object"}},
-       false},
+       true},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
-        auto project = load_project_file(context);
-        if (!project) return std::unexpected(project.error());
-        const SaveConfig before = project->save;
+        const SaveConfig before = context.session().project().save;
+        SaveConfig after = before;
         if (args.contains("game_id")) {
           const std::string id = args["game_id"];
           if (!id.empty() && !is_valid_game_id(id)) {
             return std::unexpected(args_error("invalid game_id '" + id + "'", "/game_id", "Use 1-64 of A-Z a-z 0-9 . _ -"));
           }
-          project->save.game_id = id;
+          after.game_id = id;
         }
-        if (args.contains("data_version")) project->save.data_version = args["data_version"];
-        const bool changed = before.game_id != project->save.game_id || before.data_version != project->save.data_version;
+        if (args.contains("data_version")) after.data_version = args["data_version"];
+        const bool changed = before.game_id != after.game_id || before.data_version != after.data_version;
         if (changed) {
-          if (auto ok = store_project_file(context, *project); !ok) return std::unexpected(ok.error());
+          context.session().mutable_project().save = after;
+          context.mark_project_dirty();
         }
-        return CommandResult{{{"changed", changed}, {"previous", save_config_json(before)}, {"save", save_config_json(project->save)}},
+        return CommandResult{{{"changed", changed}, {"previous", save_config_json(before)}, {"save", save_config_json(after)}},
                              changed ? std::optional<Invocation>(Invocation{
                                            "save.config_set", {{"game_id", before.game_id}, {"data_version", before.data_version}}})
                                      : std::nullopt};
@@ -392,24 +378,23 @@ void register_debug_commands(CommandRegistry& registry) {
 
   registry.add(
       {"debug.set",
-       "Change the debug overlay settings in project.json; omitted fields keep their value. Writes at once.",
+       "Change the debug overlay settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.",
        {{"type", "object"},
         {"properties",
          {{"overlay_visible", {{"type", "boolean"}}},
           {"overlay_font_scale", {{"type", "number"}, {"exclusiveMinimum", 0}, {"maximum", 8}}}}},
         {"additionalProperties", false}},
        {{"type", "object"}},
-       false},
+       true},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
-        auto project = load_project_file(context);
-        if (!project) return std::unexpected(project.error());
-        const Json previous = debug_json(project->debug);
-        DebugConfig& d = project->debug;
+        const Json previous = debug_json(context.session().project().debug);
+        DebugConfig d = context.session().project().debug;
         if (args.contains("overlay_visible")) d.overlay_visible = args["overlay_visible"].get<bool>();
         if (args.contains("overlay_font_scale")) d.overlay_font_scale = args["overlay_font_scale"].get<float>();
         const Json now = debug_json(d);
         if (now != previous) {
-          if (auto ok = store_project_file(context, *project); !ok) return std::unexpected(ok.error());
+          context.session().mutable_project().debug = d;
+          context.mark_project_dirty();
         }
         return CommandResult{{{"changed", now != previous}, {"previous", previous}, {"debug", now}},
                              now != previous ? std::optional<Invocation>(Invocation{"debug.set", previous})

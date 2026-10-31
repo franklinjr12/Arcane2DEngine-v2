@@ -85,11 +85,11 @@ void test_project_config() {
   auto got = registry.execute(ctx, {"transition.get", Json::object()});
   ARCANE_ASSERT_TRUE(got.has_value() && got->value["fade_out_seconds"] == 0.3f);
   // Setting the same values changes nothing on disk.
-  auto same = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.3}}});
+  auto same = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.3}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(same.has_value() && same->value["changed"] == false && !same->inverse);
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  auto set = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.5}, {"color", Json::array({1, 0, 0, 1})}}});
+  auto set = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.5}, {"color", Json::array({1, 0, 0, 1})}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(set.has_value() && set->value["changed"] == true && set->inverse);
   const std::string after = slurp(p.dir / "project.json");
   ARCANE_ASSERT_TRUE(after.find("\"fade_out_seconds\": 0.5") != std::string::npos);
@@ -98,18 +98,18 @@ void test_project_config() {
   ARCANE_ASSERT_TRUE(project.has_value() && project->transition.fade_out_seconds == 0.5f && project->transition.color.r == 1.0f);
   ARCANE_ASSERT_TRUE(project->transition.fade_in_seconds == 0.3f);
   // The inverse restores the original bytes.
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"fade_in_seconds", 99}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"color", Json::array({1, 2})}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"fade_in_seconds", 99}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"color", Json::array({1, 2})}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "my.game"}, {"data_version", 3}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "my.game"}, {"data_version", 3}}}, {.persist = true}).has_value());
   auto cfg = registry.execute(ctx, {"save.config_get", Json::object()});
   ARCANE_ASSERT_TRUE(cfg.has_value() && cfg->value["game_id"] == "my.game" && cfg->value["data_version"] == 3);
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"game_id", "../evil"}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"data_version", 0}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"game_id", "../evil"}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"data_version", 0}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(load_project_from_json_strict(slurp(p.dir / "project.json")).has_value());
   // Unknown keys in the new sections are errors.
   std::string bad = slurp(p.dir / "project.json");
@@ -320,7 +320,7 @@ void test_save_commands() {
   // Without game_id or dir there is no folder.
   ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.list", Json::object()}).error().code == "VALUE_INVALID");
 
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "cmd_test"}, {"data_version", 2}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "cmd_test"}, {"data_version", 2}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.set", {{"slot", "s1"}, {"key", "level"}, {"value", 1}, {"dir", d}}}).has_value());  // no slot yet
   auto created = registry.execute(ctx, {"save.set", {{"slot", "s1"}, {"key", "level"}, {"value", 1}, {"create", true}, {"dir", d}}});
   ARCANE_ASSERT_TRUE(created.has_value() && created->value["previous"].is_null());

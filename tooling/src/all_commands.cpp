@@ -19,8 +19,8 @@ void register_all_commands(CommandRegistry& registry) {
   register_clip_commands(registry);
   register_project_commands(registry);
   // These write files as they run, outside persist/dry_run.
-  for (const char* name : {"atlas.pack", "atlas.make_clip", "transition.set", "debug.set", "save.config_set", "save.set",
-                           "save.remove", "save.migrate", "prefab.save", "replay.save", "replay.run", "tileset.create", "tileset.set_tile", "tileset.set_rule",
+  for (const char* name : {"atlas.pack", "atlas.make_clip", "save.set",
+                           "save.remove", "save.migrate", "prefab.save", "replay.save", "replay.run", "tileset.create", "tileset.replace", "tileset.restore", "tileset.set_tile", "tileset.set_rule",
                            "tileset.remove_rule", "tilemap.dump_csv", "clip.create", "clip.add_frames", "clip.remove_frame", "clip.move_frame",
                            "clip.set_frame", "clip.set", "clip.restore"}) {
     registry.mark_immediate_write(name);

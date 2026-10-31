@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene) and AF10C (`arcane render`) have run so far.
+This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`) and AF8C (editor tileset/clip/settings through commands) have run so far.
 
 **1. Step-by-step manual checks**
 
@@ -23,7 +23,13 @@ xvfb-run -a build-gcc/bin/arcane --project samples/platformer_slice --module bui
 ```
 Expected: JSON with `"ok":true`, `scene_hash`, `backend`; open `samples/platformer_slice/out/slice.png`: yellow coins, brown platform, red bar and score text on a dark background (delete the `out/` folder afterwards). With `env -u DISPLAY -u WAYLAND_DISPLAY` the same command prints `RENDER_UNAVAILABLE` and exits 8.
 
+AF8C extra check (Linux, or Windows with a GL desktop): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, then
+- Project Settings panel: below Name/Main scene/Module there are now Scene transition (fade out/in, colour), Save (game id, data version) and Debug overlay (visible, font scale). Change one: the title shows modified, Edit > Undo (Ctrl+Z) reverts it, File > Save writes `project.json`.
+- Tileset panel: New tileset / edit fields / Save tileset, then Ctrl+Z: the file disappears again (or returns to its previous content). Animation Clip panel: Save clip then Ctrl+Z likewise; Open clip reloads a saved clip on the current grid.
+
 **2. What you can visibly see**
+
+AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
 
 AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
 
@@ -32,6 +38,8 @@ AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples
 Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Optional: open `arcane_editor --project samples/topdown_slice` and confirm it still loads (the module is rebuilt by CMake).
 
 **4. Known risks**
+
+- AF8C: the editor widgets (ImGui) were compile-checked and the command/EditSession paths are tested headless, but the panels themselves were not clicked through by a human. `transition.set`, `save.config_set` and `debug.set` changed from immediate `project.json` writes to in-memory edits (CLI output the same; `--dry-run` now allowed). Tileset/clip draft fields before Save are still unsaved panel state (documented, by design). UNTESTED on native Windows/MSVC.
 
 - AF10C `arcane render` is UNTESTED on native Windows/MSVC (GL offscreen FBO path ran only on Linux Mesa llvmpipe under Xvfb); the golden `tests/golden/render/platformer_slice_f30.png` is llvmpipe-specific and other GPUs may need a regenerated golden or higher tolerance.
 
@@ -42,6 +50,11 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ---
 
 ## Technical detail
+
+### AF8C: tileset/clip panel Save, Open clip, settings widgets
+- `transition.set`/`save.config_set`/`debug.set`: in-memory project edits (`mutable_project` + `mark_project_dirty`), `mutating`, no longer immediate writes (`tooling/src/flow_commands.cpp`, `all_commands.cpp`). New `tileset.replace` (whole tileset in one step) and `tileset.restore` (inverse; `tileset.create` returns it too) in `tilemap_commands.cpp`.
+- `editor/app/editor_main.cpp`: Save tileset = one `tileset.replace`, Save clip = `clip.create` via `EditSession`, Open clip = `clip.info`, Open tileset = `tileset.info`, Project Settings gets transition/save/debug widgets.
+- Tests: `test_edit_session` +3 (flow settings parity/undo/save, tileset Save undo, clip open/save undo) and a wider source lint; `test_scene_flow`/`test_debug` now persist explicitly. Docs: `docs/commands.md`, regenerated `docs/cli-reference.md`, inventory, decisions.
 
 ### AF10C: `arcane render`
 - New `tooling/src/render_commands.cpp` (command `render`), `render_offscreen` and masked `compare_images` in `engine/include/arcane/screenshot.hpp`, `run_on_copy` shared with `run`/`test` (optional `finish` callback), exit code 8 / `RENDER_UNAVAILABLE`.

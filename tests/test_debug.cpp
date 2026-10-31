@@ -93,22 +93,22 @@ void test_commands() {
 
   auto got = registry.execute(ctx, {"debug.get", Json::object()});
   ARCANE_ASSERT_TRUE(got.has_value() && got->value["overlay_visible"] == false && got->value["overlay_font_scale"] == 1.5f);
-  auto same = registry.execute(ctx, {"debug.set", {{"overlay_visible", false}}});
+  auto same = registry.execute(ctx, {"debug.set", {{"overlay_visible", false}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(same.has_value() && same->value["changed"] == false && !same->inverse);
   ARCANE_ASSERT_TRUE(slurp(dir / "project.json") == before);
 
-  auto set = registry.execute(ctx, {"debug.set", {{"overlay_visible", true}, {"overlay_font_scale", 2.0}}});
+  auto set = registry.execute(ctx, {"debug.set", {{"overlay_visible", true}, {"overlay_font_scale", 2.0}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(set.has_value() && set->value["changed"] == true && set->inverse);
   const std::string after = slurp(dir / "project.json");
   ARCANE_ASSERT_TRUE(canonicalize_json(after).value() == after);
   auto project = load_project_from_json_strict(after);
   ARCANE_ASSERT_TRUE(project.has_value() && project->debug.overlay_visible && project->debug.overlay_font_scale == 2.0f);
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(dir / "project.json") == before);
 
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_font_scale", 0}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_font_scale", 9}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_visible", "yes"}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_font_scale", 0}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_font_scale", 9}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"debug.set", {{"overlay_visible", "yes"}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(dir / "project.json") == before);
 
   auto bench = registry.execute(ctx, {"bench.run", {{"sprites", 5}, {"emitters", 0}, {"bodies", 1}, {"frames", 2}}});
