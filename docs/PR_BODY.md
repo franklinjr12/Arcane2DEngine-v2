@@ -150,3 +150,7 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - Best score: `project.json` `save` (`arcane_platformer_slice`), slot `progress`, key `best_score`; written on the final level's goal or game over only if higher; save errors are logged (warning only when saves are enabled).
 - `project.json` also gets `display` 640x360 letterbox and gamepad bindings (D-pad/left stick move, A jump, Start pause). Replay trace and render golden stay valid (`arcane render` passes `--size` in the test); `tests/golden/platformer_slice/project.json` was regenerated for the new keys. `make_assets.py` generates `project.json` and the menu scene.
 - Tests: `test_platformer_slice` (time scale 0 pause, buttons appear/disappear, D-pad + A and mouse Resume, Restart/Menu/PLAY flow with the HUD swap, best score written/kept/raised under `ARCANE_SAVE_DIR`, saves off writes nothing). Top-down pause unchanged.
+
+## PF1: rendering and entity performance
+
+- Sprite batching (static index buffer, VBO orphaning, 16384-quad batches), view culling with `RenderStats::culled`, benchmark defaults 5000 sprites / 2000 particles / 500 bodies, `arcane_bench --render 1`. Tests: `test_render_bench`, `test_render_cull`, `test_debug`, `bench_cli_render_smoke`. Numbers in `docs/perf.md` come from llvmpipe under Xvfb; Windows not measured.

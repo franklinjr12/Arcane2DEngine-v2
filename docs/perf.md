@@ -12,6 +12,7 @@ Six lines: FPS, frame time (ms, averaged over ~0.5 s), draw calls, sprites, phys
 - Draw calls and sprites come from `SpriteRenderer::stats()` (reset by `begin_frame`). The overlay's own
   glyphs are drawn after the numbers are read, so they are not counted. A "sprite" is one accepted
   `SpriteDraw`, including tiles, particles and HUD quads.
+- The overlay does not show the new `culled` counter; it is available in `RenderStats` only (`SpriteRenderer::stats()`).
 - Not verified visually in this environment (hidden Xvfb runs only); see RESULT/PR notes.
 
 ## Benchmark
@@ -20,7 +21,8 @@ Six lines: FPS, frame time (ms, averaged over ~0.5 s), draw calls, sprites, phys
 `bench.run` run the same code (`run_benchmark`, `arcane/debug.hpp`). It needs no window, GL or audio: a scene
 of N sprite nodes, E particle emitters bursting P particles each (kept alive for the whole run) and B dynamic
 bodies falling onto a static floor is updated and physics-stepped for M fixed 60 Hz frames. **Rendering is not
-measured** (that needs a GL context); it measures scene update, particle update and Box2D.
+measured by `bench.run` or by `arcane_bench` without `--render 1`** (that needs a GL context); that mode measures
+scene update, particle update and Box2D. See the GL render benchmark below.
 
 ```sh
 arcane_bench [--sprites N] [--emitters N] [--particles-per-emitter N] [--bodies N] [--frames N] [--render 0|1]
@@ -43,6 +45,7 @@ machine. Bad arguments exit with status 2 and a message on stderr. CTest runs a 
 
 ## Baseline
 
+These older tables were measured with the old defaults (1000 sprites, 100 emitters), before PF1.
 Release build (gcc 14, `-DCMAKE_BUILD_TYPE=Release`), 8-vCPU Xeon VM, 300 frames, one run each (noisy):
 
 | Scene | avg frame ms | max frame ms |
@@ -65,6 +68,37 @@ quads, culled > 0 and at most 3 draw calls (2 observed: sprites and particles us
 llvmpipe in Debug are far slower than on a GPU and only useful for comparing runs on the same machine.
 
 Treat these as an order-of-magnitude reference for spotting regressions on the same machine, not as a target.
+
+## Rendering and entity performance (PF1)
+
+**Batching** (`SpriteRenderer`, `engine/src/renderer.cpp`): quads are collected per contiguous run of the same
+texture and drawn with one call; a texture change or `end_frame()` flushes. The index buffer is static (built
+once), the vertex buffer is orphaned (`glBufferData(nullptr)`) before each upload so the driver need not
+synchronize, and a run longer than `kSpriteMaxBatchQuads` (16384) is split into several calls. Unrotated sprites
+skip `sin`/`cos`.
+
+**Culling** (on by default, `SpriteRenderer::set_culling`): `sprite_in_view()` is conservative. Unrotated sprites
+use their exact box, rotated ones a circle through every corner, so a visible sprite is never dropped. Culled
+sprites count in `RenderStats::culled`, not in `stats.sprites`. Tilemaps are culled separately in `scene_render`
+(`editor/editor_core/src/scene_render.cpp`) by computing the visible cell range, so only those cells are submitted.
+`arcane_bench` has no flag to disable culling, so no with/without numbers were measured.
+
+**Regression tests**: `test_render_bench` (label `gl`: PF1 scene counts, sprites + culled = 7000, culled > 0, at
+most 3 draw calls), `test_render_cull` (visibility rules and stats), the PF1 case in `test_debug` (counts only, no
+timing), and `bench_cli_render_smoke` (`--render 1`, skips on exit 8). None asserts wall-clock time.
+
+**Measured numbers.** Noisy: one machine (2 vCPU, g++ 15.2.0), Release, 300 frames, 5000 sprites, 2000 particles,
+500 bodies, three runs for the default mode and the runs listed for `--render 1`. The machine was shared with other
+builds. These come from Mesa llvmpipe (software GL) under Xvfb, not real GPU hardware, so the render times say
+nothing about GPU speed. Windows was not measured.
+
+| Mode | avg frame ms (runs) | max frame ms (runs) |
+| --- | --- | --- |
+| default (update + physics, no render) | 3.31, 3.79, 4.05 | 8.97, 13.03, 9.52 |
+| `--render 1`, update part (`update_avg_ms`) | 1.87, 1.76 | n/a |
+| `--render 1`, `render_avg_frame_ms` | 554, 545 | 842, 730 |
+
+In the render runs: 4850 sprites drawn, 2150 culled, 2 draw calls (1280x720 view).
 
 ## Arena slice (GS1)
 
