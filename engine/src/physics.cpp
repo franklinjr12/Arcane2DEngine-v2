@@ -16,6 +16,7 @@
 #include "arcane/platformer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
+#include "arcane/topdown.hpp"
 
 namespace arcane {
 
@@ -222,6 +223,7 @@ void register_physics_components(ComponentRegistry& registry) {
           make_property<Collider2D>("mirror_with_sprite", PropertyType::Bool, &Collider2D::mirror_with_sprite),
       });
   register_platformer_components(registry);
+  register_topdown_components(registry);
 }
 
 struct PhysicsWorld::Impl {
