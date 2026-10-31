@@ -122,6 +122,7 @@ add_library(arcane_runtime SHARED
   engine/src/physics.cpp
   engine/src/platformer.cpp
   engine/src/topdown.cpp
+  engine/src/navigation.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
   engine/src/animgraph.cpp
