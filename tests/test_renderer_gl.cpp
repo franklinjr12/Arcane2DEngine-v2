@@ -131,5 +131,47 @@ int main() {
   }
   ARCANE_ASSERT_TRUE(utf8_pixels > 50);
 
+  // Batching and culling: one texture, many sprites.
+  {
+    constexpr int kCount = 1000;
+    const auto fw = static_cast<float>(fb_width), fh = static_cast<float>(fb_height);
+    const auto place = [&](float x, float y) {
+      renderer->draw(arcane::SpriteDraw{.texture = &*texture, .x = x, .y = y, .width = 4.0f, .height = 4.0f});
+    };
+    const auto frame = [&](int on_screen, int off_screen) {
+      renderer->set_camera(0.0f, 0.0f, 1.0f);
+      renderer->begin_frame(fb_width, fb_height, arcane::Color{0.0f, 0.0f, 0.0f, 1.0f});
+      for (int i = 0; i < on_screen; ++i) place(static_cast<float>(i % 8) - 4.0f, static_cast<float>(i % 5) - 2.0f);
+      for (int i = 0; i < off_screen; ++i) place(fw * 10.0f + static_cast<float>(i), fh * 10.0f);
+      renderer->end_frame();
+    };
+
+    frame(kCount, 0);
+    ARCANE_ASSERT_TRUE(renderer->stats().draw_calls == 1 && renderer->stats().sprites == kCount);
+    ARCANE_ASSERT_TRUE(renderer->stats().culled == 0);
+    const arcane::Color before = renderer->read_pixel(fb_width / 2, fb_height / 2);
+    ARCANE_ASSERT_TRUE(before.r > 0.9f);
+
+    frame(kCount, kCount);
+    ARCANE_ASSERT_TRUE(renderer->stats().draw_calls == 1 && renderer->stats().sprites == kCount);
+    ARCANE_ASSERT_TRUE(renderer->stats().culled == kCount);
+    ARCANE_ASSERT_TRUE(renderer->read_pixel(fb_width / 2, fb_height / 2) == before);
+    ARCANE_ASSERT_TRUE(renderer->read_pixel(2, 2).r < 0.1f);
+
+    renderer->set_culling(false);
+    frame(kCount, kCount);
+    ARCANE_ASSERT_TRUE(renderer->stats().culled == 0 && renderer->stats().sprites == 2 * kCount);
+    ARCANE_ASSERT_TRUE(renderer->stats().draw_calls == 1);
+    renderer->set_culling(true);
+
+    // More than one batch worth of quads splits into ceil(n / max) draw calls.
+    constexpr int kHuge = 20000;
+    frame(kHuge, 0);
+    ARCANE_ASSERT_TRUE(renderer->stats().sprites == kHuge);
+    ARCANE_ASSERT_TRUE(renderer->stats().draw_calls ==
+                       (kHuge + arcane::kSpriteMaxBatchQuads - 1) / arcane::kSpriteMaxBatchQuads);
+    ARCANE_ASSERT_TRUE(renderer->read_pixel(fb_width / 2, fb_height / 2) == before);
+  }
+
   return 0;
 }
