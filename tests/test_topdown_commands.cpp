@@ -44,7 +44,7 @@ void run() {
 
     auto listed = registry.execute(**context, prop("prop.list", nullptr));
     ARCANE_ASSERT_TRUE(listed.has_value());
-    ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 5);
+    ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 3);
 
     // Dry run and invalid calls leave the file alone.
     ARCANE_ASSERT_TRUE(registry.execute(**context, prop("prop.set", "player_speed", 200.0), {.dry_run = true}).has_value());

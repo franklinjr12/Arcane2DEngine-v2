@@ -37,9 +37,13 @@ GP2 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "
 
 GP4 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_animgraph|test_animgraph_commands|test_platformer_slice|test_physics_components|test_schema_examples|test_cli" --output-on-failure` expects all to pass. CLI: `build-gcc/bin/arcane --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so animgraph info --graph assets/hero.animgraph.json` prints the hero's idle/run machine; in a copy of the project, `animgraph add-event` then `animgraph info` shows the change. Editor (needs a display): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, open the new **Animation Graph** panel, add a parameter, Ctrl+Z removes it again. Player: hold D/A in `arcane_player` on the slice: the hero runs, faces left/right via `Sprite.flip_x` (no negative scale) and the HUD updates by ids.
 
+GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_topdown_controller|test_navigation|test_spawner|test_combat|test_topdown_slice|test_topdown_commands" --output-on-failure` expects all six to pass. To play (needs a display or Xvfb): `build-gcc/bin/arcane_player --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so`, move with WASD and shoot with Space (the bullet flies where you last moved). The red enemy walks around the interior wall to reach you (each touch costs 1 health, shown in the HUD with a particle burst); three bullets kill it; at 0 health the scene restarts. CLI: `arcane --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so prefab info --node path:/Arena/Enemy`.
+
 **2. What you can visibly see**
 
 PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
+
+GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner, an enemy that paths around an interior wall, player health in the HUD, restart on death.
 
 GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
 
@@ -54,6 +58,8 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 **4. Known risks**
 
 - PX1: the new prefab widgets (ImGui) are compile-checked only; the command/EditSession paths are tested headless. Propagation happens on load only and ignores added/removed nodes or components; prefab nesting is not supported. UNTESTED on native Windows/MSVC.
+
+- GP5: UNTESTED on native Windows/MSVC. Nobody played the top-down slice by hand: the GL tests (`test_export_topdown_slice`, `test_player_topdown_frames`) and the fixed-frame run only prove it loads and steps, and `test_topdown_slice` drives it with fake input. Not covered: enemy spawner waves, line of sight, knockback, melee swings, steering around other enemies (no separation in the slice).
 
 - GP4: the Animation Graph panel (ImGui) is compile-checked only and its commands are tested headless; nobody clicked it. Flip visuals are not golden-tested (no sprite sheet with asymmetric art in the render goldens). Adding `Sprite`/`Collider2D` properties changed the canonical text of scenes that contain them (samples and `tests/golden/` were regenerated; old files still load). Rebuilding a mirrored collider on flip can emit one collision exit/enter. UNTESTED on native Windows/MSVC.
 
@@ -73,6 +79,13 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - `refresh_prefab_instances` (engine) propagates prefab edits to non-overridden values on load (session open, scene switch, CLI scene override); `test_prefab` covers overridden values kept, missing prefab warning.
 - `prefab.remove` undo restores a scene snapshot (IDs unchanged); `EditSession::set_property/set_transform` use `prefab.override` on instance nodes.
 - Editor: Save as Prefab, Assets > Prefabs, instance header/revert/break link. `docs/editor-command-inventory.md` and `docs/formats/prefab.md` updated; `arcane prefab ...` CLI already generated from `prefab.*`.
+
+### GP5: top-down controller, steering, combat, pooled spawner (docs/slice_topdown_gaps.md)
+- Engine components (all registered by `register_physics_components`): `TopDownController2D` (`topdown.hpp`), `SteeringAgent2D` + `NavGrid`/`find_path` grid A* (`navigation.hpp`), `Spawner2D` + `Node::set_active` (`spawner.hpp`), `Health`/`Hurtbox`/`Hitbox`/`Projectile` (`combat.hpp`). Decisions 82-85 and 86 in `docs/decisions.md`.
+- `samples/topdown_slice`: `project.json` gets `collision_layers` world/player/enemy/player_attack/enemy_attack and a `fire` action on Space. Player = TopDownController2D + Health(5) + Hurtbox (layer player). Enemy = `assets/enemy.prefab.json` (SteeringAgent2D to `Player` with pathfinding, Health(3), Hurtbox, Hitbox for contact damage); the scene instances it as `Enemy`. A short wall (column 9, rows 4-10) sits between player and enemy so A* matters. `BulletSpawner` pools `assets/bullet.prefab.json` (sensor collider, Hitbox 1, Projectile).
+- `ArenaRules` is now glue only: Space -> `Spawner2D::spawn` + `Projectile::launch(facing)`, HUD from the player's `Health`, a `Health` listener for the HitBurst and `GameContext::request_restart` on death. Properties: `player_speed`/`enemy_speed` are copied into the controller/agents at start, `bullet_speed` is new; `hit_radius`, `hit_cooldown` and `hit_damage` are removed (damage is the enemy Hitbox's). The scene was edited with `arcane batch`/`prefab save`/`prefab instantiate`.
+- The enemy's body collider is on layer `enemy` (mask world+player+player_attack) so bullets hit it; its contact Hitbox shares that collider, so `enemy_attack` is declared but no collider uses it yet. One collider per node means a separate attack collider would need a child body.
+- Tests: `test_topdown_slice` (left wall, A* detour, enemy hurts player, Space bullet damages and kills the enemy, HUD and particles), `test_topdown_commands` (3 properties), plus the component tests. `scripts/build-and-test.sh` result in the commit message / final report.
 
 ### GP4: animation state machine, sprite flip, HUD lookup (slice gaps 4, 7, 10)
 - `arcane.animgraph` v2 (`docs/formats/animgraph.md`, `schemas/arcane.animgraph.schema.json`, example in `tests/golden/schema_examples/`): parameters (bool/float/trigger), states -> clip ids with speed and frame events, transitions with priority and conditions. `Animator` component drives the sibling `AnimatedSprite`; gameplay calls `set_bool/set_float/set_trigger`; events reach `Component::on_animation_event`. Migration re-checks graphs; `validate` checks them strictly.
