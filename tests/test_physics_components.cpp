@@ -3,6 +3,7 @@
 #include <memory>
 #include <vector>
 
+#include "arcane/builtin_components.hpp"
 #include "arcane/component.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
@@ -16,8 +17,8 @@ class ContactRecorder : public arcane::Component {
  public:
   int begin_count = 0;
   int end_count = 0;
-  void on_contact_begin(arcane::Node&) override { ++begin_count; }
-  void on_contact_end(arcane::Node&) override { ++end_count; }
+  void on_collision_enter(arcane::Node&) override { ++begin_count; }
+  void on_collision_exit(arcane::Node&) override { ++end_count; }
 };
 
 arcane::ComponentRegistry make_registry() {
@@ -28,7 +29,7 @@ arcane::ComponentRegistry make_registry() {
 }
 
 // A dynamic box falls under gravity and comes to rest on a static box below
-// it, and both sides see on_contact_begin exactly once.
+// it, and both sides see on_collision_enter exactly once.
 void test_falling_body_lands_on_static_box() {
   arcane::ComponentRegistry registry = make_registry();
   arcane::Scene scene;
@@ -203,6 +204,34 @@ void test_upward_velocity_rises_then_falls() {
 
 }  // namespace
 
+// A collider with mirror_with_sprite moves its offset to the other side when the Sprite flips during Play.
+void test_collider_mirrors_with_sprite_flip() {
+  arcane::ComponentRegistry registry = make_registry();
+  arcane::register_builtin_components(registry);
+  arcane::Scene scene;
+  arcane::Node* node = scene.create_node("hero");
+  auto* sprite = static_cast<arcane::Sprite*>(scene.add_component(node, "Sprite", registry));
+  auto* body = static_cast<arcane::RigidBody2D*>(scene.add_component(node, "RigidBody2D", registry));
+  body->body_type = static_cast<int>(arcane::BodyType::Static);
+  auto* collider = static_cast<arcane::Collider2D*>(scene.add_component(node, "Collider2D", registry));
+  collider->width = 10.0f;
+  collider->height = 10.0f;
+  collider->offset = {20.0f, 0.0f};
+  collider->mirror_with_sprite = true;
+
+  arcane::PhysicsWorld world;
+  world.rebuild(scene);
+  world.step(scene, 1.0f / 60.0f);
+  ARCANE_ASSERT_TRUE(!world.overlap_point({20.0f, 0.0f}).empty() && world.overlap_point({-20.0f, 0.0f}).empty());
+  sprite->flip_x = true;
+  world.step(scene, 1.0f / 60.0f);
+  ARCANE_ASSERT_TRUE(world.overlap_point({20.0f, 0.0f}).empty() && !world.overlap_point({-20.0f, 0.0f}).empty());
+  collider->mirror_with_sprite = false;  // only read when the shape is built: flipping back mirrors again
+  sprite->flip_x = false;
+  world.step(scene, 1.0f / 60.0f);
+  ARCANE_ASSERT_TRUE(!world.overlap_point({20.0f, 0.0f}).empty());
+}
+
 int main() {
   test_gravity_moves_body_down_on_screen();
   test_position_velocity_round_trip();
@@ -210,5 +239,6 @@ int main() {
   test_falling_body_lands_on_static_box();
   test_physics_component_serialization_round_trip();
   test_rebuild_without_step_does_not_mutate_scene();
+  test_collider_mirrors_with_sprite_flip();
   return 0;
 }

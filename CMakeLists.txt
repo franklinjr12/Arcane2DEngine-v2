@@ -109,7 +109,10 @@ add_library(arcane_runtime SHARED
   engine/src/renderer.cpp
   engine/src/node.cpp
   engine/src/scene.cpp
+  engine/src/assets.cpp
+  engine/src/game_context.cpp
   engine/src/scene_io.cpp
+  engine/src/prefab.cpp
   engine/src/component_registry.cpp
   engine/src/property.cpp
   engine/src/project.cpp
@@ -118,14 +121,26 @@ add_library(arcane_runtime SHARED
   engine/src/builtin_components.cpp
   engine/src/physics.cpp
   engine/src/platformer.cpp
+  engine/src/topdown.cpp
+  engine/src/navigation.cpp
+  engine/src/spawner.cpp
+  engine/src/combat.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
+  engine/src/animgraph.cpp
+  engine/src/tween.cpp
+  engine/src/atlas.cpp
+  engine/src/save_game.cpp
+  engine/src/scene_flow.cpp
   engine/src/audio.cpp
   engine/src/hud.cpp
   engine/src/text.cpp
   engine/src/font_data.cpp
   engine/src/tilemap.cpp
-  engine/src/particles.cpp)
+  engine/src/particles.cpp
+  engine/src/debug.cpp
+  engine/src/replay.cpp
+  engine/src/screenshot.cpp)
 target_include_directories(arcane_runtime
   PUBLIC engine/include
   PRIVATE ${TP}/stb ${TP}/json engine/src)
@@ -142,7 +157,6 @@ set_target_properties(arcane_runtime PROPERTIES
 # --- editor core (testable, no GUI deps) ------------------------------------
 add_library(arcane_editor_core STATIC
   editor/editor_core/src/project_session.cpp
-  editor/editor_core/src/asset_catalog.cpp
   editor/editor_core/src/project_runtime.cpp
   editor/editor_core/src/scene_render.cpp
   editor/editor_core/src/tile_paint.cpp
@@ -152,6 +166,47 @@ target_include_directories(arcane_editor_core
   PUBLIC editor/editor_core/include
   PRIVATE ${TP}/json)
 target_link_libraries(arcane_editor_core PUBLIC arcane_runtime)
+
+# --- authoring command registry (no GUI deps) ---------------------------------
+include(cmake/embed_schemas.cmake)
+embed_schemas(${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp ${CMAKE_CURRENT_SOURCE_DIR}/schemas)
+add_library(arcane_tooling STATIC
+  ${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp
+  tooling/src/offline.cpp
+  tooling/src/asset_commands.cpp
+  tooling/src/run_commands.cpp
+  tooling/src/render_commands.cpp
+  tooling/src/export_commands.cpp
+  tooling/src/cli.cpp
+  tooling/src/all_commands.cpp
+  tooling/src/scene_commands.cpp
+  tooling/src/error.cpp
+  tooling/src/context.cpp
+  tooling/src/command.cpp
+  tooling/src/edit_session.cpp
+  tooling/src/property_commands.cpp
+  tooling/src/audio_commands.cpp
+  tooling/src/atlas_commands.cpp
+  tooling/src/flow_commands.cpp
+  tooling/src/prefab_commands.cpp
+  tooling/src/bench_commands.cpp
+  tooling/src/replay_commands.cpp
+  tooling/src/tilemap_commands.cpp
+  tooling/src/hud_commands.cpp
+  tooling/src/input_commands.cpp
+  tooling/src/clip_commands.cpp
+  tooling/src/animgraph_commands.cpp
+  tooling/src/project_commands.cpp)
+target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
+target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
+
+# Headless authoring CLI (docs/cli-reference.md): no GL context, window or audio device.
+add_executable(arcane tools/arcane_main.cpp)
+target_link_libraries(arcane PRIVATE arcane_tooling)
+
+# Headless benchmark (docs/perf.md); a short smoke run is in CTest, the full run is manual.
+add_executable(arcane_bench tools/bench_main.cpp)
+target_link_libraries(arcane_bench PRIVATE arcane_tooling)
 
 if(ARCANE_BUILD_SAMPLES)
   add_subdirectory(samples/sample_game)

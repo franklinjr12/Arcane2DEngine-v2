@@ -24,9 +24,12 @@ The file name is free (`tiles.json`, `*.tileset.json`); migration finds tilesets
 | `tiles` | array | entry *n* describes tile id *n+1*; may be shorter than `tile_count` (missing = not solid, terrain 0) and not longer |
 | `tiles[].solid` | boolean | default false |
 | `tiles[].terrain` | integer ≥ 0 | terrain this tile belongs to (0 = none) |
+| `tiles[].tags` | array of strings | optional gameplay labels (`a-z0-9_`, 1-32 chars, unique, written sorted), e.g. `hazard`, `pickup`; read with `GameContext::tile_at` / `tagged_tile_at`; set with `tileset.set_tile --tags` |
 | `terrains` | array | FE9 auto-tile rules, in order |
 | `terrains[].terrain` | integer ≥ 1 | |
 | `terrains[].tiles` | 16 integers | tile id (0..`tile_count`) for each neighbour mask 0..15 |
+
+Author tilesets with `arcane tileset create/set_tile/set_rule/remove_rule/validate` (`docs/commands.md`).
 
 Tile ids are 1-based, `0` is the empty cell. Unknown fields are errors; v1 differs only in the
 header (`"format_version": 1`) and ignores unknown fields on plain loads.

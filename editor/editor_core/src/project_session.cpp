@@ -1,6 +1,7 @@
 #include "arcane_editor/project_session.hpp"
 
 #include "arcane/canonical_json.hpp"
+#include "arcane/prefab.hpp"
 
 namespace arcane::editor {
 
@@ -40,7 +41,8 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   session.project_revision_ = *project_text;
   session.scene_revision_ = *scene_text;
   session.scene_revision_path_ = session.main_scene_path();
-  session.dirty_ = false;
+  // Prefab edits reach instances on load; the file on disk is rewritten only by the next save.
+  session.dirty_ = refresh_prefab_instances(session.scene_, project_dir, registry).values_updated > 0;
   return session;
 }
 
@@ -104,18 +106,15 @@ std::expected<void, std::string> ProjectSession::save(const ComponentRegistry& r
   if (auto checked = check_revision(project_dir_ / "project.json", project_revision_); !checked) return checked;
   if (auto checked = check_revision(main_scene_path(), scene_revision_); !checked) return checked;
 
-  auto wrote_project = write_text_file_atomic(project_dir_ / "project.json", *project_text);
-  if (!wrote_project) {
-    return std::unexpected(wrote_project.error());
+  FileTransactionOptions options;
+  options.fail_commit_index = fail_commit_index_;
+  auto wrote = write_text_files_transactional(
+      {{project_dir_ / "project.json", *project_text}, {main_scene_path(), *scene_text}}, options);
+  if (!wrote) {
+    return std::unexpected(wrote.error());
   }
 
   project_revision_ = *project_text;
-
-  auto wrote_scene = write_text_file_atomic(main_scene_path(), *scene_text);
-  if (!wrote_scene) {
-    return std::unexpected(wrote_scene.error());
-  }
-
   scene_revision_ = *scene_text;
   scene_revision_path_ = main_scene_path();
   dirty_ = false;

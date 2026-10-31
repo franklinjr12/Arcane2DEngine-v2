@@ -9,6 +9,28 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "collision_layers": {
+      "items": {
+        "pattern": "^[a-z0-9_]{1,32}$",
+        "type": "string"
+      },
+      "maxItems": 31,
+      "type": "array"
+    },
+    "debug": {
+      "additionalProperties": false,
+      "properties": {
+        "overlay_font_scale": {
+          "exclusiveMinimum": 0,
+          "maximum": 8,
+          "type": "number"
+        },
+        "overlay_visible": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "format": {
       "const": "arcane.project"
     },
@@ -33,6 +55,51 @@
     },
     "name": {
       "type": "string"
+    },
+    "save": {
+      "additionalProperties": false,
+      "properties": {
+        "data_version": {
+          "minimum": 1,
+          "type": "integer"
+        },
+        "game_id": {
+          "oneOf": [
+            {
+              "const": ""
+            },
+            {
+              "pattern": "^[A-Za-z0-9._-]{1,64}$",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "transition": {
+      "additionalProperties": false,
+      "properties": {
+        "color": {
+          "items": {
+            "type": "number"
+          },
+          "maxItems": 4,
+          "minItems": 4,
+          "type": "array"
+        },
+        "fade_in_seconds": {
+          "maximum": 60,
+          "minimum": 0,
+          "type": "number"
+        },
+        "fade_out_seconds": {
+          "maximum": 60,
+          "minimum": 0,
+          "type": "number"
+        }
+      },
+      "type": "object"
     },
     "version": {
       "const": 2

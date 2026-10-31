@@ -11,6 +11,7 @@ using ComponentId = std::uint64_t;
 inline constexpr ComponentId kInvalidComponentId = 0;
 
 class Node;
+class Scene;
 
 // Base class for data/behaviour attached to a Node. Owned by the Node it is
 // attached to (destroyed when the node is destroyed). Lifecycle hooks are
@@ -29,15 +30,28 @@ class ARCANE_API Component {
   virtual void on_update(float fixed_dt) { (void)fixed_dt; }
   virtual void on_destroy() {}
 
-  // Physics contact notifications (see arcane/physics.hpp): called on every
-  // component attached to either node when their Collider2D shapes start or
-  // stop touching, during Play only. Default no-op so most components never
-  // need to know about these.
-  virtual void on_contact_begin(Node& other) { (void)other; }
-  virtual void on_contact_end(Node& other) { (void)other; }
+  // Physics notifications (see arcane/physics.hpp), during Play only, called on every component of both nodes
+  // after the step that caused them, ordered by node ids. Collision events are for solid shapes that start or
+  // stop touching; trigger events are for a sensor Collider2D and the shape that starts or stops overlapping it
+  // (the sensor's node gets the visitor as `other` and vice versa). Default no-ops.
+  virtual void on_collision_enter(Node& other) { (void)other; }
+  virtual void on_collision_exit(Node& other) { (void)other; }
+  virtual void on_trigger_enter(Node& other) { (void)other; }
+  virtual void on_trigger_exit(Node& other) { (void)other; }
+
+  // Animation frame event (Animator, arcane/animgraph.hpp): called on every component of the Animator's node when the
+  // playing state's clip reaches the frame an event is attached to. Default no-op.
+  virtual void on_animation_event(const std::string& name) { (void)name; }
+
+  // Object pooling (Spawner2D, arcane/spawner.hpp): called on every component of a pooled subtree each time the
+  // pool hands out a parked (prewarmed or released) instance, after it is moved and reactivated, so components can
+  // reset runtime state (health, timers, velocity). Not called for a freshly instantiated one. Default no-op.
+  virtual void on_pool_reuse() {}
 
   ComponentId id() const noexcept { return id_; }
   Node* node() const noexcept { return node_; }
+  // The scene owning this component's node (null if detached); see Node::scene().
+  Scene* scene() const noexcept;
   const std::string& type_name() const noexcept { return type_name_; }
 
  private:

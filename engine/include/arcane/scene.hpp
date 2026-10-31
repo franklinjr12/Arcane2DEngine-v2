@@ -23,8 +23,9 @@ namespace arcane {
 class ARCANE_API Scene {
  public:
   Scene() = default;
-  Scene(Scene&&) noexcept = default;
-  Scene& operator=(Scene&&) noexcept = default;
+  // Moves re-point every node's scene() at the new owner.
+  Scene(Scene&& other) noexcept;
+  Scene& operator=(Scene&& other) noexcept;
   Scene(const Scene&) = delete;
   Scene& operator=(const Scene&) = delete;
 
@@ -39,10 +40,24 @@ class ARCANE_API Scene {
   // `node`. Returns nullptr if the type is not registered.
   Component* add_component(Node* node, const std::string& type_name, const ComponentRegistry& registry);
 
+  // Detaches and destroys `component` (calling its on_destroy()), keeping the
+  // IDs of everything else. Returns false and does nothing for null or a
+  // component that is not attached to a node of this scene.
+  bool remove_component(Component* component);
+
   // Moves `node` (and its subtree) under `new_parent` (nullptr = becomes a
   // root). Returns false and does nothing if new_parent is node itself or a
   // descendant of node (which would create a cycle).
   bool reparent(Node* node, Node* new_parent);
+
+  // Moves the subtree of root node `root` out of `from` and into this scene
+  // as a root, keeping the live Node/Component objects (and their runtime
+  // state). Every node and component gets a fresh ID from this scene's
+  // counter; EntityId properties that pointed inside the subtree follow, any
+  // other node reference is cleared. Returns the node, or nullptr (nothing
+  // moved) if `root` is not a root of `from`, is pending destroy, or `from`
+  // is this scene. Used by SceneManager to keep persistent nodes.
+  Node* adopt_root(Scene& from, Node* root, const ComponentRegistry& registry);
 
   // Marks `id`'s node and its whole subtree for destruction. Safe to call
   // while iterating the scene (e.g. from a component's on_update): nodes
@@ -53,9 +68,13 @@ class ARCANE_API Scene {
   void flush_destroyed();
 
   // Runs one fixed-timestep tick over every live component (on_start on
-  // first tick, on_update on every tick including that one), then flushes
+  // first tick, on_update on every tick including that one; inactive
+  // subtrees, see Node::active, are skipped), then flushes
   // any destructions queued during the tick.
   void update(float fixed_dt);
+
+  // First live (not pending-destroy) node named `name`, depth-first, or nullptr.
+  Node* find_node_by_name(const std::string& name) const noexcept;
 
   const std::vector<std::unique_ptr<Node>>& roots() const noexcept { return roots_; }
 
@@ -96,6 +115,7 @@ class ARCANE_API Scene {
 
   bool is_descendant_of(const Node* candidate, const Node* ancestor) const noexcept;
   void mark_pending_destroy(Node* node);
+  void adopt_nodes() noexcept;  // points every node's scene_ at this scene
   void collect_preorder(std::vector<Component*>& out) const;
   void collect_preorder(const std::unique_ptr<Node>& node, std::vector<Component*>& out) const;
   void unlink_and_destroy(std::unique_ptr<Node> node);
