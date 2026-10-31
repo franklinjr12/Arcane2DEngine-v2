@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_display test_tilemap test_particles test_camera2d test_tween)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_display test_tilemap test_particles test_camera2d test_tween test_render_cull)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -117,6 +117,12 @@ add_executable(test_particles_gl test_particles_gl.cpp)
 target_link_libraries(test_particles_gl PRIVATE arcane_editor_core)
 add_test(NAME test_particles_gl COMMAND test_particles_gl)
 set_tests_properties(test_particles_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_render_bench test_render_bench.cpp)
+target_link_libraries(test_render_bench PRIVATE arcane_editor_core)
+add_test(NAME test_render_bench COMMAND test_render_bench)
+set_tests_properties(test_render_bench PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
 if(ARCANE_BUILD_SAMPLES)
@@ -318,6 +324,9 @@ add_test(NAME test_debug COMMAND test_debug)
 # CLI smoke: the benchmark prints arcane.bench JSON; bad arguments exit 2 without a device or GUI.
 add_test(NAME bench_cli_smoke COMMAND arcane_bench --sprites 100 --emitters 2 --bodies 20 --frames 5)
 set_tests_properties(bench_cli_smoke PROPERTIES PASS_REGULAR_EXPRESSION "\"format\": \"arcane.bench\"")
+add_test(NAME bench_cli_render_smoke COMMAND arcane_bench --sprites 200 --emitters 2 --bodies 20 --frames 3 --render 1)
+set_tests_properties(bench_cli_render_smoke PROPERTIES LABELS gl SKIP_RETURN_CODE 8 TIMEOUT 120
+  PASS_REGULAR_EXPRESSION "\"draw_calls\"" ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 add_test(NAME bench_cli_bad_args COMMAND arcane_bench --frames 0)
 set_tests_properties(bench_cli_bad_args PROPERTIES WILL_FAIL TRUE)
 add_test(NAME bench_cli_bad_flag COMMAND arcane_bench --nope 1)

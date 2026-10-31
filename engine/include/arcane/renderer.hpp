@@ -69,7 +69,19 @@ struct SpriteDraw {
 struct RenderStats {
   int draw_calls = 0;  // GL draw calls issued
   int sprites = 0;     // draw() calls accepted
+  int culled = 0;      // draw() calls skipped by view culling; not counted in `sprites`
 };
+
+// Largest number of quads one batch holds; a longer same-texture run is split
+// into several draw calls.
+inline constexpr int kSpriteMaxBatchQuads = 16384;
+
+// Conservative visibility test against a camera centered on (cam_x, cam_y)
+// showing view_width x view_height logical units at `zoom`. Unrotated sprites
+// use their exact axis-aligned box; rotated ones a circle around the pivot that
+// reaches every corner. Never reports a visible sprite as outside.
+ARCANE_API bool sprite_in_view(const SpriteDraw& sprite, float cam_x, float cam_y, float zoom, float view_width,
+                               float view_height) noexcept;
 
 // Small batched 2D sprite renderer: shader-based textured quads with an
 // orthographic camera. Draw calls are batched per contiguous run of the
@@ -99,6 +111,9 @@ class ARCANE_API SpriteRenderer {
   // change the camera mid-frame, e.g. world pass then screen-space HUD pass.
   void flush();
   void end_frame();
+
+  // View culling of draw() against the current camera (default on).
+  void set_culling(bool enabled);
 
   // Test helper: reads back a single pixel from the currently bound
   // framebuffer as RGBA in [0, 1]. Only meaningful right after end_frame().

@@ -58,7 +58,7 @@ void fill_debug_overlay_hud(Hud& hud, const FrameStats& stats, const DebugConfig
   hud.add(std::move(text));
 }
 
-std::expected<BenchResult, std::string> run_benchmark(const BenchConfig& c) {
+std::expected<void, std::string> validate_bench_config(const BenchConfig& c) {
   const auto in_range = [](int v, int lo, int hi) { return v >= lo && v <= hi; };
   if (!in_range(c.sprites, 0, 1000000)) return std::unexpected(std::string("sprites must be within 0..1000000"));
   if (!in_range(c.emitters, 0, 100000)) return std::unexpected(std::string("emitters must be within 0..100000"));
@@ -67,18 +67,10 @@ std::expected<BenchResult, std::string> run_benchmark(const BenchConfig& c) {
   }
   if (!in_range(c.bodies, 0, 100000)) return std::unexpected(std::string("bodies must be within 0..100000"));
   if (!in_range(c.frames, 1, 100000)) return std::unexpected(std::string("frames must be within 1..100000"));
+  return {};
+}
 
-  using Clock = std::chrono::steady_clock;
-  const auto ms_since = [](Clock::time_point t) {
-    return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
-  };
-
-  const auto setup_start = Clock::now();
-  ComponentRegistry registry;
-  register_builtin_components(registry);
-  register_physics_components(registry);
-  register_particle_components(registry);
-  Scene scene;
+std::expected<void, std::string> build_benchmark_scene(Scene& scene, ComponentRegistry& registry, const BenchConfig& c) {
   for (int i = 0; i < c.sprites; ++i) {
     Node* node = scene.create_node("sprite");
     node->local_transform().position = {static_cast<float>(i % 100) * 16.0f, static_cast<float>(i / 100) * 16.0f};
@@ -108,6 +100,24 @@ std::expected<BenchResult, std::string> run_benchmark(const BenchConfig& c) {
     scene.add_component(node, "RigidBody2D", registry);
     scene.add_component(node, "Collider2D", registry);
   }
+  return {};
+}
+
+std::expected<BenchResult, std::string> run_benchmark(const BenchConfig& c) {
+  if (auto ok = validate_bench_config(c); !ok) return std::unexpected(ok.error());
+
+  using Clock = std::chrono::steady_clock;
+  const auto ms_since = [](Clock::time_point t) {
+    return std::chrono::duration<double, std::milli>(Clock::now() - t).count();
+  };
+
+  const auto setup_start = Clock::now();
+  ComponentRegistry registry;
+  register_builtin_components(registry);
+  register_physics_components(registry);
+  register_particle_components(registry);
+  Scene scene;
+  if (auto built = build_benchmark_scene(scene, registry, c); !built) return std::unexpected(built.error());
   PhysicsWorld physics;
   physics.rebuild(scene);
   BenchResult result;

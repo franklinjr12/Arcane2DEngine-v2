@@ -267,3 +267,7 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
   runners start from `main_scene` and cannot leave a menu. Best score lives in the `progress` save slot (`best_score`).
 - `display` 640x360 letterbox is set on the platformer slice only; `arcane render` tests pass an explicit `--size`, so the golden is unchanged.
   The top-down slice keeps its node-deactivation pause (switching it was optional and not attempted in this step).
+
+### PF1: rendering and entity performance (ENG-027)
+
+- Culling is on by default in `SpriteRenderer` and conservative; `RenderStats::culled` is not shown in the overlay. `arcane_bench --render 1` is the only GL benchmark mode, so `bench.run` stays display-free. Numbers (llvmpipe under Xvfb, Linux only) are in `docs/perf.md`; Windows and real GPUs were not measured.

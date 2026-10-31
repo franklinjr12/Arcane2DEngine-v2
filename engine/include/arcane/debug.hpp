@@ -4,6 +4,7 @@
 #include <string>
 
 #include "arcane/export.hpp"
+#include "arcane/component_registry.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/scene.hpp"
 
@@ -55,12 +56,14 @@ ARCANE_API void fill_debug_overlay_hud(Hud& hud, const FrameStats& stats, const 
 
 // Headless benchmark: a scene of `sprites` sprite nodes, `emitters` particle emitters (each bursting
 // `particles_per_emitter`) and `bodies` falling dynamic bodies over a static floor, stepped for `frames`
-// fixed 60 Hz frames with no window, GL or audio. Rendering is not measured (it needs a GL context).
+// fixed 60 Hz frames with no window, GL or audio. Rendering is not measured here (it needs a GL context; see
+// run_render_benchmark in arcane_editor/render_bench.hpp). The defaults are the PF1 scene: 5000 sprites,
+// 2000 particles (20 emitters x 100) and 500 bodies.
 struct BenchConfig {
-  int sprites = 1000;
-  int emitters = 10;
+  int sprites = 5000;
+  int emitters = 20;
   int particles_per_emitter = 100;
-  int bodies = 200;
+  int bodies = 500;
   int frames = 120;
 };
 
@@ -73,6 +76,15 @@ struct BenchResult {
   int live_particles = 0;
   int physics_bodies = 0;
 };
+
+// Checks the ranges below; the error names the offending field.
+ARCANE_API std::expected<void, std::string> validate_bench_config(const BenchConfig& config);
+
+// Fills an empty `scene` with the benchmark layout: sprite nodes on a 100-per-row, 16 px grid, emitters in a row
+// at y 0, a static floor and the dynamic bodies. `registry` must hold the builtin, physics and particle
+// components. Used by run_benchmark and the GL render benchmark so both measure the same scene.
+ARCANE_API std::expected<void, std::string> build_benchmark_scene(Scene& scene, ComponentRegistry& registry,
+                                                                  const BenchConfig& config);
 
 // Fails on out-of-range config (counts 0..1000000, frames 1..100000, particles_per_emitter 0..256).
 ARCANE_API std::expected<BenchResult, std::string> run_benchmark(const BenchConfig& config);

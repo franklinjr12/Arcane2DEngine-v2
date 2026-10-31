@@ -124,6 +124,33 @@ std::array<float, 16> make_view_projection(float cam_x, float cam_y, float zoom,
 }
 }  // namespace
 
+bool sprite_in_view(const SpriteDraw& sprite, float cam_x, float cam_y, float zoom, float view_width,
+                    float view_height) noexcept {
+  const float z = std::max(zoom, 0.0001f);
+  const float half_w = (view_width / z) * 0.5f;
+  const float half_h = (view_height / z) * 0.5f;
+  const float ox = sprite.origin_x * sprite.width;
+  const float oy = sprite.origin_y * sprite.height;
+  // Corner offsets from the pivot (x, y), before rotation.
+  const float x0 = std::min(-ox, sprite.width - ox), x1 = std::max(-ox, sprite.width - ox);
+  const float y0 = std::min(-oy, sprite.height - oy), y1 = std::max(-oy, sprite.height - oy);
+  float min_x, max_x, min_y, max_y;
+  if (sprite.rotation_radians == 0.0f) {
+    min_x = sprite.x + x0;
+    max_x = sprite.x + x1;
+    min_y = sprite.y + y0;
+    max_y = sprite.y + y1;
+  } else {
+    const float r = std::sqrt(std::max(x0 * x0, x1 * x1) + std::max(y0 * y0, y1 * y1));
+    min_x = sprite.x - r;
+    max_x = sprite.x + r;
+    min_y = sprite.y - r;
+    max_y = sprite.y + r;
+  }
+  return max_x >= cam_x - half_w && min_x <= cam_x + half_w && max_y >= cam_y - half_h &&
+         min_y <= cam_y + half_h;
+}
+
 std::expected<Texture, std::string> Texture::load_from_pixels(std::span<const unsigned char> rgba_pixels,
                                                                 int width, int height, TextureFilter filter) {
   if (static_cast<size_t>(width) * static_cast<size_t>(height) * 4 > rgba_pixels.size()) {
@@ -199,10 +226,13 @@ struct SpriteRenderer::Impl {
   GLint view_projection_location = -1;
   GLuint vao = 0, vbo = 0, ebo = 0;
   std::vector<Vertex> vertices;
-  std::vector<std::uint32_t> indices;
+  std::vector<std::uint32_t> indices;  // static 0,1,2,2,3,0 pattern for index_quads quads
+  std::size_t index_quads = 0;         // quads whose indices are uploaded to the EBO
+  std::size_t vbo_capacity = 0;        // bytes allocated for the VBO
   const Texture* batch_texture = nullptr;
   float cam_x = 0.0f, cam_y = 0.0f, cam_zoom = 1.0f;
   int fb_width = 1, fb_height = 1;
+  bool culling = true;
   RenderStats stats;
 
   ~Impl() {
@@ -212,17 +242,40 @@ struct SpriteRenderer::Impl {
     if (program) glDeleteProgram(program);
   }
 
+  // Grows the static index buffer (EBO bound through the VAO) to hold `quads` quads.
+  void ensure_indices(std::size_t quads) {
+    if (quads <= index_quads) return;
+    std::size_t capacity = std::max<std::size_t>(index_quads, 256);
+    while (capacity < quads) capacity *= 2;
+    capacity = std::min<std::size_t>(capacity, kSpriteMaxBatchQuads);
+    indices.resize(capacity * 6);
+    for (std::size_t q = index_quads; q < capacity; ++q) {
+      const auto base = static_cast<std::uint32_t>(q * 4);
+      std::uint32_t* out = &indices[q * 6];
+      out[0] = base; out[1] = base + 1; out[2] = base + 2;
+      out[3] = base + 2; out[4] = base + 3; out[5] = base;
+    }
+    index_quads = capacity;
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indices.size() * sizeof(std::uint32_t)),
+                 indices.data(), GL_STATIC_DRAW);
+  }
+
   void flush() {
     if (vertices.empty() || !batch_texture) {
       return;
     }
+    const std::size_t quads = vertices.size() / 4;
+    const std::size_t bytes = vertices.size() * sizeof(Vertex);
     glBindVertexArray(vao);
+    ensure_indices(quads);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vertices.size() * sizeof(Vertex)), vertices.data(),
-                 GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, static_cast<GLsizeiptr>(indices.size() * sizeof(std::uint32_t)),
-                 indices.data(), GL_DYNAMIC_DRAW);
+    if (bytes > vbo_capacity) {
+      vbo_capacity = std::max<std::size_t>(bytes, vbo_capacity * 2);
+    }
+    // Orphan (or grow) the buffer so the driver need not wait on the previous draw.
+    glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vbo_capacity), nullptr, GL_DYNAMIC_DRAW);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(bytes), vertices.data());
 
     glUseProgram(program);
     auto vp = make_view_projection(cam_x, cam_y, cam_zoom, static_cast<float>(fb_width),
@@ -230,11 +283,10 @@ struct SpriteRenderer::Impl {
     glUniformMatrix4fv(view_projection_location, 1, GL_FALSE, vp.data());
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, batch_texture->native_id());
-    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(indices.size()), GL_UNSIGNED_INT, nullptr);
+    glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(quads * 6), GL_UNSIGNED_INT, nullptr);
     ++stats.draw_calls;
 
     vertices.clear();
-    indices.clear();
   }
 };
 
@@ -253,6 +305,7 @@ std::expected<SpriteRenderer, std::string> SpriteRenderer::create() {
 
   SpriteRenderer renderer;
   renderer.impl_ = std::make_unique<Impl>();
+  renderer.impl_->vertices.reserve(4096 * 4);
   renderer.impl_->program = *program;
   renderer.impl_->view_projection_location = glGetUniformLocation(*program, "u_view_projection");
 
@@ -301,7 +354,6 @@ void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, 
   impl_->stats = RenderStats{};
   impl_->batch_texture = nullptr;
   impl_->vertices.clear();
-  impl_->indices.clear();
   glDisable(GL_SCISSOR_TEST);
   glViewport(0, 0, framebuffer_width, framebuffer_height);
   glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
@@ -315,7 +367,6 @@ void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, 
   impl_->stats = RenderStats{};
   impl_->batch_texture = nullptr;
   impl_->vertices.clear();
-  impl_->indices.clear();
   glDisable(GL_SCISSOR_TEST);
   glViewport(0, 0, framebuffer_width, framebuffer_height);
   glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -331,7 +382,14 @@ void SpriteRenderer::draw(const SpriteDraw& sprite) {
   if (!sprite.texture) {
     return;
   }
-  if (impl_->batch_texture && impl_->batch_texture != sprite.texture) {
+  if (impl_->culling && !sprite_in_view(sprite, impl_->cam_x, impl_->cam_y, impl_->cam_zoom,
+                                         static_cast<float>(impl_->fb_width),
+                                         static_cast<float>(impl_->fb_height))) {
+    ++impl_->stats.culled;
+    return;
+  }
+  if (impl_->batch_texture && (impl_->batch_texture != sprite.texture ||
+                               impl_->vertices.size() >= static_cast<std::size_t>(kSpriteMaxBatchQuads) * 4)) {
     impl_->flush();
   }
   impl_->batch_texture = sprite.texture;
@@ -341,31 +399,37 @@ void SpriteRenderer::draw(const SpriteDraw& sprite) {
   const float oy = sprite.origin_y * sprite.height;
   const float local[4][2] = {
       {-ox, -oy}, {sprite.width - ox, -oy}, {sprite.width - ox, sprite.height - oy}, {-ox, sprite.height - oy}};
-  const float cos_r = std::cos(sprite.rotation_radians);
-  const float sin_r = std::sin(sprite.rotation_radians);
+  const bool rotated = sprite.rotation_radians != 0.0f;
+  const float cos_r = rotated ? std::cos(sprite.rotation_radians) : 1.0f;
+  const float sin_r = rotated ? std::sin(sprite.rotation_radians) : 0.0f;
   const float uvs[4][2] = {{sprite.uv.u0, sprite.uv.v0},
                             {sprite.uv.u1, sprite.uv.v0},
                             {sprite.uv.u1, sprite.uv.v1},
                             {sprite.uv.u0, sprite.uv.v1}};
 
-  const auto base_index = static_cast<std::uint32_t>(impl_->vertices.size());
+  const std::size_t first = impl_->vertices.size();
+  impl_->vertices.resize(first + 4);
+  Vertex* out = &impl_->vertices[first];
   for (int i = 0; i < 4; ++i) {
     const float lx = local[i][0], ly = local[i][1];
-    Vertex v;
-    v.x = sprite.x + lx * cos_r - ly * sin_r;
-    v.y = sprite.y + lx * sin_r + ly * cos_r;
+    Vertex& v = out[i];
+    if (rotated) {
+      v.x = sprite.x + lx * cos_r - ly * sin_r;
+      v.y = sprite.y + lx * sin_r + ly * cos_r;
+    } else {
+      v.x = sprite.x + lx;
+      v.y = sprite.y + ly;
+    }
     v.u = uvs[i][0];
     v.v = uvs[i][1];
     v.r = sprite.tint.r;
     v.g = sprite.tint.g;
     v.b = sprite.tint.b;
     v.a = sprite.tint.a;
-    impl_->vertices.push_back(v);
-  }
-  for (auto offset : {0u, 1u, 2u, 2u, 3u, 0u}) {
-    impl_->indices.push_back(base_index + offset);
   }
 }
+
+void SpriteRenderer::set_culling(bool enabled) { impl_->culling = enabled; }
 
 void SpriteRenderer::flush() { impl_->flush(); }
 
