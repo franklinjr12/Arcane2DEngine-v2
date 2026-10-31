@@ -237,6 +237,7 @@ int run_project(const Args& args) {
       steps = timestep.advance(delta_seconds);
     }
     arcane::Scene& scene = runtime->session().scene();
+    game_context.set_viewport_size(fb_width, fb_height);
     for (int i = 0; i < steps; ++i) {
       if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
       scene.update(step_dt);

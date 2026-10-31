@@ -96,6 +96,8 @@ Result render(const OfflineEnv& env, const Json& args, bool dry_run) {
   options.frames = args.value("frames", 0);
   options.fixed_hz = args.value("fixed_hz", 60);
   options.seed = args.value("seed", 0);
+  options.viewport_width = size->first;
+  options.viewport_height = size->second;
   std::optional<ImageRgba> image;
   std::string failure;
   auto out = run_on_copy(**context, options, "", [&](Scene& scene, Hud& hud) -> std::expected<void, ToolError> {

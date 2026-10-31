@@ -39,4 +39,8 @@ render --output out/e.png --size 320x180 --frames 30 --camera path:/Probe --comp
   || { echo "full mask should ignore every difference" >&2; exit 1; }
 render --output out/f.png --size 160x90 --frames 30 --compare golden/f30.png >/dev/null; rc=$?
 [ $rc -eq 4 ] || { echo "size mismatch should exit 4, got $rc" >&2; exit 1; }
+# Parallax is authored through prop set and changes the picture (the Sky layer scrolls with the world at factor 1).
+edit prop set --node path:/Level/Sky --component ParallaxLayer --name factor --value '[1.0, 1.0]' || { echo "parallax prop set failed" >&2; exit 1; }
+render --output out/g.png --size 320x180 --frames 30 --compare golden/f30.png --tolerance 2 >/dev/null; rc=$?
+[ $rc -eq 4 ] || { echo "changed parallax factor should change the render (exit 4), got $rc" >&2; exit 1; }
 echo "test_render_cli gl OK"

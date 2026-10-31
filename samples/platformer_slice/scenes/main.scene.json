@@ -31,7 +31,7 @@
     },
     {
       "id": 3,
-      "name": "MainCamera",
+      "name": "Sky",
       "parent_id": 1,
       "position": [
         400,
@@ -45,16 +45,35 @@
       "components": [
         {
           "id": 4,
-          "type": "Camera",
+          "type": "Sprite",
           "properties": {
-            "zoom": 1.0,
-            "primary": true
+            "texture": 12108252429286753327,
+            "width": 128.0,
+            "height": 600.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": 5,
+          "type": "ParallaxLayer",
+          "properties": {
+            "factor": [
+              0.3,
+              1.0
+            ],
+            "repeat_x": true,
+            "repeat_y": false
           }
         }
       ]
     },
     {
-      "id": 5,
+      "id": 6,
       "name": "Player",
       "parent_id": 1,
       "position": [
@@ -68,7 +87,7 @@
       ],
       "components": [
         {
-          "id": 6,
+          "id": 7,
           "type": "Sprite",
           "properties": {
             "texture": 15591983102683395244,
@@ -83,7 +102,7 @@
           }
         },
         {
-          "id": 7,
+          "id": 8,
           "type": "AnimatedSprite",
           "properties": {
             "clip": 4478366437428034728,
@@ -92,7 +111,7 @@
           }
         },
         {
-          "id": 8,
+          "id": 9,
           "type": "RigidBody2D",
           "properties": {
             "body_type": 2,
@@ -105,7 +124,7 @@
           }
         },
         {
-          "id": 9,
+          "id": 10,
           "type": "Collider2D",
           "properties": {
             "shape_type": 0,
@@ -123,7 +142,7 @@
           }
         },
         {
-          "id": 10,
+          "id": 11,
           "type": "PlatformerController2D",
           "properties": {
             "max_speed": 200.0,
@@ -144,7 +163,55 @@
       ]
     },
     {
-      "id": 11,
+      "id": 12,
+      "name": "MainCamera",
+      "parent_id": 1,
+      "position": [
+        400,
+        300
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 13,
+          "type": "Camera2D",
+          "properties": {
+            "primary": true,
+            "zoom": 1.0,
+            "target": 6,
+            "smoothing": 8.0,
+            "deadzone": [
+              16.0,
+              100.0
+            ],
+            "look_ahead": [
+              40.0,
+              0.0
+            ],
+            "bounds_tilemap": 0,
+            "bounds_enabled": true,
+            "bounds_min": [
+              0.0,
+              0.0
+            ],
+            "bounds_max": [
+              1280.0,
+              600.0
+            ],
+            "pixel_snap": false,
+            "shake_amplitude": 0.0,
+            "shake_duration": 0.0,
+            "shake_seed": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": 14,
       "name": "Ground",
       "parent_id": 1,
       "position": [
@@ -158,7 +225,7 @@
       ],
       "components": [
         {
-          "id": 12,
+          "id": 15,
           "type": "Tilemap",
           "properties": {
             "tileset": 4271871672750809515,
@@ -174,7 +241,7 @@
       ]
     },
     {
-      "id": 13,
+      "id": 16,
       "name": "Platform",
       "parent_id": 1,
       "position": [
@@ -188,7 +255,7 @@
       ],
       "components": [
         {
-          "id": 14,
+          "id": 17,
           "type": "Tilemap",
           "properties": {
             "tileset": 4271871672750809515,
@@ -204,7 +271,7 @@
       ]
     },
     {
-      "id": 15,
+      "id": 18,
       "name": "Coin0",
       "parent_id": 1,
       "position": [
@@ -218,7 +285,7 @@
       ],
       "components": [
         {
-          "id": 16,
+          "id": 19,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -235,7 +302,7 @@
       ]
     },
     {
-      "id": 17,
+      "id": 20,
       "name": "Coin1",
       "parent_id": 1,
       "position": [
@@ -249,7 +316,7 @@
       ],
       "components": [
         {
-          "id": 18,
+          "id": 21,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -266,7 +333,7 @@
       ]
     },
     {
-      "id": 19,
+      "id": 22,
       "name": "Coin2",
       "parent_id": 1,
       "position": [
@@ -280,7 +347,7 @@
       ],
       "components": [
         {
-          "id": 20,
+          "id": 23,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -297,7 +364,7 @@
       ]
     },
     {
-      "id": 21,
+      "id": 24,
       "name": "Coin3",
       "parent_id": 1,
       "position": [
@@ -311,7 +378,7 @@
       ],
       "components": [
         {
-          "id": 22,
+          "id": 25,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -328,7 +395,7 @@
       ]
     },
     {
-      "id": 23,
+      "id": 26,
       "name": "Coin4",
       "parent_id": 1,
       "position": [
@@ -342,7 +409,7 @@
       ],
       "components": [
         {
-          "id": 24,
+          "id": 27,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -359,7 +426,7 @@
       ]
     },
     {
-      "id": 25,
+      "id": 28,
       "name": "Spikes",
       "parent_id": 1,
       "position": [
@@ -373,7 +440,7 @@
       ],
       "components": [
         {
-          "id": 26,
+          "id": 29,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -390,7 +457,7 @@
       ]
     },
     {
-      "id": 27,
+      "id": 30,
       "name": "Goal",
       "parent_id": 1,
       "position": [
@@ -404,7 +471,7 @@
       ],
       "components": [
         {
-          "id": 28,
+          "id": 31,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -421,7 +488,7 @@
       ]
     },
     {
-      "id": 29,
+      "id": 32,
       "name": "PickupBurst",
       "parent_id": 1,
       "position": [
@@ -435,7 +502,7 @@
       ],
       "components": [
         {
-          "id": 30,
+          "id": 33,
           "type": "ParticleEmitter",
           "properties": {
             "emitting": false,
@@ -477,5 +544,5 @@
       ]
     }
   ],
-  "next_id": 31
+  "next_id": 34
 }

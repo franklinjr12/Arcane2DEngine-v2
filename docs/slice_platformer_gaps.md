@@ -21,7 +21,7 @@ Gaps found while building it (most important first). Each has the workaround use
 6. **(FIXED in GP1: `GameContext::request_restart`; Restart button reloads the level.)** No scene reload / restart API**, so full level reset (coins, player) is not possible (see 1, 2).
 7. **Sprite flip is only negative `scale.x`** on the node. Not verified visually (no screenshot tooling run tonight),
    and the collider is not mirrored.
-8. **No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)
+8. **(FIXED in GP3: `Camera2D` look-ahead, `bounds_tilemap`, `GameContext::viewport_size()`, `ParallaxLayer`; the slice uses them.)** No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)
    assumes the 800-wide design view.
 9. **(FIXED in GP2: tileset `tags`, `GameContext::tile_at/tagged_tile_at`.)** No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. One-way platforms: done in FE17 (`Collider2D::one_way`).
 10. **No animation state machine / events**; clip choice is hand-coded from velocity.

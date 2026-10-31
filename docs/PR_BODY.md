@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API) and GP2 (collision/trigger events, layers, queries, tile tags) have run so far.
+This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API), GP2 (collision/trigger events, layers, queries, tile tags) and GP3 (camera follow, viewport size, parallax) have run so far.
 
 **1. Step-by-step manual checks**
 
@@ -26,6 +26,8 @@ Expected: JSON with `"ok":true`, `scene_hash`, `backend`; open `samples/platform
 AF8C extra check (Linux, or Windows with a GL desktop): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, then
 - Project Settings panel: below Name/Main scene/Module there are now Scene transition (fade out/in, colour), Save (game id, data version) and Debug overlay (visible, font scale). Change one: the title shows modified, Edit > Undo (Ctrl+Z) reverts it, File > Save writes `project.json`.
 - Tileset panel: New tileset / edit fields / Save tileset, then Ctrl+Z: the file disappears again (or returns to its previous content). Animation Clip panel: Save clip then Ctrl+Z likewise; Open clip reloads a saved clip on the current grid.
+
+GP3 extra check (Linux with Xvfb, or Windows with a GL desktop): `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, hold D. Expected: the view follows the hero with a small lead and smoothing, stops at the level edges (x 0..1280), and the hills/sky background scrolls slower than the ground (parallax, tiled). Headless: `ctest --test-dir build -C Debug -R "test_camera2d|test_game_context|test_platformer_slice|test_render_cli" --output-on-failure`. CLI: `arcane --project P component add --node id:N --type ParallaxLayer` then `prop set ... --name factor --value "[0.3, 1.0]"`.
 
 GP1 extra check (any platform, no window needed): `ctest --test-dir build -C Debug -R "test_game_context|test_platformer_slice" --output-on-failure` expects both to pass. To see it live: run `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, collect a coin (it disappears and the score rises), walk into the pit with health left (you respawn at the start instead of dying at once; the second fall is game over), click Restart (the whole level reloads: coins are back, score 0).
 
@@ -83,3 +85,12 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - The old FE18 wip problem (Color `operator==` in prefab.cpp) is fixed at the tip: `Color` has a defaulted `operator==` in `engine/include/arcane/renderer.hpp`.
 - `git rm --cached samples/topdown_slice/topdown_slice_game.so`; `.gitignore` gets `/samples/topdown_slice/topdown_slice_game.so` and `.dll`. Other sample modules were already ignored.
 - `docs/decisions.md`: row for the branch choice.
+
+
+## GP3: camera follow, viewport size, parallax
+
+- `Camera2D` (the existing follow camera) gained `look_ahead` (Vec2) and `bounds_tilemap` (node id; bounds = that Tilemap's world rectangle). No second `CameraFollow2D` component (see docs/decisions.md). Both are registered properties, so `prop.set`, the Inspector and JSON v2 already cover them; `docs/formats/scene.md` documents them.
+- New `ParallaxLayer` component (factor Vec2, repeat_x/repeat_y) next to a Sprite, drawn in `render_scene` shifted by `camera * (1 - factor)` and tiled over the view, correct with zoom. Sprites only, not Tilemaps.
+- `GameContext::viewport_size()` for modules (player, editor and `arcane render` set it; default 800x600).
+- platformer_slice: the module no longer moves the camera; `MainCamera` is a Camera2D following the Player (smoothing, dead zone, look-ahead, bounds 0..1280 x 0..600) and a `Sky` ParallaxLayer (new `assets/sky.png`, factor 0.3, repeat_x). Goldens `tests/golden/render/platformer_slice_f30.png` and `tests/golden/platformer_slice/scenes/main.scene.json` regenerated; `test_render_cli` also checks that changing the parallax factor changes the render.
+- UNTESTED on native Windows/MSVC (Linux gcc/clang/mingw only); the render golden assumes Mesa llvmpipe.
