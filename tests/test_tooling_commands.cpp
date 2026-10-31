@@ -153,7 +153,7 @@ void test_builtin_types_and_value_kinds() {
   // Selectors: by component id and by node path.
   auto listed = registry.execute(*context, {"prop.list", {{"node", "path:/Player"}, {"component", "Sprite"}}});
   ARCANE_ASSERT_TRUE(listed.has_value());
-  ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 4);
+  ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 6);
   const unsigned component_id = listed->value["component_id"];
   auto by_id = registry.execute(*context, {"prop.get", {{"node", "id:1"}, {"component", component_id}, {"name", "texture"}}});
   ARCANE_ASSERT_TRUE(by_id.has_value() && by_id->value["value"] == 77);

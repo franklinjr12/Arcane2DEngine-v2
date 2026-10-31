@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "arcane/animation.hpp"
+#include "arcane/animgraph.hpp"
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/component.hpp"
@@ -46,8 +47,6 @@ void collect(arcane::Node& node, std::vector<arcane::Node*>& out) {
 
 class SliceRules : public arcane::Component {
  public:
-  arcane::AssetId idle_clip = 0;
-  arcane::AssetId run_clip = 0;
   float win_x = 1000.0f;
   float pit_y = 700.0f;
   int coin_value = 10;
@@ -57,6 +56,12 @@ class SliceRules : public arcane::Component {
   float health() const noexcept { return health_; }
   bool won() const noexcept { return won_; }
   bool dead() const noexcept { return health_ <= 0.0f; }
+  int steps() const noexcept { return steps_; }
+
+  // "step" events come from the run state of hero.animgraph.json.
+  void on_animation_event(const std::string& name) override {
+    if (name == "step") ++steps_;
+  }
 
   void on_update(float dt) override {
     std::vector<arcane::Node*> nodes;
@@ -146,36 +151,27 @@ class SliceRules : public arcane::Component {
     if (auto* context = arcane::active_game_context()) context->play_sound(std::string(asset));
   }
 
+  // The Animator on the Player (hero.animgraph.json) picks idle/run from the "moving" parameter; facing is the
+  // Sprite's flip_x, which the Collider2D follows (mirror_with_sprite).
   void animate(arcane::Node& player) {
-    auto* anim = static_cast<arcane::AnimatedSprite*>(player.find_component("AnimatedSprite"));
+    auto* animator = static_cast<arcane::Animator*>(player.find_component("Animator"));
+    auto* sprite = static_cast<arcane::Sprite*>(player.find_component("Sprite"));
     auto* body = static_cast<arcane::RigidBody2D*>(player.find_component("RigidBody2D"));
-    if (!anim || !body) return;
-    const arcane::AssetId wanted = std::abs(body->linear_velocity.x) > 10.0f ? run_clip : idle_clip;
-    if (anim->clip != wanted) {
-      anim->clip = wanted;
-      anim->reset();
-    }
-    // Facing: negative node scale.x is the only mirror mechanism available.
-    if (body->linear_velocity.x < -10.0f) player.local_transform().scale.x = -1.0f;
-    else if (body->linear_velocity.x > 10.0f) player.local_transform().scale.x = 1.0f;
+    if (!body) return;
+    if (animator) animator->set_bool("moving", std::abs(body->linear_velocity.x) > 10.0f);
+    if (sprite && body->linear_velocity.x < -10.0f) sprite->flip_x = true;
+    else if (sprite && body->linear_velocity.x > 10.0f) sprite->flip_x = false;
   }
 
-  // HUD elements have no ids (only buttons do): the first text is the score, the first bar is health, the
-  // second text is the banner. See the gap list.
+  // HUD elements are found by their authored ids (project.json "hud").
   void refresh_hud(arcane::Hud* hud) {
     if (!hud) return;
-    int text_index = 0;
-    for (arcane::HudElement& element : hud->elements()) {
-      if (auto* text = std::get_if<arcane::HudText>(&element)) {
-        if (text_index == 0) text->text = std::format("SCORE {}", score_);
-        else if (text_index == 1) text->text = won_ ? "YOU WIN" : (dead() ? "GAME OVER" : "");
-        ++text_index;
-      } else if (auto* bar = std::get_if<arcane::HudProgressBar>(&element)) {
-        bar->fraction = health_;
-      }
-    }
+    if (auto* text = hud->find_text("score")) text->text = std::format("SCORE {}", score_);
+    if (auto* text = hud->find_text("banner")) text->text = won_ ? "YOU WIN" : (dead() ? "GAME OVER" : "");
+    if (auto* bar = hud->find_bar("health")) bar->fraction = health_;
   }
 
+  int steps_ = 0;
   int score_ = 0;
   float health_ = 1.0f;
   float hurt_timer_ = 0.0f;
@@ -189,8 +185,6 @@ void register_types(arcane::ComponentRegistry& registry) {
   registry.register_component(
       "SliceRules", [] { return std::make_unique<SliceRules>(); },
       {
-          arcane::make_property<SliceRules>("idle_clip", PropertyType::AssetId, &SliceRules::idle_clip),
-          arcane::make_property<SliceRules>("run_clip", PropertyType::AssetId, &SliceRules::run_clip),
           arcane::make_property<SliceRules>("win_x", PropertyType::Float, &SliceRules::win_x),
           arcane::make_property<SliceRules>("pit_y", PropertyType::Float, &SliceRules::pit_y),
           arcane::make_property<SliceRules>("coin_value", PropertyType::Int, &SliceRules::coin_value),

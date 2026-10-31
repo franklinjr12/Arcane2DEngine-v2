@@ -14,17 +14,17 @@ Gaps found while building it (most important first). Each has the workaround use
    are parked at (-100000, -100000). Needs a scene accessor on `Component`/`Node` (or a `GameContext` in `on_update`).
 3. **(FIXED in GP2: `on_trigger_enter/exit`, `on_collision_enter/exit`, layers/masks, raycast/overlap queries; the slice still uses its AABB test.)** No collision/trigger events.** `Collider2D::is_sensor` exists but nothing reports overlaps. Workaround: manual AABB
    tests against hard-coded sizes duplicated from the scene.
-4. **HUD text/bar elements have no ids** (only buttons). The module finds them by order (first text = score).
+4. **(FIXED in GP4: every HUD element has a stable `id` (already in the v2 format), `Hud::find_text/find_bar/find_image/find_button`; the slice looks up `score`, `health`, `banner`.)** HUD text/bar elements had no ids.**
 5. **(FIXED in GP1: `arcane/assets.hpp`, `GameContext::play_sound`, `AudioSource::play`; the `idle_clip`/`run_clip` properties remain as authored data.)** No runtime asset-id → path resolution.** Audio cues use a literal `"assets/coin.wav"` string; `AudioSource` has no
    "play now" call and `asset_id_for_relative_path` lives in the editor library, so the module also receives clip ids as
    scene properties (`idle_clip`, `run_clip`). On a real audio device the relative path would depend on the cwd.
 6. **(FIXED in GP1: `GameContext::request_restart`; Restart button reloads the level.)** No scene reload / restart API**, so full level reset (coins, player) is not possible (see 1, 2).
-7. **Sprite flip is only negative `scale.x`** on the node. Not verified visually (no screenshot tooling run tonight),
+7. **(FIXED in GP4: `Sprite::flip_x/flip_y`, `Collider2D::mirror_with_sprite`; the slice flips the Sprite.)** Sprite flip was only negative `scale.x`** on the node. Not verified visually (no screenshot tooling run tonight),
    and the collider is not mirrored.
 8. **(FIXED in GP3: `Camera2D` look-ahead, `bounds_tilemap`, `GameContext::viewport_size()`, `ParallaxLayer`; the slice uses them.)** No camera follow component / bounds / viewport size for modules.** Follow is hand-written; the left clamp (400)
    assumes the 800-wide design view.
 9. **(FIXED in GP2: tileset `tags`, `GameContext::tile_at/tagged_tile_at`.)** No tile queries for gameplay** (hazard/pickup tiles): spikes and coins are separate nodes. One-way platforms: done in FE17 (`Collider2D::one_way`).
-10. **No animation state machine / events**; clip choice is hand-coded from velocity.
+10. **(FIXED in GP4: `arcane.animgraph` v2, `Animator` component, `animgraph.*` commands, frame events via `Component::on_animation_event`, editor Animation Graph panel; the slice drives `hero.animgraph.json`.)** No animation state machine / events**.
 11. **Player has no module render hook with scene/renderer access**, and `arcane_player` builds `TilesetCache` from
     `list_animation_clip_assets` (works only because both are `.json`): a dedicated tileset catalog is missing.
 12. Not covered: gamepad play-through, pause/menu/scene switching, save data, window resize behaviour, visual checks,

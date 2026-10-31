@@ -100,6 +100,8 @@ void register_builtin_components(ComponentRegistry& registry) {
           make_property<Sprite>("width", PropertyType::Float, &Sprite::width),
           make_property<Sprite>("height", PropertyType::Float, &Sprite::height),
           make_property<Sprite>("tint", PropertyType::Color, &Sprite::tint),
+          make_property<Sprite>("flip_x", PropertyType::Bool, &Sprite::flip_x),
+          make_property<Sprite>("flip_y", PropertyType::Bool, &Sprite::flip_y),
       });
   registry.register_component(
       "Camera2D", [] { return std::make_unique<Camera2D>(); },

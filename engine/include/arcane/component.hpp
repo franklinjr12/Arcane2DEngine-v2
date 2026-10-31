@@ -39,6 +39,10 @@ class ARCANE_API Component {
   virtual void on_trigger_enter(Node& other) { (void)other; }
   virtual void on_trigger_exit(Node& other) { (void)other; }
 
+  // Animation frame event (Animator, arcane/animgraph.hpp): called on every component of the Animator's node when the
+  // playing state's clip reaches the frame an event is attached to. Default no-op.
+  virtual void on_animation_event(const std::string& name) { (void)name; }
+
   ComponentId id() const noexcept { return id_; }
   Node* node() const noexcept { return node_; }
   // The scene owning this component's node (null if detached); see Node::scene().

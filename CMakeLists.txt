@@ -123,6 +123,7 @@ add_library(arcane_runtime SHARED
   engine/src/platformer.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
+  engine/src/animgraph.cpp
   engine/src/tween.cpp
   engine/src/atlas.cpp
   engine/src/save_game.cpp
@@ -190,6 +191,7 @@ add_library(arcane_tooling STATIC
   tooling/src/hud_commands.cpp
   tooling/src/input_commands.cpp
   tooling/src/clip_commands.cpp
+  tooling/src/animgraph_commands.cpp
   tooling/src/project_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)

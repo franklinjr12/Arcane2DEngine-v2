@@ -179,6 +179,9 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
       }
     }
 
+    if (sprite->flip_x) std::swap(uv.u0, uv.u1);
+    if (sprite->flip_y) std::swap(uv.v0, uv.v1);
+
     const auto world = node->world_transform();
     SpriteDraw draw{
         .texture = texture,

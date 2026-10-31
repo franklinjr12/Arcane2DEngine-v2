@@ -242,6 +242,28 @@ you pass: clip files do not store their grid, so every frame must be exactly one
 and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
 undo restores the exact bytes.
 
+## Animation graph commands
+
+`animgraph.*` edit animation state machine files (`arcane.animgraph`, `docs/formats/animgraph.md`). Like `clip.*` they
+read and write the graph file only and write it at once (not through `--dry-run` / persist); every edit returns
+`animgraph.restore` with the previous file bytes as its inverse, and an edit that changes nothing writes nothing and has
+no inverse. `clip` arguments are project-relative files under `assets/` that must exist.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `animgraph.create` | `graph`, `overwrite?` | `{graph}`; an empty graph, `CONFLICT` if the file exists |
+| `animgraph.info` | `graph` | `{graph, initial, parameters, states, transitions}` |
+| `animgraph.add_param` | `graph`, `name`, `type` (bool/float/trigger), `default?` | `{graph, name, changed}` |
+| `animgraph.remove_param` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if a condition uses it |
+| `animgraph.add_state` | `graph`, `name`, `clip`, `speed?` (1) | `{graph, name, clip_id, changed}`; the first state is `initial` |
+| `animgraph.set_state` | `graph`, `name`, `clip?`, `speed?`, `initial?` | `{graph, name, changed}` |
+| `animgraph.remove_state` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if initial or in a transition |
+| `animgraph.add_event` | `graph`, `state`, `frame`, `name` | `{graph, index, changed}` |
+| `animgraph.remove_event` | `graph`, `state`, `index` | `{graph, index, changed}` |
+| `animgraph.add_transition` | `graph`, `from` (or `*`), `to`, `priority?` (0), `conditions?` [{param, op, value?}], `index?` | `{graph, index, changed}` |
+| `animgraph.remove_transition` | `graph`, `index` | `{graph, index, changed}` |
+| `animgraph.restore` | `graph`, `content` or `absent=true` | `{graph, restored}`; only used as the inverse of the others |
+
 ## Project commands
 
 `project.get` / `project.set` read and edit the project-level properties in `project.json` (`name`, `main_scene`,

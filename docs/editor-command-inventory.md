@@ -107,3 +107,5 @@ instantiate, override, revert or break-link action in the GUI), `atlas.*`, `asse
 - No automated parity test exists for the tileset and clip panels' GUI path, only for their commands.
 - The direct-write lint in `test_edit_session` is a substring list (`->set_name(`, `create_node(`, `mutable_project()`, `hud.add(`,
   `save_clip_file(`, `.main_scene =` and similar). It finds only known patterns; it cannot discover a new kind of widget write.
+
+**GP4 update:** the Animation Graph panel (list UI: parameters, states, events, transitions) edits only through `animgraph.*` commands run on the `EditSession` (file writes with `animgraph.restore` inverses, like `clip.create`); there is no draft state. `Sprite`/`Collider2D` flip fields are ordinary `prop.set` properties in the Inspector.

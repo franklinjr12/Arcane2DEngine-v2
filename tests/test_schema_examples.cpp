@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "arcane/animgraph.hpp"
 #include "arcane/atlas.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
@@ -220,6 +221,12 @@ void check_readers(const fs::path& dir) {
     ARCANE_ASSERT_TRUE(atlas->regions.size() == 2);
   }
   {
+    auto graph = arcane::load_animgraph_from_json(read(dir / "animgraph.example.json"));
+    if (!graph) std::fprintf(stderr, "animgraph example rejected: %s\n", graph.error().c_str());
+    ARCANE_ASSERT_TRUE(graph.has_value());
+    ARCANE_ASSERT_TRUE(graph->states.size() == 3 && graph->parameters.size() == 3);
+  }
+  {
     auto save = arcane::load_save_game_from_json(read(dir / "save.example.json"));
     ARCANE_ASSERT_TRUE(save.has_value());
     ARCANE_ASSERT_TRUE(save->data_version == 2);
@@ -275,7 +282,7 @@ int main() {
   }
   for (const auto& p : problems) std::fprintf(stderr, "%s\n", p.c_str());
   ARCANE_ASSERT_TRUE(problems.empty());
-  ARCANE_ASSERT_TRUE(schemas.size() == 11);
+  ARCANE_ASSERT_TRUE(schemas.size() == 12);
 
   // 2. Real files: every canonical-version file with an `arcane.*` format must validate.
   check_readers(examples_dir);

@@ -310,6 +310,159 @@ void draw_hud_editor(const arcane::Hud& hud, const std::vector<arcane::editor::A
   if (remove >= 0) edit({"hud.remove", {{"index", remove}}}, {});
 }
 
+// State of the Animation Graph panel: which graph file is open and the small forms for adding things. The graph
+// itself is never held here: it is read with animgraph.info and every change is an animgraph.* command, so edits are
+// undoable and identical to the CLI.
+struct AnimGraphPanelState {
+  int graph_index = 0;
+  char new_file[96] = "hero.animgraph.json";
+  char name[48] = "";
+  char event_name[48] = "";
+  int param_type = 0, clip_index = 0, event_frame = 0;
+  int from_index = 0, to_index = 0, param_index = 0, op_index = 0, priority = 0;
+  float value = 0.0f;
+  std::string status;
+};
+
+void draw_animgraph_panel(AnimGraphPanelState& st, const std::vector<arcane::editor::AssetEntry>& all_json,
+                          const std::vector<arcane::editor::AssetEntry>& clips,
+                          const std::function<std::expected<arcane::tooling::CommandResult, std::string>(
+                              const arcane::tooling::Invocation&)>& run) {
+  using arcane::tooling::Invocation;
+  std::vector<const arcane::editor::AssetEntry*> graphs;
+  for (const auto& a : all_json) {
+    if (a.relative_path.ends_with(".animgraph.json")) graphs.push_back(&a);
+  }
+  ImGui::InputText("New file", st.new_file, sizeof(st.new_file));
+  ImGui::SameLine();
+  if (ImGui::Button("Create graph")) {
+    auto done = run({"animgraph.create", {{"graph", std::string("assets/") + st.new_file}}});
+    st.status = done ? "Created." : done.error();
+  }
+  if (graphs.empty()) {
+    ImGui::TextWrapped("No *.animgraph.json under assets/. %s", st.status.c_str());
+    return;
+  }
+  st.graph_index = std::clamp(st.graph_index, 0, static_cast<int>(graphs.size()) - 1);
+  if (ImGui::BeginCombo("Graph", graphs[static_cast<std::size_t>(st.graph_index)]->relative_path.c_str())) {
+    for (int i = 0; i < static_cast<int>(graphs.size()); ++i) {
+      if (ImGui::Selectable(graphs[static_cast<std::size_t>(i)]->relative_path.c_str(), i == st.graph_index)) st.graph_index = i;
+    }
+    ImGui::EndCombo();
+  }
+  const std::string graph = "assets/" + graphs[static_cast<std::size_t>(st.graph_index)]->relative_path;
+  auto info = run({"animgraph.info", {{"graph", graph}}});
+  if (!info) {
+    ImGui::TextWrapped("%s", info.error().c_str());
+    return;
+  }
+  const arcane::tooling::Json value = info->value;
+  auto edit = [&](const char* command, arcane::tooling::Json args) {
+    args["graph"] = graph;
+    auto done = run({command, std::move(args)});
+    st.status = done ? "" : done.error();
+  };
+  std::vector<std::string> state_names, param_names;
+  for (const auto& s : value["states"]) state_names.push_back(s["name"]);
+  for (const auto& p : value["parameters"]) param_names.push_back(p["name"]);
+  auto combo = [](const char* label, int& index, const std::vector<std::string>& names) {
+    if (names.empty()) return;
+    index = std::clamp(index, 0, static_cast<int>(names.size()) - 1);
+    if (ImGui::BeginCombo(label, names[static_cast<std::size_t>(index)].c_str())) {
+      for (int i = 0; i < static_cast<int>(names.size()); ++i) {
+        if (ImGui::Selectable(names[static_cast<std::size_t>(i)].c_str(), i == index)) index = i;
+      }
+      ImGui::EndCombo();
+    }
+  };
+
+  ImGui::SeparatorText("Parameters");
+  for (const auto& p : value["parameters"]) {
+    const std::string name = p["name"];
+    ImGui::PushID(name.c_str());
+    ImGui::Text("%s (%s)", name.c_str(), p["type"].get<std::string>().c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_param", {{"name", name}});
+    ImGui::PopID();
+  }
+  ImGui::InputText("Name", st.name, sizeof(st.name));
+  ImGui::Combo("Type", &st.param_type, "bool\0float\0trigger\0");
+  if (ImGui::Button("Add parameter")) {
+    edit("animgraph.add_param", {{"name", st.name}, {"type", st.param_type == 0 ? "bool" : st.param_type == 1 ? "float" : "trigger"}});
+  }
+
+  ImGui::SeparatorText("States");
+  for (const auto& s : value["states"]) {
+    const std::string name = s["name"];
+    ImGui::PushID(name.c_str());
+    ImGui::Text("%s%s  clip %llu  speed %.2f", name.c_str(), value["initial"] == name ? " (initial)" : "",
+                static_cast<unsigned long long>(s["clip"].get<std::uint64_t>()), s["speed"].get<float>());
+    if (ImGui::SmallButton("Make initial")) edit("animgraph.set_state", {{"name", name}, {"initial", true}});
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_state", {{"name", name}});
+    int event_index = 0;
+    for (const auto& e : s["events"]) {
+      ImGui::BulletText("frame %d: %s", e["frame"].get<int>(), e["name"].get<std::string>().c_str());
+      ImGui::SameLine();
+      ImGui::PushID(event_index);
+      if (ImGui::SmallButton("x")) edit("animgraph.remove_event", {{"state", name}, {"index", event_index}});
+      ImGui::PopID();
+      ++event_index;
+    }
+    ImGui::PopID();
+  }
+  std::vector<std::string> clip_names;
+  for (const auto& c : clips) {
+    if (!c.relative_path.ends_with(".animgraph.json")) clip_names.push_back(c.relative_path);
+  }
+  combo("Clip", st.clip_index, clip_names);
+  if (ImGui::Button("Add state (name above)") && !clip_names.empty()) {
+    edit("animgraph.add_state", {{"name", st.name}, {"clip", "assets/" + clip_names[static_cast<std::size_t>(st.clip_index)]}});
+  }
+  ImGui::InputText("Event", st.event_name, sizeof(st.event_name));
+  ImGui::InputInt("Frame", &st.event_frame);
+  if (ImGui::Button("Add event to state of the same name above") && !state_names.empty()) {
+    edit("animgraph.add_event", {{"state", st.name}, {"frame", std::max(0, st.event_frame)}, {"name", st.event_name}});
+  }
+
+  ImGui::SeparatorText("Transitions");
+  for (const auto& t : value["transitions"]) {
+    std::string line = t["from"].get<std::string>() + " -> " + t["to"].get<std::string>() + "  prio " + std::to_string(t["priority"].get<int>());
+    for (const auto& c : t["conditions"]) {
+      line += "  [" + c["param"].get<std::string>() + " " + c["op"].get<std::string>();
+      if (c.contains("value")) line += " " + std::to_string(c["value"].get<float>());
+      line += "]";
+    }
+    ImGui::PushID(t["index"].get<int>());
+    ImGui::TextUnformatted(line.c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_transition", {{"index", t["index"]}});
+    ImGui::PopID();
+  }
+  std::vector<std::string> from_names = state_names;
+  from_names.insert(from_names.begin(), "*");
+  combo("From", st.from_index, from_names);
+  combo("To", st.to_index, state_names);
+  ImGui::InputInt("Priority", &st.priority);
+  combo("Parameter", st.param_index, param_names);
+  static const std::vector<std::string> ops = {"is_true", "is_false", "lt", "le", "gt", "ge", "eq", "ne", "fired"};
+  combo("Operator", st.op_index, ops);
+  ImGui::InputFloat("Value", &st.value);
+  if (ImGui::Button("Add transition") && !state_names.empty()) {
+    arcane::tooling::Json args = {{"from", from_names[static_cast<std::size_t>(st.from_index)]},
+                                  {"to", state_names[static_cast<std::size_t>(st.to_index)]}, {"priority", st.priority}};
+    args["conditions"] = arcane::tooling::Json::array();
+    if (!param_names.empty()) {
+      arcane::tooling::Json cond = {{"param", param_names[static_cast<std::size_t>(st.param_index)]},
+                                    {"op", ops[static_cast<std::size_t>(st.op_index)]}};
+      if (st.op_index >= 2 && st.op_index <= 7) cond["value"] = st.value;
+      args["conditions"].push_back(cond);
+    }
+    edit("animgraph.add_transition", std::move(args));
+  }
+  if (!st.status.empty()) ImGui::TextWrapped("%s", st.status.c_str());
+}
+
 // State of the Animation Clip panel: the sheet being sliced and the clip being built.
 struct ClipPanelState {
   arcane::editor::ClipDraft draft;
@@ -538,6 +691,7 @@ int main(int argc, char** argv) {
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
   ClipPanelState clip_panel;
+  AnimGraphPanelState animgraph_panel;
   double asset_poll_accum = 0.0;
   bool preview_particles = false;
   bool paint_mode = false;
@@ -1041,6 +1195,21 @@ int main(int argc, char** argv) {
                         return *done;
                       },
                       [&] { clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir())); });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Animation Graph")) {
+      ImGui::BeginDisabled(!editable);
+      draw_animgraph_panel(animgraph_panel, arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                           arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                           [&](const arcane::tooling::Invocation& call) -> std::expected<arcane::tooling::CommandResult, std::string> {
+                             // animgraph.info is a read; the other animgraph.* commands are undoable file writes.
+                             auto done = call.command == "animgraph.info" ? commands.execute(**context, call) : edits.run(call);
+                             if (call.command != "animgraph.info") edits.end_gesture();
+                             if (!done) return std::unexpected(done.error().message);
+                             return *done;
+                           });
       ImGui::EndDisabled();
     }
     ImGui::End();

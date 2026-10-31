@@ -11,7 +11,7 @@
           1.0
         ],
         "font_scale": 3.0,
-        "id": "text_1",
+        "id": "score",
         "offset": [
           16.0,
           16.0
@@ -34,7 +34,7 @@
           1.0
         ],
         "fraction": 1.0,
-        "id": "bar_1",
+        "id": "health",
         "offset": [
           -16.0,
           16.0
@@ -54,7 +54,7 @@
           1.0
         ],
         "font_scale": 5.0,
-        "id": "text_2",
+        "id": "banner",
         "offset": [
           0.0,
           -60.0

@@ -173,6 +173,10 @@ void register_input_commands(CommandRegistry& registry);
 // project, written at once; clip.restore is the inverse of the others). Sheet sizes are read from PNG files.
 void register_clip_commands(CommandRegistry& registry);
 
+// Registers animgraph.create/info/add_param/remove_param/add_state/set_state/remove_state/add_event/remove_event/add_transition/
+// remove_transition/restore (animation state machine files, written at once; animgraph.restore is the inverse of the others).
+void register_animgraph_commands(CommandRegistry& registry);
+
 // Registers project.get/project.set (name, main_scene, module in project.json, edited in memory; saved with the project).
 void register_project_commands(CommandRegistry& registry);
 
