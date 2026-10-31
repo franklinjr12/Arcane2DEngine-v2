@@ -8,6 +8,7 @@
 
 #include "arcane/atlas.hpp"
 #include "arcane/animation.hpp"
+#include "arcane/animgraph.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/migration.hpp"
 #include "arcane/prefab.hpp"
@@ -249,6 +250,7 @@ std::string check_file(const OfflineEnv& env, const ComponentRegistry& registry,
   if (ends_with(rel, ".scene.json")) return problem(Scene::load_from_json_strict(text, registry));
   if (format == "arcane.tileset") return problem(load_tileset_from_json_strict(text));
   if (format == "arcane.clip") return problem(load_clip_from_json_strict(text));
+  if (format == "arcane.animgraph") return problem(load_animgraph_from_json(text));
   if (format == "arcane.atlas") return problem(load_atlas_from_json(text));
   if (format == "arcane.prefab") return problem(load_prefab_file(env.project_dir, rel, registry));
   return {};  // other documents: well-formed JSON only

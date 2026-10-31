@@ -68,6 +68,17 @@ json.dump(clip("run", [2, 3], 0.1), open(A + "hero_run.json", "w"), indent=2)
 json.dump({"format_version": 1, "texture": fnv1a("tiles.png"), "tile_width": 16, "tile_height": 16,
            "columns": 3, "tile_count": 3}, open(A + "tiles_set.json", "w"), indent=2)
 
+# Animation state machine for the hero: SliceRules sets the "moving" parameter; "step" events fire on the run frames.
+graph = {"format": "arcane.animgraph", "version": 2, "initial": "idle",
+         "parameters": [{"name": "moving", "type": "bool", "default": 0.0}],
+         "states": [{"name": "idle", "clip": fnv1a("hero_idle.json"), "speed": 1.0, "events": []},
+                    {"name": "run", "clip": fnv1a("hero_run.json"), "speed": 1.0,
+                     "events": [{"frame": 0, "name": "step"}, {"frame": 1, "name": "step"}]}],
+         "transitions": [
+             {"from": "idle", "to": "run", "priority": 0, "conditions": [{"param": "moving", "op": "is_true"}]},
+             {"from": "run", "to": "idle", "priority": 0, "conditions": [{"param": "moving", "op": "is_false"}]}]}
+open(A + "hero.animgraph.json", "w").write(json.dumps(graph, indent=2, sort_keys=True) + "\n")
+
 # ---- scene: everything under "Level" so the module's SliceRules can reach it via node children
 nodes, nid = [], [0]
 def nxt():
@@ -79,17 +90,18 @@ def node(name, pos, parent, comps, scale=(1.0, 1.0)):
     return i
 white = [1.0, 1.0, 1.0, 1.0]
 level = node("Level", (0, 0), 0, [("SliceRules", {
-    "idle_clip": fnv1a("hero_idle.json"), "run_clip": fnv1a("hero_run.json"),
     "win_x": 1300.0, "pit_y": 700.0, "coin_value": 10, "hurt_cooldown": 1.0})])
 node("Sky", (400, 300), level, [
     ("Sprite", {"texture": fnv1a("sky.png"), "width": 128.0, "height": 600.0, "tint": white}),
     ("ParallaxLayer", {"factor": [0.3, 1.0], "repeat_x": True, "repeat_y": False})])
 player = node("Player", (64, 340), level, [
-    ("Sprite", {"texture": fnv1a("hero.png"), "width": 32.0, "height": 48.0, "tint": white}),
+    ("Sprite", {"texture": fnv1a("hero.png"), "width": 32.0, "height": 48.0, "tint": white,
+                "flip_x": False, "flip_y": False}),
     ("AnimatedSprite", {"clip": fnv1a("hero_idle.json"), "speed": 1.0, "playing": True}),
+    ("Animator", {"graph": fnv1a("hero.animgraph.json")}),
     ("RigidBody2D", {"body_type": 2, "linear_velocity": [0.0, 0.0], "gravity_scale": 1.0, "fixed_rotation": True}),
     ("Collider2D", {"shape_type": 0, "width": 28.0, "height": 46.0, "radius": 16.0, "offset": [0.0, 1.0],
-                    "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False}),
+                    "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False, "mirror_with_sprite": True}),
     ("PlatformerController2D", {"max_speed": 200.0, "run_acceleration": 1400.0, "run_deceleration": 1800.0,
         "air_control": 0.6, "jump_speed": 420.0, "fall_gravity_scale": 1.6, "jump_cut": 0.5, "max_fall_speed": 700.0,
         "coyote_time": 0.1, "jump_buffer_time": 0.1, "left_action": "move_left", "right_action": "move_right",
@@ -131,11 +143,11 @@ project = {"format_version": 1, "name": "platformer_slice", "main_scene": "scene
            "input_actions": {"format_version": 1, "actions": [
                action("move_left", [65, 263]), action("move_right", [68, 262]), action("jump", [32])]},
            "hud": {"format_version": 1, "elements": [
-               {"type": "text", "text": "SCORE 0", "anchor": "top_left", "offset": [16, 16], "font_scale": 3.0,
+               {"type": "text", "id": "score", "text": "SCORE 0", "anchor": "top_left", "offset": [16, 16], "font_scale": 3.0,
                 "color": [1, 1, 1, 1]},
-               {"type": "progress_bar", "anchor": "top_right", "offset": [-16, 16], "size": [220, 20], "fraction": 1.0,
+               {"type": "progress_bar", "id": "health", "anchor": "top_right", "offset": [-16, 16], "size": [220, 20], "fraction": 1.0,
                 "fill": [0.85, 0.2, 0.2, 1], "background": [0, 0, 0, 0.6]},
-               {"type": "text", "text": "", "anchor": "center", "offset": [0, -60], "font_scale": 5.0,
+               {"type": "text", "id": "banner", "text": "", "anchor": "center", "offset": [0, -60], "font_scale": 5.0,
                 "color": [1, 0.9, 0.3, 1]},
                {"type": "button", "id": "restart", "label": "RESTART", "anchor": "bottom_right",
                 "offset": [-16, -16], "size": [160, 40]}]}}

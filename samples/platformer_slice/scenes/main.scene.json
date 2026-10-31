@@ -19,8 +19,6 @@
           "id": 2,
           "type": "SliceRules",
           "properties": {
-            "idle_clip": 4478366437428034728,
-            "run_clip": 6756191263469248021,
             "win_x": 1300.0,
             "pit_y": 700.0,
             "coin_value": 10,
@@ -98,7 +96,9 @@
               1.0,
               1.0,
               1.0
-            ]
+            ],
+            "flip_x": false,
+            "flip_y": false
           }
         },
         {
@@ -112,6 +112,13 @@
         },
         {
           "id": 9,
+          "type": "Animator",
+          "properties": {
+            "graph": 5005373668241723688
+          }
+        },
+        {
+          "id": 10,
           "type": "RigidBody2D",
           "properties": {
             "body_type": 2,
@@ -124,7 +131,7 @@
           }
         },
         {
-          "id": 10,
+          "id": 11,
           "type": "Collider2D",
           "properties": {
             "shape_type": 0,
@@ -138,11 +145,12 @@
             "density": 1.0,
             "friction": 0.0,
             "restitution": 0.0,
-            "is_sensor": false
+            "is_sensor": false,
+            "mirror_with_sprite": true
           }
         },
         {
-          "id": 11,
+          "id": 12,
           "type": "PlatformerController2D",
           "properties": {
             "max_speed": 200.0,
@@ -163,7 +171,7 @@
       ]
     },
     {
-      "id": 12,
+      "id": 13,
       "name": "MainCamera",
       "parent_id": 1,
       "position": [
@@ -177,7 +185,7 @@
       ],
       "components": [
         {
-          "id": 13,
+          "id": 14,
           "type": "Camera2D",
           "properties": {
             "primary": true,
@@ -211,7 +219,7 @@
       ]
     },
     {
-      "id": 14,
+      "id": 15,
       "name": "Ground",
       "parent_id": 1,
       "position": [
@@ -225,7 +233,7 @@
       ],
       "components": [
         {
-          "id": 15,
+          "id": 16,
           "type": "Tilemap",
           "properties": {
             "tileset": 4271871672750809515,
@@ -241,7 +249,7 @@
       ]
     },
     {
-      "id": 16,
+      "id": 17,
       "name": "Platform",
       "parent_id": 1,
       "position": [
@@ -255,7 +263,7 @@
       ],
       "components": [
         {
-          "id": 17,
+          "id": 18,
           "type": "Tilemap",
           "properties": {
             "tileset": 4271871672750809515,
@@ -271,7 +279,7 @@
       ]
     },
     {
-      "id": 18,
+      "id": 19,
       "name": "Coin0",
       "parent_id": 1,
       "position": [
@@ -285,7 +293,7 @@
       ],
       "components": [
         {
-          "id": 19,
+          "id": 20,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -302,7 +310,7 @@
       ]
     },
     {
-      "id": 20,
+      "id": 21,
       "name": "Coin1",
       "parent_id": 1,
       "position": [
@@ -316,7 +324,7 @@
       ],
       "components": [
         {
-          "id": 21,
+          "id": 22,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -333,7 +341,7 @@
       ]
     },
     {
-      "id": 22,
+      "id": 23,
       "name": "Coin2",
       "parent_id": 1,
       "position": [
@@ -347,7 +355,7 @@
       ],
       "components": [
         {
-          "id": 23,
+          "id": 24,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -364,7 +372,7 @@
       ]
     },
     {
-      "id": 24,
+      "id": 25,
       "name": "Coin3",
       "parent_id": 1,
       "position": [
@@ -378,7 +386,7 @@
       ],
       "components": [
         {
-          "id": 25,
+          "id": 26,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -395,7 +403,7 @@
       ]
     },
     {
-      "id": 26,
+      "id": 27,
       "name": "Coin4",
       "parent_id": 1,
       "position": [
@@ -409,7 +417,7 @@
       ],
       "components": [
         {
-          "id": 27,
+          "id": 28,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -426,7 +434,7 @@
       ]
     },
     {
-      "id": 28,
+      "id": 29,
       "name": "Spikes",
       "parent_id": 1,
       "position": [
@@ -440,7 +448,7 @@
       ],
       "components": [
         {
-          "id": 29,
+          "id": 30,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -457,7 +465,7 @@
       ]
     },
     {
-      "id": 30,
+      "id": 31,
       "name": "Goal",
       "parent_id": 1,
       "position": [
@@ -471,7 +479,7 @@
       ],
       "components": [
         {
-          "id": 31,
+          "id": 32,
           "type": "Sprite",
           "properties": {
             "texture": 1617945095526466553,
@@ -488,7 +496,7 @@
       ]
     },
     {
-      "id": 32,
+      "id": 33,
       "name": "PickupBurst",
       "parent_id": 1,
       "position": [
@@ -502,7 +510,7 @@
       ],
       "components": [
         {
-          "id": 33,
+          "id": 34,
           "type": "ParticleEmitter",
           "properties": {
             "emitting": false,
@@ -544,5 +552,5 @@
       ]
     }
   ],
-  "next_id": 34
+  "next_id": 35
 }

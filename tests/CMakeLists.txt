@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_audio test_hud test_text test_hud_input test_tilemap test_particles test_camera2d test_tween)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_tilemap test_particles test_camera2d test_tween)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -354,3 +354,8 @@ set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77
 add_executable(test_physics_events test_physics_events.cpp)
 target_link_libraries(test_physics_events PRIVATE arcane_runtime)
 add_test(NAME test_physics_events COMMAND test_physics_events)
+
+# --- animgraph.* commands --------------------------------------------------------
+add_executable(test_animgraph_commands test_animgraph_commands.cpp)
+target_link_libraries(test_animgraph_commands PRIVATE arcane_tooling)
+add_test(NAME test_animgraph_commands COMMAND test_animgraph_commands)

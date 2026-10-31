@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include "arcane/builtin_components.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/node.hpp"
 #include "arcane/platformer.hpp"
@@ -151,6 +152,40 @@ bool is_grounded(b2BodyId body) {
   return false;
 }
 
+struct SpriteFlip {
+  bool x = false, y = false;
+};
+
+// The flip a mirroring collider follows (none unless Collider2D::mirror_with_sprite and a Sprite is present).
+SpriteFlip sprite_flip(Node& node, const Collider2D& collider) {
+  if (!collider.mirror_with_sprite) return {};
+  const auto* sprite = dynamic_cast<Sprite*>(node.find_component("Sprite"));
+  return sprite ? SpriteFlip{sprite->flip_x, sprite->flip_y} : SpriteFlip{};
+}
+
+void create_collider_shape(b2BodyId body, Collider2D& collider, SpriteFlip flip) {
+  b2ShapeDef shape_def = b2DefaultShapeDef();
+  shape_def.density = collider.density;
+  shape_def.material.friction = collider.friction;
+  shape_def.material.restitution = collider.restitution;
+  shape_def.isSensor = collider.is_sensor;
+  shape_def.enableSensorEvents = true;
+  shape_def.filter = shape_filter(collider);
+  shape_def.enableContactEvents = true;
+  shape_def.enablePreSolveEvents = collider.one_way;
+  shape_def.userData = collider.one_way ? &collider : nullptr;
+  const Vec2 offset{flip.x ? -collider.offset.x : collider.offset.x, flip.y ? -collider.offset.y : collider.offset.y};
+  const b2Vec2 offset_m = px_to_m(offset);
+
+  if (static_cast<ColliderShapeType>(collider.shape_type) == ColliderShapeType::Circle) {
+    b2Circle circle{offset_m, px_to_m(collider.radius)};
+    b2CreateCircleShape(body, &shape_def, &circle);
+  } else {
+    b2Polygon box = b2MakeOffsetBox(px_to_m(collider.width) * 0.5f, px_to_m(collider.height) * 0.5f, offset_m, b2Rot_identity);
+    b2CreatePolygonShape(body, &shape_def, &box);
+  }
+}
+
 }  // namespace
 
 void RigidBody2D::teleport(Vec2 position) noexcept {
@@ -184,6 +219,7 @@ void register_physics_components(ComponentRegistry& registry) {
           make_property<Collider2D>("one_way", PropertyType::Bool, &Collider2D::one_way),
           make_property<Collider2D>("layer", PropertyType::Int, &Collider2D::layer),
           make_property<Collider2D>("mask", PropertyType::Int, &Collider2D::mask),
+          make_property<Collider2D>("mirror_with_sprite", PropertyType::Bool, &Collider2D::mirror_with_sprite),
       });
   register_platformer_components(registry);
 }
@@ -192,7 +228,10 @@ struct PhysicsWorld::Impl {
   b2WorldId world = b2_nullWorldId;
   std::unordered_map<NodeId, b2BodyId> bodies;
 
+  std::unordered_map<NodeId, SpriteFlip> flips;  // built flip of bodies whose collider mirrors its Sprite
+
   void add_node(Node* node);
+  void sync_flips(Scene& scene);
 
   ~Impl() {
     if (b2World_IsValid(world)) b2DestroyWorld(world);
@@ -250,26 +289,26 @@ void PhysicsWorld::Impl::add_node(Node* node) {
 
   auto* collider = dynamic_cast<Collider2D*>(node->find_component("Collider2D"));
   if (collider) {
-    b2ShapeDef shape_def = b2DefaultShapeDef();
-    shape_def.density = collider->density;
-    shape_def.material.friction = collider->friction;
-    shape_def.material.restitution = collider->restitution;
-    shape_def.isSensor = collider->is_sensor;
-    shape_def.enableSensorEvents = true;
-    shape_def.filter = shape_filter(*collider);
-    shape_def.enableContactEvents = true;
-    shape_def.enablePreSolveEvents = collider->one_way;
-    shape_def.userData = collider->one_way ? collider : nullptr;
-    const b2Vec2 offset_m = px_to_m(collider->offset);
+    const SpriteFlip flip = sprite_flip(*node, *collider);
+    create_collider_shape(body, *collider, flip);
+    if (collider->mirror_with_sprite) flips[node->id()] = flip;
+  }
+}
 
-    if (static_cast<ColliderShapeType>(collider->shape_type) == ColliderShapeType::Circle) {
-      b2Circle circle{offset_m, px_to_m(collider->radius)};
-      b2CreateCircleShape(body, &shape_def, &circle);
-    } else {
-      b2Polygon box = b2MakeOffsetBox(px_to_m(collider->width) * 0.5f, px_to_m(collider->height) * 0.5f, offset_m,
-                                       b2Rot_identity);
-      b2CreatePolygonShape(body, &shape_def, &box);
-    }
+// Recreates the shape of every body whose Sprite flip changed since its shape was built.
+void PhysicsWorld::Impl::sync_flips(Scene& scene) {
+  for (auto& [node_id, built] : flips) {
+    Node* node = scene.find_node(node_id);
+    auto it = bodies.find(node_id);
+    auto* collider = node ? dynamic_cast<Collider2D*>(node->find_component("Collider2D")) : nullptr;
+    if (!collider || it == bodies.end() || !b2Body_IsValid(it->second)) continue;
+    const SpriteFlip now = sprite_flip(*node, *collider);
+    if (now.x == built.x && now.y == built.y) continue;
+    std::vector<b2ShapeId> shapes(static_cast<std::size_t>(b2Body_GetShapeCount(it->second)));
+    b2Body_GetShapes(it->second, shapes.data(), static_cast<int>(shapes.size()));
+    for (b2ShapeId shape : shapes) b2DestroyShape(shape, false);
+    create_collider_shape(it->second, *collider, now);
+    built = now;
   }
 }
 
@@ -279,6 +318,7 @@ void PhysicsWorld::rebuild(Scene& scene) {
     if (b2Body_IsValid(body)) b2DestroyBody(body);
   }
   impl_->bodies.clear();
+  impl_->flips.clear();
 
   std::vector<Node*> nodes;
   collect_physics_nodes(scene.roots(), nodes);
@@ -293,6 +333,7 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
       continue;
     }
     if (b2Body_IsValid(it->second)) b2DestroyBody(it->second);
+    impl_->flips.erase(it->first);
     it = impl_->bodies.erase(it);
   }
   std::vector<Node*> nodes;
@@ -300,6 +341,7 @@ void PhysicsWorld::step(Scene& scene, float fixed_dt) {
   for (Node* node : nodes) {
     if (!node->pending_destroy() && !impl_->bodies.contains(node->id())) impl_->add_node(node);
   }
+  impl_->sync_flips(scene);
 
   for (auto& [node_id, body] : impl_->bodies) {
     if (!b2Body_IsValid(body)) continue;

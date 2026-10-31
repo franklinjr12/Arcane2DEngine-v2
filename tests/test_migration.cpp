@@ -61,7 +61,8 @@ void check_sample(const std::string& source, const std::string& module, const st
   auto dry = arcane::migrate_project(dir, legacy->registry(), {.dry_run = true});
   ARCANE_ASSERT_TRUE(dry.has_value() && !dry->applied);
   ARCANE_ASSERT_TRUE(dry->files.size() >= 3 && dry->files[0].path == "project.json" && dry->files[0].changed);
-  for (const auto& file : dry->files) ARCANE_ASSERT_TRUE(file.changed);  // legacy sample: every file migrates
+  // Legacy sample: every file migrates, except animation graphs, which have no legacy dialect.
+  for (const auto& file : dry->files) ARCANE_ASSERT_TRUE(file.changed || file.path.ends_with(".animgraph.json"));
   std::size_t asset_files = 0;
   for (const auto& file : dry->files) {
     if (file.path.starts_with("assets/")) ++asset_files;

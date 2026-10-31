@@ -23,6 +23,10 @@ class ARCANE_API Sprite : public Component {
   float width = 64.0f;
   float height = 64.0f;
   Color tint{1.0f, 1.0f, 1.0f, 1.0f};
+  // Mirror the drawn image (animation frames included) without touching the node's scale. A Collider2D with
+  // mirror_with_sprite on the same node follows these flags.
+  bool flip_x = false;
+  bool flip_y = false;
 };
 
 // Marks a node as a camera; its node's world position is the camera center.

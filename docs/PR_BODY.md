@@ -33,7 +33,11 @@ GP1 extra check (any platform, no window needed): `ctest --test-dir build -C Deb
 
 GP2 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_physics_events|test_tilemap_commands|test_tooling_commands|test_schema_examples" --output-on-failure` expects all four to pass. CLI: `arcane --project DIR project set --collision_layers '["world","player"]'` then `project get` shows them; `arcane --project DIR tileset set_tile --tileset assets/set.json --tile 1 --tags '["hazard"]'`. Not visible in a window: there is no editor UI for layers/tags beyond the Inspector's integer `layer`/`mask` fields.
 
+GP4 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_animgraph|test_animgraph_commands|test_platformer_slice|test_physics_components|test_schema_examples|test_cli" --output-on-failure` expects all to pass. CLI: `arcane --project samples/platformer_slice animgraph info --graph assets/hero.animgraph.json` prints the hero's idle/run machine; in a copy of the project, `animgraph add-event` then `animgraph info` shows the change. Editor (needs a display): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, open the new **Animation Graph** panel, add a parameter, Ctrl+Z removes it again. Player: hold D/A in `arcane_player` on the slice: the hero runs, faces left/right via `Sprite.flip_x` (no negative scale) and the HUD updates by ids.
+
 **2. What you can visibly see**
+
+GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
 
 AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
 
@@ -44,6 +48,8 @@ AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples
 Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Optional: open `arcane_editor --project samples/topdown_slice` and confirm it still loads (the module is rebuilt by CMake).
 
 **4. Known risks**
+
+- GP4: the Animation Graph panel (ImGui) is compile-checked only and its commands are tested headless; nobody clicked it. Flip visuals are not golden-tested (no sprite sheet with asymmetric art in the render goldens). Adding `Sprite`/`Collider2D` properties changed the canonical text of scenes that contain them (samples and `tests/golden/` were regenerated; old files still load). Rebuilding a mirrored collider on flip can emit one collision exit/enter. UNTESTED on native Windows/MSVC.
 
 - AF8C: the editor widgets (ImGui) were compile-checked and the command/EditSession paths are tested headless, but the panels themselves were not clicked through by a human. `transition.set`, `save.config_set` and `debug.set` changed from immediate `project.json` writes to in-memory edits (CLI output the same; `--dry-run` now allowed). Tileset/clip draft fields before Save are still unsaved panel state (documented, by design). UNTESTED on native Windows/MSVC.
 
@@ -56,6 +62,13 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ---
 
 ## Technical detail
+
+### GP4: animation state machine, sprite flip, HUD lookup (slice gaps 4, 7, 10)
+- `arcane.animgraph` v2 (`docs/formats/animgraph.md`, `schemas/arcane.animgraph.schema.json`, example in `tests/golden/schema_examples/`): parameters (bool/float/trigger), states -> clip ids with speed and frame events, transitions with priority and conditions. `Animator` component drives the sibling `AnimatedSprite`; gameplay calls `set_bool/set_float/set_trigger`; events reach `Component::on_animation_event`. Migration re-checks graphs; `validate` checks them strictly.
+- Commands `animgraph.create/info/add_param/remove_param/add_state/set_state/remove_state/add_event/remove_event/add_transition/remove_transition/restore` (docs/commands.md, regenerated cli-reference.md). Editor: Animation Graph panel through `EditSession`.
+- `Sprite::flip_x/flip_y` (render swaps UVs), `Collider2D::mirror_with_sprite` (offset mirrored, shape rebuilt on change).
+- `Hud::find_text/find_bar/find_image/find_button`; HUD ids already existed. platformer_slice uses all three (module no longer has clip properties or negative scale).
+- Tests: `test_animgraph`, `test_animgraph_commands`, extended `test_platformer_slice`, `test_physics_components`, `test_schema_examples`, `test_migration`.
 
 ### GP2: events, layers/masks, spatial queries, tile tags (slice gaps 3 and 9)
 - `Component::on_collision_enter/exit` (renamed from `on_contact_*`) and new `on_trigger_enter/exit` (sensor Collider2D, Box2D sensor events); deterministic order (exits first, then by node id). `Collider2D.layer`/`mask`; names in `project.json` `collision_layers` (schema, `project.set`, undoable through EditSession). `PhysicsWorld::raycast/overlap_aabb/overlap_point` with layer mask, reachable via `GameContext::physics()` (set by the player and the fixed-frame runner). Tileset `tiles[].tags` (`tileset.set_tile --tags`), `GameContext::tile_at/tagged_tile_at`. Goldens: only `layer`/`mask` added to scene goldens; new `project.example.json`, `tileset.example.json`.

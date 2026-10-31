@@ -85,6 +85,152 @@ these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
 
+### `arcane animgraph add-event`
+
+Attach event `name` to clip frame `frame` of state `state`; it is delivered to the node's components (Component::on_animation_event) when playback enters that frame.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--frame` | integer | yes |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--state` | string | yes |  |
+
+### `arcane animgraph add-param`
+
+Add a parameter `name` of `type` bool, float or trigger (`default` for bool/float, default 0; a bool default is 0 or 1).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--default` | number | no |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--type` | string | yes |  |
+
+### `arcane animgraph add-state`
+
+Add a state `name` playing `clip` (a project-relative file under assets/, e.g. assets/hero_idle.json) at `speed` (default 1). The first state becomes the initial state.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--speed` | number | no |  |
+
+### `arcane animgraph add-transition`
+
+Add a transition `from` a state (or "*" for any) `to` a state with `priority` (default 0, higher wins) and `conditions` [{param, op, value}] that must all hold (op: is_true/is_false for bool, lt le gt ge eq ne for float with `value`, fired for trigger; none = always). Ties go to the earlier transition. Appended, or inserted at `index`.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--conditions` | array | no |  |
+| `--from` | string | yes |  |
+| `--graph` | string | yes |  |
+| `--index` | integer | no |  |
+| `--priority` | integer | no |  |
+| `--to` | string | yes |  |
+
+### `arcane animgraph create`
+
+Create an empty animation graph file (`arcane.animgraph` v2) at a project-relative path such as assets/hero.animgraph.json. Fails if the file exists unless overwrite=true. Writes the file at once; the inverse is animgraph.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--overwrite` | boolean | no |  |
+
+### `arcane animgraph info`
+
+Describe an animation graph file: initial state, parameters, states (clip asset id, speed, events) and transitions (index, from, to, priority, conditions).
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+
+### `arcane animgraph remove-event`
+
+Remove event number `index` (see animgraph.info) of state `state`.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--index` | integer | yes |  |
+| `--state` | string | yes |  |
+
+### `arcane animgraph remove-param`
+
+Remove parameter `name`; it must not be used by a transition condition.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+
+### `arcane animgraph remove-state`
+
+Remove state `name`; it must not be the initial state or an end of a transition.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+
+### `arcane animgraph remove-transition`
+
+Remove transition number `index` (see animgraph.info).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--index` | integer | yes |  |
+
+### `arcane animgraph restore`
+
+Put an animation graph file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. The inverse of the other animgraph.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--content` | string | no |  |
+| `--graph` | string | yes |  |
+
+### `arcane animgraph set-state`
+
+Change state `name`: `clip`, `speed` and/or `initial`=true (make it the initial state).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | no |  |
+| `--graph` | string | yes |  |
+| `--initial` | boolean | no |  |
+| `--name` | string | yes |  |
+| `--speed` | number | no |  |
+
 ### `arcane asset import`
 
 Copy a checked image (.png/.jpg/.jpeg/.bmp), clip (.json) or audio (.wav/.ogg/.mp3/.flac) file into assets/; never overwrites unless overwrite is set. Content is checked by header only.

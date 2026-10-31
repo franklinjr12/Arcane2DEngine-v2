@@ -31,6 +31,8 @@
         {
           "id": 4,
           "properties": {
+            "flip_x": false,
+            "flip_y": false,
             "height": 48.0,
             "texture": 13743565431654770875,
             "tint": [
@@ -65,6 +67,7 @@
             "is_sensor": false,
             "layer": 0,
             "mask": 2147483647,
+            "mirror_with_sprite": false,
             "offset": [
               0.0,
               0.0

@@ -86,6 +86,10 @@ class ARCANE_API Collider2D : public Component {
   int mask = kAllCollisionLayers;
   // One-way surfaces support bodies from above; intended for static, unrotated boxes.
   bool one_way = false;
+  // Mirror `offset` with the sibling Sprite's flip_x / flip_y (during Play the shape is rebuilt when a flag changes,
+  // which can report a touch exit/enter for contacts it was in). Box and circle shapes are symmetric, so only the
+  // offset moves.
+  bool mirror_with_sprite = false;
 };
 
 ARCANE_API void register_physics_components(ComponentRegistry& registry);
