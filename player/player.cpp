@@ -198,11 +198,13 @@ int run_project(const Args& args) {
   physics.rebuild(*manager.scene());
   manager.set_on_switched([&](arcane::Scene& next) {
     physics.rebuild(next);
+    game_context.set_time_scale(1.0f);  // a new scene never starts paused
     arcane::editor::start_play_on_start_sounds(next, *audio, audio_assets);
   });
   arcane::set_active_scene_manager(&manager);
   game_context.set_physics(&physics);
   game_context.set_collision_layers(runtime->session().project().collision_layers);
+  game_context.set_save_config(runtime->session().project().save, !replay);  // replays never write saves
 
   arcane::InputActionMap input_map = runtime->session().project().input_actions;
   arcane::GlfwInputBackend input_backend(*window);
@@ -263,14 +265,17 @@ int run_project(const Args& args) {
     }
     game_context.set_viewport_size(fb_width, fb_height);
     for (int i = 0; i < steps; ++i) {
+      game_context.set_unscaled_delta(step_dt);
       if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
       arcane::Scene& step_scene = *manager.scene();  // a switch replaces the scene: fetch per step
-      step_scene.update(step_dt);
-      physics.step(step_scene, step_dt);
+      const float scaled_dt = step_dt * game_context.time_scale();  // x1.0f is exact
+      step_scene.update(scaled_dt);
+      if (scaled_dt > 0.0f) physics.step(step_scene, scaled_dt);
       manager.update(step_dt);  // fixed step dt keeps replays deterministic
       if (game_context.take_restart_request()) {
         arcane::Scene& current = *manager.scene();
         auto reloaded = arcane::reload_scene_file(current, runtime->session().main_scene_path(), runtime->registry());
+        game_context.set_time_scale(1.0f);
         if (reloaded) physics.rebuild(current);
         else ARCANE_LOG_ERROR(kLogCategory, "scene restart failed: {}", reloaded.error());
       }

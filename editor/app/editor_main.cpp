@@ -766,6 +766,8 @@ int main(int argc, char** argv) {
   };
   auto begin_play = [&] {
     game_context.take_restart_request();
+    game_context.set_time_scale(1.0f);
+    game_context.set_save_config(session.project().save, true);
     arcane::set_active_game_context(&game_context);
     input_map = session.project().input_actions;
     start_runtime();
@@ -834,15 +836,18 @@ int main(int argc, char** argv) {
       arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
         const arcane::Scene* before = play_stop.active_scene(session.scene());
-        play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
+        game_context.set_unscaled_delta(static_cast<float>(timestep.fixed_delta_seconds()));
+        play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()), game_context.time_scale());
         ++play_tick_count;
         if (arcane::Scene* now_scene = play_stop.active_scene(session.scene()); now_scene != before) {
-          // The scene manager switched scenes: start the new scene's play_on_start sounds.
+          // The scene manager switched scenes: a new scene never starts paused; start its play_on_start sounds.
+          game_context.set_time_scale(1.0f);
           arcane::editor::start_play_on_start_sounds(*now_scene, *audio,
                                                       arcane::editor::list_audio_assets(session.assets_dir()));
         }
         if (game_context.take_restart_request()) {  // gameplay asked for a restart: replay from the authored scene
           play_stop.stop();
+          game_context.set_time_scale(1.0f);
           start_runtime();
         }
       }

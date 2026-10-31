@@ -288,6 +288,21 @@ HudImage* Hud::find_image(std::string_view id) noexcept { return find_by_id<HudI
 HudProgressBar* Hud::find_bar(std::string_view id) noexcept { return find_by_id<HudProgressBar>(elements_, id); }
 HudButton* Hud::find_button(std::string_view id) noexcept { return find_by_id<HudButton>(elements_, id); }
 
+bool Hud::contains(std::string_view id) const {
+  return std::any_of(elements_.begin(), elements_.end(), [&](const HudElement& e) {
+    return std::visit([&](const auto& x) { return x.id == id; }, e);
+  });
+}
+
+bool Hud::remove(std::string_view id) {
+  const auto it = std::find_if(elements_.begin(), elements_.end(), [&](const HudElement& e) {
+    return std::visit([&](const auto& x) { return x.id == id; }, e);
+  });
+  if (it == elements_.end()) return false;
+  elements_.erase(it);
+  return true;
+}
+
 void Hud::ensure_unique_ids() {
   std::unordered_set<std::string> used;
   std::vector<bool> needs_id(elements_.size(), false);
@@ -406,6 +421,10 @@ void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, i
   pointer_consumed_ = false;
   auto& elements = hud.elements_;
   const int count = static_cast<int>(elements.size());
+  // Elements may have been removed since the last update: drop indices that no longer exist.
+  if (focus_ >= count) focus_ = -1;
+  if (pressed_button_ >= count) pressed_button_ = -1;
+  if (last_hovered_ >= count) last_hovered_ = -1;
 
   auto button_at = [&](int i) -> HudButton* { return i >= 0 && i < count ? std::get_if<HudButton>(&elements[i]) : nullptr; };
 

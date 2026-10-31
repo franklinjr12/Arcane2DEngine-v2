@@ -1,6 +1,8 @@
 // GP1: gameplay reaching its scene (spawn / deferred destroy), teleport, runtime asset lookup, audio by asset id
 // and scene restart. Headless: null audio backend, no window.
 #include <cmath>
+#include <cstdlib>
+#include <limits>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -12,6 +14,7 @@
 #include "arcane/input.hpp"
 #include "arcane/physics.hpp"
 #include "arcane/replay.hpp"
+#include "arcane/save_game.hpp"
 #include "arcane/scene.hpp"
 #include "test_assert.hpp"
 
@@ -42,9 +45,20 @@ class Script : public arcane::Component {
   int ticks_ = 0;
 };
 
+// Counts on_update calls and moves right by 60 units/s * dt, so a paused scene shows calls without movement.
+class Mover : public arcane::Component {
+ public:
+  static inline int calls = 0;
+  void on_update(float dt) override {
+    ++calls;
+    node()->local_transform().position.x += 60.0f * dt;
+  }
+};
+
 arcane::ComponentRegistry make_registry() {
   arcane::ComponentRegistry registry;
   arcane::register_physics_components(registry);
+  registry.register_component("Mover", [] { return std::make_unique<Mover>(); }, {});
   registry.register_component("Script", [] { return std::make_unique<Script>(); }, {});
   return registry;
 }
@@ -183,9 +197,100 @@ void test_restart_reloads_authored_scene() {
   arcane::set_active_game_context(nullptr);
 }
 
+void test_time_scale_clamps() {
+  auto registry = make_registry();
+  arcane::GameContext context(std::filesystem::temp_directory_path(), registry);
+  ARCANE_ASSERT_TRUE(context.time_scale() == 1.0f && !context.paused());
+  context.set_time_scale(-3.0f);
+  ARCANE_ASSERT_TRUE(context.time_scale() == 0.0f && context.paused());
+  context.set_time_scale(100.0f);
+  ARCANE_ASSERT_TRUE(context.time_scale() == 8.0f);
+  context.set_time_scale(std::numeric_limits<float>::quiet_NaN());
+  ARCANE_ASSERT_TRUE(context.time_scale() == 1.0f);
+  context.set_time_scale(std::numeric_limits<float>::infinity());
+  ARCANE_ASSERT_TRUE(context.time_scale() == 1.0f);
+  context.set_unscaled_delta(0.5f);
+  ARCANE_ASSERT_TRUE(context.unscaled_delta() == 0.5f);
+}
+
+void test_time_scale_in_fixed_runs() {
+  auto registry = make_registry();
+  arcane::Scene authored;
+  arcane::Node* node = authored.create_node("M");
+  authored.add_component(node, "Mover", registry);
+  auto json = authored.save_canonical_json(registry);
+  ARCANE_ASSERT_TRUE(json.has_value());
+  arcane::InputActionMap actions;
+  arcane::FixedRunOptions options;
+  options.frames = 20;
+
+  auto run = [&](float scale, int& calls, float& x) {
+    auto scene = arcane::Scene::load_from_json(*json, registry);
+    ARCANE_ASSERT_TRUE(scene.has_value());
+    arcane::GameContext context(std::filesystem::temp_directory_path(), registry);
+    context.set_time_scale(scale);
+    arcane::set_active_game_context(&context);
+    Mover::calls = 0;
+    auto hashes = arcane::run_fixed_frames(*scene, registry, actions, options);
+    arcane::set_active_game_context(nullptr);
+    ARCANE_ASSERT_TRUE(hashes.has_value());
+    calls = Mover::calls;
+    x = scene->find_node_by_name("M")->local_transform().position.x;
+    return *hashes;
+  };
+  int calls_paused = 0, calls_one = 0;
+  float x_paused = 1.0f, x_one = 0.0f;
+  auto paused = run(0.0f, calls_paused, x_paused);
+  auto scaled = run(1.0f, calls_one, x_one);
+
+  // Baseline without any context: identical to scale 1.
+  auto baseline_scene = arcane::Scene::load_from_json(*json, registry);
+  auto baseline = arcane::run_fixed_frames(*baseline_scene, registry, actions, options);
+  ARCANE_ASSERT_TRUE(baseline.has_value());
+  ARCANE_ASSERT_TRUE(scaled == *baseline);
+  ARCANE_ASSERT_TRUE(x_one > 0.0f);
+  ARCANE_ASSERT_TRUE(calls_paused == 20 && calls_one == 20);  // components keep updating while paused
+  ARCANE_ASSERT_TRUE(x_paused == 0.0f);                       // ... but at dt 0
+  ARCANE_ASSERT_TRUE(paused.front() == paused.back());        // state never changes
+}
+
+void test_save_helpers() {
+  auto registry = make_registry();
+  const auto dir = std::filesystem::temp_directory_path() / "arcane_gp6_saves";
+  std::filesystem::remove_all(dir);
+  arcane::GameContext context(std::filesystem::temp_directory_path(), registry);
+  ARCANE_ASSERT_TRUE(!context.saves_enabled());
+  ARCANE_ASSERT_TRUE(!context.load_save("slot1"));
+  ARCANE_ASSERT_TRUE(!context.write_save("slot1", arcane::SaveData{}));
+
+  ::setenv("ARCANE_SAVE_DIR", dir.string().c_str(), 1);
+  arcane::SaveConfig config;
+  config.game_id = "demo";
+  config.data_version = 3;
+  context.set_save_config(config, true);
+  ARCANE_ASSERT_TRUE(context.saves_enabled());
+  auto missing = context.load_save("slot1");
+  ARCANE_ASSERT_TRUE(missing.has_value() && missing->values.empty() && missing->data_version == 3);
+  arcane::SaveData data;
+  data.data_version = 3;
+  data.set("best_score", 120);
+  ARCANE_ASSERT_TRUE(context.write_save("slot1", data).has_value());
+  auto loaded = context.load_save("slot1");
+  ARCANE_ASSERT_TRUE(loaded.has_value() && loaded->get_int("best_score") == 120);
+  ARCANE_ASSERT_TRUE(!context.load_save("bad slot"));
+  config.game_id = "";
+  context.set_save_config(config, true);
+  ARCANE_ASSERT_TRUE(!context.load_save("slot1"));  // no game_id
+  ::unsetenv("ARCANE_SAVE_DIR");
+  std::filesystem::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
+  test_time_scale_clamps();
+  test_time_scale_in_fixed_runs();
+  test_save_helpers();
   test_teleport_moves_body_and_stops_it();
   test_viewport_size();
   test_destroy_and_spawn_during_update_keep_bodies_in_sync();

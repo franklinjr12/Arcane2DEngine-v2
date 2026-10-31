@@ -111,6 +111,10 @@ class ARCANE_API Hud {
  public:
   void add(HudElement element) { elements_.push_back(std::move(element)); }
   void clear() noexcept { elements_.clear(); }
+  // Removes the element with this id, of any kind; false if none. Invalidates pointers and indices (HudInput
+  // re-validates its focus on the next update).
+  bool remove(std::string_view id);
+  bool contains(std::string_view id) const;
   const std::vector<HudElement>& elements() const noexcept { return elements_; }
   std::vector<HudElement>& elements() noexcept { return elements_; }
 

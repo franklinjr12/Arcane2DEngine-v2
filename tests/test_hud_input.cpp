@@ -177,6 +177,26 @@ void test_navigation_skips_disabled() {
   ARCANE_ASSERT_TRUE(f.input.focus_index() == 2);
 }
 
+void test_removal_resets_stale_focus() {
+  Fixture f;
+  f.hud.add(make_button("b"));
+  f.backend.set_down(InputDevice::Keyboard, Keys::kDown, true);
+  f.frame();
+  f.backend.set_down(InputDevice::Keyboard, Keys::kDown, false);
+  f.frame();
+  f.backend.set_down(InputDevice::Keyboard, Keys::kDown, true);
+  f.frame();
+  f.backend.set_down(InputDevice::Keyboard, Keys::kDown, false);
+  f.frame();
+  ARCANE_ASSERT_TRUE(f.input.focus_index() == 1);
+  ARCANE_ASSERT_TRUE(f.hud.remove("b"));  // focus index 1 is now out of range
+  f.frame();
+  ARCANE_ASSERT_TRUE(f.input.focus_index() == -1);
+  f.hud.clear();
+  f.frame();  // an empty HUD is fine too
+  ARCANE_ASSERT_TRUE(f.input.focus_index() == -1 && f.clicked.empty());
+}
+
 void test_json_round_trip() {
   Hud hud;
   HudButton b = make_button("quit");
@@ -219,6 +239,7 @@ int main() {
   test_click_is_consumed_from_gameplay();
   test_gamepad_confirm_navigation_and_consumption();
   test_navigation_skips_disabled();
+  test_removal_resets_stale_focus();
   test_json_round_trip();
   test_project_carries_hud();
   return 0;

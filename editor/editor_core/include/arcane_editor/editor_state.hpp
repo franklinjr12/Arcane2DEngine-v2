@@ -68,11 +68,13 @@ class PlayStopController {
 
   // Advances the runtime scene by one fixed tick (components, then
   // physics, then the scene manager's transition). No-op outside Play.
-  void tick(float fixed_dt) {
+  // `time_scale` scales the scene and physics step only (0 skips physics); the manager's fades stay unscaled.
+  void tick(float fixed_dt, float time_scale = 1.0f) {
     if (mode_ != EditorMode::Play || !manager_) return;
     Scene* scene = manager_->scene();
-    scene->update(fixed_dt);
-    physics_.step(*scene, fixed_dt);
+    const float scaled_dt = fixed_dt * time_scale;
+    scene->update(scaled_dt);
+    if (scaled_dt > 0.0f) physics_.step(*scene, scaled_dt);
     manager_->update(fixed_dt);  // may switch scenes: re-fetch via active_scene()
   }
 

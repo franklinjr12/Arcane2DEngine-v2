@@ -229,3 +229,16 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 | # | Topic | Decision |
 |---|---|---|
 | 87 | Trigger component, carry-over and pause (GS2) | Pickups, spikes, checkpoints and the goal are static sensor bodies with a module component `SliceTrigger` (`kind` string) whose `on_trigger_enter` reports the Player to `SliceRules`, so the engine's trigger events replace the hand-written box tests. The score crosses levels in a module-level static read by the next level's `on_start` (SceneManager only carries `persistent` roots); Restart returns to the score the current level began with. Pause deactivates every gameplay node except the Level node, camera and HUD, remembering which ones so resume wakes only those (no engine time scale was added). The replay regression runs through the windowed `arcane_player --hidden` (GL-labeled, SKIP 77 without GL) because `--headless` has no SceneManager; its committed trace is compared only on GCC Debug, as for GS1. |
+
+## GP6: time scale and save helpers (ENG-026)
+
+- `GameContext::set_time_scale` (0..8, non-finite -> 1) is applied by every runner (windowed player,
+  `run_fixed_frames`, editor Play). Scaled: `Scene::update` (dt = step * scale; it still runs at dt 0 so components
+  can read input and un-pause) and physics (skipped when the scaled dt is 0). Not scaled: module `on_update`,
+  `SceneManager::update` (fades run while paused), the fixed-step clock and replay hashing.
+  `unscaled_delta()` is the runner's real step for pause-menu animation. At scale 1 the arithmetic is bit-identical
+  to before (x1.0f), so traces and goldens are unchanged. Restart and scene switch reset the scale to 1.
+- `GameContext::load_save/write_save` use `save_directory(game_id)`; a missing slot loads as an empty `SaveData`.
+  Saves are enabled only in the windowed player (not with `--replay`) and editor Play; `run_fixed_frames`,
+  headless, `arcane run/test` and replays leave them disabled so they never write into the user's save folder.
+- `Hud::remove(id)` / `contains(id)`; `HudInput` drops focus/press/hover indices that fall out of range.

@@ -41,6 +41,32 @@ std::expected<Node*, std::string> GameContext::spawn_prefab(Scene& scene, const 
   return arcane::spawn_prefab(scene, project_dir_, asset, parent, *registry_);
 }
 
+std::expected<std::filesystem::path, std::string> GameContext::save_dir_for(std::string_view slot) const {
+  if (!saves_enabled_) return std::unexpected(std::string("saves are disabled in this run"));
+  if (!is_valid_game_id(save_config_.game_id)) return std::unexpected(std::string("project has no valid save.game_id"));
+  if (!is_valid_save_slot(slot)) return std::unexpected("invalid save slot '" + std::string(slot) + "'");
+  std::filesystem::path dir = save_directory(save_config_.game_id);
+  if (dir.empty()) return std::unexpected(std::string("no save directory is known"));
+  return dir;
+}
+
+std::expected<SaveData, std::string> GameContext::load_save(std::string_view slot) {
+  auto dir = save_dir_for(slot);
+  if (!dir) return std::unexpected(dir.error());
+  if (!std::filesystem::exists(save_file_path(*dir, slot))) {
+    SaveData empty;
+    empty.data_version = save_config_.data_version;
+    return empty;
+  }
+  return load_save_game(*dir, slot, save_config_.data_version);
+}
+
+std::expected<void, std::string> GameContext::write_save(std::string_view slot, const SaveData& data) {
+  auto dir = save_dir_for(slot);
+  if (!dir) return std::unexpected(dir.error());
+  return write_save_game(*dir, slot, data);
+}
+
 bool GameContext::layer_mask(const std::vector<std::string>& names, int& mask) const noexcept {
   mask = 0;
   for (const std::string& name : names) {

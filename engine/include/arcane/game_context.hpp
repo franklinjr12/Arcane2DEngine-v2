@@ -1,9 +1,12 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
 #include <expected>
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <unordered_map>
 
@@ -12,7 +15,9 @@
 #include "arcane/export.hpp"
 #include "arcane/node.hpp"
 #include "arcane/physics.hpp"
+#include "arcane/project.hpp"
 #include "arcane/property.hpp"
+#include "arcane/save_game.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
 
@@ -68,6 +73,30 @@ class ARCANE_API GameContext {
   // Same, but only reports tiles that carry `tag` in their tileset ("hazard", "pickup", ...).
   std::optional<TileQuery> tagged_tile_at(Scene& scene, Vec2 world, const std::string& tag, int layer = 0);
 
+  // Gameplay time scale, 0..8 (non-finite -> 1). Runners pass `step_dt * time_scale()` to Scene::update and skip
+  // physics when that is 0; module on_update, SceneManager fades and the hash/replay clock stay unscaled. 0 pauses:
+  // components still update (at dt 0) so they can read input and resume. unscaled_delta() is the runner's real fixed
+  // step, so a pause menu can still animate. Runners reset the scale to 1 on a restart or scene switch.
+  void set_time_scale(float scale) noexcept {
+    time_scale_ = std::isfinite(scale) ? std::clamp(scale, 0.0f, 8.0f) : 1.0f;
+  }
+  float time_scale() const noexcept { return time_scale_; }
+  bool paused() const noexcept { return time_scale_ == 0.0f; }
+  void set_unscaled_delta(float dt) noexcept { unscaled_delta_ = dt; }
+  float unscaled_delta() const noexcept { return unscaled_delta_; }
+
+  // Per-game save data under save_directory(game_id). Runners enable it only for interactive play (windowed player,
+  // editor Play), so tests, replays and CLI runs never touch the user's save folder.
+  void set_save_config(SaveConfig config, bool enabled) {
+    save_config_ = std::move(config);
+    saves_enabled_ = enabled;
+  }
+  bool saves_enabled() const noexcept { return saves_enabled_; }
+  // A missing slot file is an empty SaveData at the configured data_version, not an error. Errors: saves disabled,
+  // invalid game_id or slot, no save directory, or an unreadable/invalid file.
+  std::expected<SaveData, std::string> load_save(std::string_view slot);
+  std::expected<void, std::string> write_save(std::string_view slot, const SaveData& data);
+
   // Asks the runner to reload the authored scene file after the current tick (the runner swaps the scene between
   // ticks, so this is safe from any hook). Everything runtime-made is discarded and on_destroy runs for it.
   void request_restart() noexcept { restart_requested_ = true; }
@@ -78,10 +107,15 @@ class ARCANE_API GameContext {
   }
 
  private:
+  std::expected<std::filesystem::path, std::string> save_dir_for(std::string_view slot) const;
   std::filesystem::path project_dir_;
   const ComponentRegistry* registry_;
   std::unordered_map<AssetId, std::filesystem::path> known_assets_;
   bool restart_requested_ = false;
+  float time_scale_ = 1.0f;
+  float unscaled_delta_ = 0.0f;
+  SaveConfig save_config_;
+  bool saves_enabled_ = false;
   ViewportSize viewport_;
   PhysicsWorld* physics_ = nullptr;
   std::vector<std::string> collision_layers_;
