@@ -83,6 +83,10 @@
             "minimum": 0,
             "type": "integer"
           },
+          "persistent": {
+            "description": "Root nodes only: SceneManager carries the node over scene switches. Written only when true.",
+            "type": "boolean"
+          },
           "position": {
             "$ref": "#/$defs/vec2"
           },

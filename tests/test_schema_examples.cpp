@@ -8,11 +8,14 @@
 #include <string>
 #include <vector>
 
+#include "arcane/animgraph.hpp"
 #include "arcane/atlas.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/prefab.hpp"
+#include "arcane/project.hpp"
+#include "arcane/tilemap.hpp"
 #include "arcane/replay.hpp"
 #include "arcane/save_game.hpp"
 #include "arcane_tooling/error.hpp"
@@ -218,6 +221,12 @@ void check_readers(const fs::path& dir) {
     ARCANE_ASSERT_TRUE(atlas->regions.size() == 2);
   }
   {
+    auto graph = arcane::load_animgraph_from_json(read(dir / "animgraph.example.json"));
+    if (!graph) std::fprintf(stderr, "animgraph example rejected: %s\n", graph.error().c_str());
+    ARCANE_ASSERT_TRUE(graph.has_value());
+    ARCANE_ASSERT_TRUE(graph->states.size() == 3 && graph->parameters.size() == 3);
+  }
+  {
     auto save = arcane::load_save_game_from_json(read(dir / "save.example.json"));
     ARCANE_ASSERT_TRUE(save.has_value());
     ARCANE_ASSERT_TRUE(save->data_version == 2);
@@ -226,6 +235,17 @@ void check_readers(const fs::path& dir) {
     auto trace = arcane::load_trace_json(read(dir / "replay_trace.example.json"));
     ARCANE_ASSERT_TRUE(trace.has_value());
     ARCANE_ASSERT_TRUE(trace->size() == 2);
+  }
+  {
+    auto project = arcane::load_project_from_json(read(dir / "project.example.json"));
+    ARCANE_ASSERT_TRUE(project.has_value());
+    ARCANE_ASSERT_TRUE(project->collision_layers.size() == 4);
+    int mask = 0;
+    ARCANE_ASSERT_TRUE(arcane::collision_layer_mask(*project, {"player", "pickup"}, mask) && mask == 0b1010);
+    ARCANE_ASSERT_TRUE(!arcane::collision_layer_mask(*project, {"nope"}, mask));
+    auto tileset = arcane::load_tileset_from_json(read(dir / "tileset.example.json"));
+    ARCANE_ASSERT_TRUE(tileset.has_value());
+    ARCANE_ASSERT_TRUE(tileset->has_tag(2, "pickup") && tileset->has_tag(3, "water") && !tileset->has_tag(1, "pickup"));
   }
   {
     arcane::ComponentRegistry registry;
@@ -262,7 +282,7 @@ int main() {
   }
   for (const auto& p : problems) std::fprintf(stderr, "%s\n", p.c_str());
   ARCANE_ASSERT_TRUE(problems.empty());
-  ARCANE_ASSERT_TRUE(schemas.size() == 11);
+  ARCANE_ASSERT_TRUE(schemas.size() == 12);
 
   // 2. Real files: every canonical-version file with an `arcane.*` format must validate.
   check_readers(examples_dir);

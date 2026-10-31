@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -14,6 +15,7 @@
 #include "arcane/physics.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/replay.hpp"
+#include "arcane/scene_flow.hpp"
 #include "arcane/screenshot.hpp"
 #include "arcane/time.hpp"
 #include "arcane/window.hpp"
@@ -102,7 +104,9 @@ std::vector<unsigned char> make_checkerboard_pixels(int size) {
 
 // Runs an on-disk project standalone: no editor UI, the scene just ticks
 // and renders every frame (there is no Play/Stop mode here -- the player
-// *is* always in "Play"). Shares ProjectRuntime/TextureCache/render_scene
+// *is* always in "Play"). The game runs under a SceneManager owned by this
+// loop (gameplay reaches it through active_scene_manager(); transitions use
+// project.json "transition"); the --headless runners do not own one. Shares ProjectRuntime/TextureCache/render_scene
 // with arcane_editor so project loading and scene rendering behave
 // identically in both.
 int run_project(const Args& args) {
@@ -144,6 +148,8 @@ int run_project(const Args& args) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
+  arcane::editor::AtlasCache atlases;
+  atlases.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
@@ -157,8 +163,8 @@ int run_project(const Args& args) {
     return 1;
   }
   arcane::set_active_audio_system(&*audio);
-  arcane::editor::start_play_on_start_sounds(runtime->session().scene(), *audio,
-                                              arcane::editor::list_audio_assets(runtime->session().assets_dir()));
+  arcane::GameContext game_context(runtime->session().project_dir(), runtime->registry());
+  arcane::set_active_game_context(&game_context);
 
   std::optional<arcane::ReplayInput> replay;
   if (!args.replay_file.empty()) {
@@ -173,8 +179,30 @@ int run_project(const Args& args) {
   }
   std::vector<std::uint64_t> trace;
 
+  // The running scene lives in the manager: a JSON snapshot of the session's (seeded) scene, like Play mode.
+  arcane::SceneManager manager(runtime->session().project_dir(), runtime->registry(),
+                               runtime->session().project().transition);
+  {
+    auto snapshot = arcane::Scene::load_from_json(runtime->session().scene().save_to_json(runtime->registry()),
+                                                  runtime->registry());
+    if (!snapshot) {
+      ARCANE_LOG_ERROR(kLogCategory, "cannot snapshot the main scene: {}", snapshot.error());
+      return 1;
+    }
+    manager.set_scene(std::move(*snapshot), runtime->session().project().main_scene);
+  }
+  const auto audio_assets = arcane::editor::list_audio_assets(runtime->session().assets_dir());
+  arcane::editor::start_play_on_start_sounds(*manager.scene(), *audio, audio_assets);
+
   arcane::PhysicsWorld physics;
-  physics.rebuild(runtime->session().scene());
+  physics.rebuild(*manager.scene());
+  manager.set_on_switched([&](arcane::Scene& next) {
+    physics.rebuild(next);
+    arcane::editor::start_play_on_start_sounds(next, *audio, audio_assets);
+  });
+  arcane::set_active_scene_manager(&manager);
+  game_context.set_physics(&physics);
+  game_context.set_collision_layers(runtime->session().project().collision_layers);
 
   arcane::InputActionMap input_map = runtime->session().project().input_actions;
   arcane::GlfwInputBackend input_backend(*window);
@@ -209,9 +237,11 @@ int run_project(const Args& args) {
       textures.set_assets(arcane::editor::list_image_assets(runtime->session().assets_dir()));
       clips.set_assets(clip_assets);
       tilesets.set_assets(clip_assets);
+      atlases.set_assets(clip_assets);
       textures.refresh();
       clips.refresh();
       tilesets.refresh();
+      atlases.refresh();
     }
     const bool overlay_key_down = input_backend.is_down(arcane::InputDevice::Keyboard, arcane::kDebugOverlayKey);
     if (overlay_key_down && !overlay_key_was_down) overlay_visible = !overlay_visible;
@@ -231,16 +261,25 @@ int run_project(const Args& args) {
       input_map.update(hud_input.gameplay_backend());
       steps = timestep.advance(delta_seconds);
     }
-    arcane::Scene& scene = runtime->session().scene();
+    game_context.set_viewport_size(fb_width, fb_height);
     for (int i = 0; i < steps; ++i) {
       if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
-      scene.update(step_dt);
-      physics.step(scene, step_dt);
+      arcane::Scene& step_scene = *manager.scene();  // a switch replaces the scene: fetch per step
+      step_scene.update(step_dt);
+      physics.step(step_scene, step_dt);
+      manager.update(step_dt);  // fixed step dt keeps replays deterministic
+      if (game_context.take_restart_request()) {
+        arcane::Scene& current = *manager.scene();
+        auto reloaded = arcane::reload_scene_file(current, runtime->session().main_scene_path(), runtime->registry());
+        if (reloaded) physics.rebuild(current);
+        else ARCANE_LOG_ERROR(kLogCategory, "scene restart failed: {}", reloaded.error());
+      }
     }
+    arcane::Scene& scene = *manager.scene();
     if (replay) trace.push_back(arcane::hash_scene_state(scene, runtime->registry()));
 
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
-                                &tilesets);
+                                &tilesets, true, &atlases);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     if (overlay_visible) {
@@ -288,6 +327,8 @@ int run_project(const Args& args) {
     }
   }
 
+  arcane::set_active_scene_manager(nullptr);
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);
@@ -308,6 +349,8 @@ int run_project_headless(const Args& args) {
     return 1;
   }
   arcane::set_active_audio_system(&*audio);
+  arcane::GameContext game_context(runtime->session().project_dir(), runtime->registry());
+  arcane::set_active_game_context(&game_context);
   arcane::Hud hud = runtime->session().project().hud;  // authored layout; gameplay may add more, never drawn
   arcane::set_active_hud(&hud);
 
@@ -317,6 +360,7 @@ int run_project_headless(const Args& args) {
     auto loaded = text ? arcane::load_recording_json(*text) : std::unexpected(text.error());
     if (!loaded) {
       ARCANE_LOG_ERROR(kLogCategory, "cannot use replay '{}': {}", args.replay_file, loaded.error());
+      arcane::set_active_game_context(nullptr);
       arcane::set_active_audio_system(nullptr);
       arcane::set_active_hud(nullptr);
       return 1;
@@ -333,6 +377,9 @@ int run_project_headless(const Args& args) {
   }
   if (runtime->module_api()) {
     options.before_step = [&](float dt) { runtime->module_api()->on_update(dt); };
+  }
+  if (auto authored = arcane::read_text_file(runtime->session().main_scene_path())) {
+    options.restart_scene_json = std::move(*authored);
   }
   auto result = arcane::run_fixed_frames(runtime->session().scene(), runtime->registry(), input_map, options);
   int exit_code = 0;
@@ -363,6 +410,7 @@ int run_project_headless(const Args& args) {
       }
     }
   }
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   ARCANE_LOG_INFO(kLogCategory, "exiting after {} frames", frame_count);

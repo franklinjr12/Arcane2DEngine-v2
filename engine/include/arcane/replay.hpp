@@ -116,6 +116,10 @@ struct ARCANE_API FixedRunOptions {
   int seed = 0;
   const ReplayRecording* recording = nullptr;
   std::function<void(float)> before_step;
+  // Authored scene JSON that GameContext::request_restart() reloads; empty = restart requests are ignored.
+  std::string restart_scene_json;
+  // View size reported to modules by GameContext::viewport_size() (tooling runners); 0 keeps the default.
+  int viewport_width = 0, viewport_height = 0;
 };
 
 ARCANE_API std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& scene,

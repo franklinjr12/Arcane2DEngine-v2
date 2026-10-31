@@ -40,6 +40,7 @@ diagnostic goes to stderr. `arcane docs` prints this reference as raw Markdown.
 | 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |
 | 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |
 | 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |
+| 8 | Render environment failure (no display, GL context or offscreen framebuffer) | `RENDER_UNAVAILABLE` |
 
 ## Selectors
 
@@ -83,6 +84,152 @@ authoring beyond properties, `render`. The editor does not use
 these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
+
+### `arcane animgraph add-event`
+
+Attach event `name` to clip frame `frame` of state `state`; it is delivered to the node's components (Component::on_animation_event) when playback enters that frame.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--frame` | integer | yes |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--state` | string | yes |  |
+
+### `arcane animgraph add-param`
+
+Add a parameter `name` of `type` bool, float or trigger (`default` for bool/float, default 0; a bool default is 0 or 1).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--default` | number | no |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--type` | string | yes |  |
+
+### `arcane animgraph add-state`
+
+Add a state `name` playing `clip` (a project-relative file under assets/, e.g. assets/hero_idle.json) at `speed` (default 1). The first state becomes the initial state.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+| `--speed` | number | no |  |
+
+### `arcane animgraph add-transition`
+
+Add a transition `from` a state (or "*" for any) `to` a state with `priority` (default 0, higher wins) and `conditions` [{param, op, value}] that must all hold (op: is_true/is_false for bool, lt le gt ge eq ne for float with `value`, fired for trigger; none = always). Ties go to the earlier transition. Appended, or inserted at `index`.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--conditions` | array | no |  |
+| `--from` | string | yes |  |
+| `--graph` | string | yes |  |
+| `--index` | integer | no |  |
+| `--priority` | integer | no |  |
+| `--to` | string | yes |  |
+
+### `arcane animgraph create`
+
+Create an empty animation graph file (`arcane.animgraph` v2) at a project-relative path such as assets/hero.animgraph.json. Fails if the file exists unless overwrite=true. Writes the file at once; the inverse is animgraph.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--overwrite` | boolean | no |  |
+
+### `arcane animgraph info`
+
+Describe an animation graph file: initial state, parameters, states (clip asset id, speed, events) and transitions (index, from, to, priority, conditions).
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+
+### `arcane animgraph remove-event`
+
+Remove event number `index` (see animgraph.info) of state `state`.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--index` | integer | yes |  |
+| `--state` | string | yes |  |
+
+### `arcane animgraph remove-param`
+
+Remove parameter `name`; it must not be used by a transition condition.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+
+### `arcane animgraph remove-state`
+
+Remove state `name`; it must not be the initial state or an end of a transition.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--name` | string | yes |  |
+
+### `arcane animgraph remove-transition`
+
+Remove transition number `index` (see animgraph.info).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--graph` | string | yes |  |
+| `--index` | integer | yes |  |
+
+### `arcane animgraph restore`
+
+Put an animation graph file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. The inverse of the other animgraph.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--content` | string | no |  |
+| `--graph` | string | yes |  |
+
+### `arcane animgraph set-state`
+
+Change state `name`: `clip`, `speed` and/or `initial`=true (make it the initial state).
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | no |  |
+| `--graph` | string | yes |  |
+| `--initial` | boolean | no |  |
+| `--name` | string | yes |  |
+| `--speed` | number | no |  |
 
 ### `arcane asset import`
 
@@ -391,9 +538,9 @@ No arguments.
 
 ### `arcane debug set`
 
-Change the debug overlay settings in project.json; omitted fields keep their value. Writes at once.
+Change the debug overlay settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -668,6 +815,17 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--node` | string | yes |  |
 | `--parent` | string | no |  |
 
+### `arcane node set-persistent`
+
+Set the authored `persistent` flag of a root node: SceneManager carries such roots over scene switches (docs/formats/scene.md). Refused for non-root nodes.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--node` | string | yes |  |
+| `--value` | boolean | yes |  |
+
 ### `arcane node set-transform`
 
 Set a node's local transform fields; omitted fields keep their value.
@@ -743,7 +901,7 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 
 ### `arcane prefab remove`
 
-Delete a whole prefab instance (any node of it selects it). Undo recreates it with new IDs and the same overrides.
+Delete a whole prefab instance (any node of it selects it). Undo restores the scene as it was, with the same IDs.
 
 Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
@@ -804,12 +962,13 @@ Writes files; honors `--dry-run`.
 
 ### `arcane project set`
 
-Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
+Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none), `collision_layers` (array of layer names, index = layer number used by Collider2D layer/mask; a-z 0-9 _, max 31, replaces the list). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
 
 Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
+| `--collision-layers` | array | no |  |
 | `--main-scene` | string | no |  |
 | `--module` | string | no |  |
 | `--name` | string | no |  |
@@ -870,6 +1029,24 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--node` | string | yes |  |
 | `--value` | json | yes |  |
 
+### `arcane render`
+
+Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--camera` | string | no |  |
+| `--compare` | string | no |  |
+| `--fixed-hz` | integer | no |  |
+| `--frames` | integer | no |  |
+| `--mask` | array | no |  |
+| `--output` | string | yes |  |
+| `--seed` | integer | no |  |
+| `--size` | string | no |  |
+| `--tolerance` | integer | no |  |
+
 ### `arcane replay run`
 
 Replay a recording headless on a copy of the open scene (fixed timestep, physics, the project's input actions) and hash the scene state after every frame. With `expected` (a trace file) fails with REPLAY_DIVERGED naming the first divergent frame; with `trace_out` writes the trace (arcane.replay_trace v1). Game-module on_update is not called. Same build and platform only.
@@ -920,9 +1097,9 @@ No arguments.
 
 ### `arcane save config-set`
 
-Change the authored save settings in project.json (game_id: A-Z a-z 0-9 . _ -, empty clears; data_version >= 1). Writes at once.
+Change the authored save settings in project.json (game_id: A-Z a-z 0-9 . _ -, empty clears; data_version >= 1). Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -1229,6 +1406,35 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 | `--terrain` | integer | yes |  |
 | `--tileset` | string | yes |  |
 
+### `arcane tileset replace`
+
+Write a whole tileset in one step (the editor's Save tileset): sheet layout like tileset.create, `tiles` [{id, solid?, terrain?}] (1-based ids, others default) and `terrains` [{terrain, tiles[16]}]. Creates or overwrites the file at once; the inverse is tileset.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--columns` | integer | yes |  |
+| `--terrains` | array | no |  |
+| `--texture` | id or name | yes |  |
+| `--tile-count` | integer | yes |  |
+| `--tile-height` | integer | yes |  |
+| `--tile-width` | integer | yes |  |
+| `--tiles` | array | no |  |
+| `--tileset` | string | yes |  |
+
+### `arcane tileset restore`
+
+Put a tileset file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. Used as the inverse of the other tileset.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--content` | string | no |  |
+| `--tileset` | string | yes |  |
+
 ### `arcane tileset set-rule`
 
 Add or replace the auto-tile rule of a terrain: `tiles` is 16 tile ids indexed by neighbour mask (N=1 E=2 S=4 W=8; 0 = no tile). Run tileset.validate afterwards to check the tiles are marked with the terrain.
@@ -1243,13 +1449,14 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 
 ### `arcane tileset set-tile`
 
-Set the solid flag and/or terrain of tile `tile` (1-based id). Writes the file at once.
+Set the solid flag, terrain and/or gameplay `tags` (e.g. hazard, pickup; a-z 0-9 _, replaces the list) of tile `tile` (1-based id). Writes the file at once.
 
 Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
 | `--solid` | boolean | no |  |
+| `--tags` | array | no |  |
 | `--terrain` | integer | no |  |
 | `--tile` | integer | yes |  |
 | `--tileset` | string | yes |  |
@@ -1274,9 +1481,9 @@ No arguments.
 
 ### `arcane transition set`
 
-Change the authored scene-transition settings in project.json; omitted fields keep their value. Writes at once.
+Change the authored scene-transition settings in project.json; omitted fields keep their value. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
 
-Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |

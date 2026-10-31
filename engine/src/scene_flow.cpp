@@ -1,5 +1,7 @@
 #include "arcane/scene_flow.hpp"
 
+#include "arcane/prefab.hpp"
+
 #include <algorithm>
 
 #include "arcane/atlas.hpp"
@@ -27,6 +29,14 @@ SceneManager::~SceneManager() = default;
 void SceneManager::set_scene(Scene scene) {
   scene_ = std::make_unique<Scene>(std::move(scene));
   persistent_.clear();
+  for (const auto& root : scene_->roots()) {
+    if (root->persistent()) persistent_.insert(root->id());
+  }
+}
+
+void SceneManager::set_scene(Scene scene, std::string scene_path) {
+  set_scene(std::move(scene));
+  current_path_ = std::move(scene_path);
 }
 
 bool SceneManager::set_persistent(NodeId id, bool persistent) {
@@ -34,7 +44,10 @@ bool SceneManager::set_persistent(NodeId id, bool persistent) {
   Node* node = scene_->find_node(id);
   if (!node || node->parent()) return false;
   if (persistent) persistent_.insert(id);
-  else persistent_.erase(id);
+  else {
+    persistent_.erase(id);
+    node->set_persistent(false);
+  }
   return true;
 }
 
@@ -54,6 +67,7 @@ std::expected<void, std::string> SceneManager::switch_now(const std::string& sce
   if (!text) return std::unexpected(text.error());
   auto next = Scene::load_from_json(*text, *registry_);
   if (!next) return std::unexpected(scene_path + ": " + next.error());
+  refresh_prefab_instances(*next, project_dir_, *registry_);
 
   auto incoming = std::make_unique<Scene>(std::move(*next));
   std::unordered_set<NodeId> carried;
@@ -63,6 +77,13 @@ std::expected<void, std::string> SceneManager::switch_now(const std::string& sce
     for (const auto& root : scene_->roots()) {
       if (persistent_.contains(root->id())) keep.push_back(root.get());
     }
+    // A carried root wins over an authored persistent root of the same name.
+    for (const auto& root : incoming->roots()) {
+      if (!root->persistent()) continue;
+      const bool shadowed = std::any_of(keep.begin(), keep.end(), [&](const Node* k) { return k->name() == root->name(); });
+      if (shadowed) incoming->destroy_node(root->id());
+    }
+    incoming->flush_destroyed();
     for (Node* node : keep) {
       if (Node* moved = incoming->adopt_root(*scene_, node, *registry_)) carried.insert(moved->id());
     }
@@ -70,6 +91,9 @@ std::expected<void, std::string> SceneManager::switch_now(const std::string& sce
     scene_->flush_destroyed();
   }
   scene_ = std::move(incoming);
+  for (const auto& root : scene_->roots()) {
+    if (root->persistent()) carried.insert(root->id());
+  }
   persistent_ = std::move(carried);
   current_path_ = scene_path;
   if (on_switched_) on_switched_(*scene_);

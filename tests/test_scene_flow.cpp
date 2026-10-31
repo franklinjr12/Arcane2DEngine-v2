@@ -85,11 +85,11 @@ void test_project_config() {
   auto got = registry.execute(ctx, {"transition.get", Json::object()});
   ARCANE_ASSERT_TRUE(got.has_value() && got->value["fade_out_seconds"] == 0.3f);
   // Setting the same values changes nothing on disk.
-  auto same = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.3}}});
+  auto same = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.3}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(same.has_value() && same->value["changed"] == false && !same->inverse);
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  auto set = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.5}, {"color", Json::array({1, 0, 0, 1})}}});
+  auto set = registry.execute(ctx, {"transition.set", {{"fade_out_seconds", 0.5}, {"color", Json::array({1, 0, 0, 1})}}}, {.persist = true});
   ARCANE_ASSERT_TRUE(set.has_value() && set->value["changed"] == true && set->inverse);
   const std::string after = slurp(p.dir / "project.json");
   ARCANE_ASSERT_TRUE(after.find("\"fade_out_seconds\": 0.5") != std::string::npos);
@@ -98,18 +98,18 @@ void test_project_config() {
   ARCANE_ASSERT_TRUE(project.has_value() && project->transition.fade_out_seconds == 0.5f && project->transition.color.r == 1.0f);
   ARCANE_ASSERT_TRUE(project->transition.fade_in_seconds == 0.3f);
   // The inverse restores the original bytes.
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, *set->inverse, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"fade_in_seconds", 99}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"color", Json::array({1, 2})}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"fade_in_seconds", 99}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"transition.set", {{"color", Json::array({1, 2})}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") == before);
 
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "my.game"}, {"data_version", 3}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "my.game"}, {"data_version", 3}}}, {.persist = true}).has_value());
   auto cfg = registry.execute(ctx, {"save.config_get", Json::object()});
   ARCANE_ASSERT_TRUE(cfg.has_value() && cfg->value["game_id"] == "my.game" && cfg->value["data_version"] == 3);
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"game_id", "../evil"}}}).has_value());
-  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"data_version", 0}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"game_id", "../evil"}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.config_set", {{"data_version", 0}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(load_project_from_json_strict(slurp(p.dir / "project.json")).has_value());
   // Unknown keys in the new sections are errors.
   std::string bad = slurp(p.dir / "project.json");
@@ -203,6 +203,64 @@ void test_scene_manager() {
   // Un-persisting lets the node go on the next switch.
   ARCANE_ASSERT_TRUE(manager.set_persistent(manager.find_persistent("Player")->id(), false));
   ARCANE_ASSERT_TRUE(manager.switch_now("scenes/b.scene.json").has_value() && !has_root(*manager.scene(), "Player"));
+}
+
+void test_authored_persistent() {
+  TempProject p;
+  // A scene authored with a persistent root, plus a plain node with the same name.
+  Scene hub;
+  Node* music = hub.create_node("Music");
+  music->set_persistent(true);
+  Node* kid = hub.create_node("Kid", music);
+  (void)kid;
+  hub.create_node("Menu");
+  const std::string text = hub.save_to_json(p.registry);
+  ARCANE_ASSERT_TRUE(text.find("\"persistent\": true") != std::string::npos);
+  // Round trip keeps the flag; a scene without it never writes the key.
+  auto loaded = Scene::load_from_json(text, p.registry);
+  ARCANE_ASSERT_TRUE(loaded.has_value());
+  ARCANE_ASSERT_TRUE(loaded->roots()[0]->persistent() && !loaded->roots()[1]->persistent());
+  loaded->roots()[0]->set_persistent(false);
+  ARCANE_ASSERT_TRUE(loaded->save_to_json(p.registry).find("persistent") == std::string::npos);
+
+  // Strict: persistent on a non-root node and non-boolean values are rejected.
+  std::string bad = text;
+  const std::size_t kid_at = bad.find("\"name\": \"Kid\"");
+  ARCANE_ASSERT_TRUE(kid_at != std::string::npos);
+  bad.insert(kid_at, "\"persistent\": true, ");
+  auto rejected = Scene::load_from_json(bad, p.registry);
+  ARCANE_ASSERT_TRUE(!rejected.has_value() && rejected.error().find("persistent") != std::string::npos);
+  std::string not_bool = text;
+  not_bool.replace(not_bool.find("\"persistent\": true"), 19, "\"persistent\": 1");
+  ARCANE_ASSERT_TRUE(!Scene::load_from_json(not_bool, p.registry).has_value());
+
+  spit(p.dir / "scenes/hub.scene.json", text);
+  SceneManager manager(p.dir, p.registry);
+  manager.set_scene(load_scene(p, "hub.scene.json"));
+  Node* live = manager.find_persistent("Music");
+  ARCANE_ASSERT_TRUE(live != nullptr);  // marked by set_scene
+  live->local_transform().position = {7.0f, 8.0f};
+
+  // Incoming scene has its own persistent "Music" (destroyed: live one wins) and a plain "Music" (kept).
+  Scene next;
+  Node* dup = next.create_node("Music");
+  dup->set_persistent(true);
+  next.create_node("Music");
+  next.create_node("Level");
+  spit(p.dir / "scenes/next.scene.json", next.save_to_json(p.registry));
+  ARCANE_ASSERT_TRUE(manager.switch_now("scenes/next.scene.json").has_value());
+  int music_count = 0;
+  int persistent_music = 0;
+  for (const auto& root : manager.scene()->roots()) {
+    music_count += root->name() == "Music";
+    persistent_music += root->name() == "Music" && manager.is_persistent(root->id());
+  }
+  ARCANE_ASSERT_TRUE(music_count == 2 && persistent_music == 1 && !has_root(*manager.scene(), "Menu"));
+  Node* kept = manager.find_persistent("Music");
+  ARCANE_ASSERT_TRUE(kept != nullptr && kept->local_transform().position.x == 7.0f && kept->children().size() == 1);
+
+  // Un-persisting clears the authored flag too.
+  ARCANE_ASSERT_TRUE(manager.set_persistent(kept->id(), false) && !kept->persistent());
 }
 
 void test_save_api() {
@@ -320,7 +378,7 @@ void test_save_commands() {
   // Without game_id or dir there is no folder.
   ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.list", Json::object()}).error().code == "VALUE_INVALID");
 
-  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "cmd_test"}, {"data_version", 2}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"save.config_set", {{"game_id", "cmd_test"}, {"data_version", 2}}}, {.persist = true}).has_value());
   ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"save.set", {{"slot", "s1"}, {"key", "level"}, {"value", 1}, {"dir", d}}}).has_value());  // no slot yet
   auto created = registry.execute(ctx, {"save.set", {{"slot", "s1"}, {"key", "level"}, {"value", 1}, {"create", true}, {"dir", d}}});
   ARCANE_ASSERT_TRUE(created.has_value() && created->value["previous"].is_null());
@@ -361,6 +419,7 @@ void test_save_commands() {
 int main() {
   test_project_config();
   test_scene_manager();
+  test_authored_persistent();
   test_save_api();
   test_save_commands();
   std::puts("test_scene_flow OK");

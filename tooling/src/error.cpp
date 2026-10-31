@@ -13,6 +13,7 @@ int exit_code(const ToolError& error) {
       {"SELECTOR_AMBIGUOUS", 5}, {"CONFLICT", 5},
       {"MODULE_LOAD_FAILED", 6}, {"MODULE_FAILURE", 6},
       {"UNSUPPORTED_VERSION", 7}, {"DRY_RUN_UNSUPPORTED", 7}, {"TRANSACTION_UNSUPPORTED", 7},
+      {"RENDER_UNAVAILABLE", 8},
   };
   auto it = kCodes.find(error.code);
   return it == kCodes.end() ? 1 : it->second;

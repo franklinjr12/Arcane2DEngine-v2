@@ -1,5 +1,18 @@
 # Editor authoring command inventory
 
+**AF8C update (current):** no authored data action is direct any more. Open clip is `clip.info` (with the panel's sheet and grid)
+and Open tileset is `tileset.info`; Save clip is `clip.create` (overwrite) and Save tileset is one `tileset.replace`, both run
+through `EditSession`, so each Save is **one undoable step** (undo restores the previous file bytes or removes a new file via
+`clip.restore`/`tileset.restore`) and sets `*modified*`. The panels keep a draft model on purpose: edits to the draft fields
+before Save (grid, frames, tile flags, terrain rules, New tileset) are unsaved view state like a text box, not authored data; the
+authored change is the Save. Project Settings now also edits the scene transition (fade out/in, colour), save (game id, data
+version) and debug overlay (visible, font scale) through `transition.set`, `save.config_set` and `debug.set`. Those three edit the
+project data in memory like `project.set` (AF8C changed them from immediate `project.json` writes, which would have conflicted with
+File > Save), so they undo/redo, coalesce slider drags and are written by File > Save (CLI: persisted per command). Covered by
+`test_edit_session` (`test_gui_flow_settings_match_cli_model`, `test_tileset_save_is_one_undoable_command`,
+`test_clip_open_and_save_through_commands`) and the extended source lint. The tables below are history; where they say
+"No: immediate file write" for tileset/clip Save, "Still direct" or "no editor widget" for transition/save/debug, AF8C supersedes them.
+
 **AF5B update:** the core scene paths below (hierarchy create/delete/reparent,
 node name/transform, Add Component, Inspector properties incl. module types,
 asset assignment to Sprite/ParticleEmitter/AnimatedSprite/AudioSource/Tilemap) now run
@@ -75,14 +88,16 @@ not in the scene history.
 | Input Map actions, player, bindings and fields | `input.add_action/remove_action/set_player/add_binding/remove_binding/set_binding` | Yes (in memory; File > Save writes) | `test_hud_input_commands`, `test_edit_session` |
 | Project Settings: name, main scene, module | `project.set` | Yes | `test_edit_session` (`test_gui_project_settings_match_cli_model`, name typing coalescing) |
 | File > Save | `ProjectSession::save` (same transactional write as `ProjectContext::save`) | n/a | `test_edit_session` (save point), `test_cli` |
+| Hierarchy > Save as Prefab | `prefab.save` (immediate file write) | No: not undoable | `test_prefab` (command side) |
+| Assets > Prefabs (click) | `prefab.instantiate` | Yes | `test_prefab` |
+| Inspector on prefab-instance nodes: edits, Revert, Break prefab link | `prefab.override` (via `EditSession::set_property/set_transform`, name), `prefab.revert`, `prefab.break_link` | Yes | `test_prefab` (`test_edit_session_records_overrides`) |
 | Edit > Undo/Redo, Ctrl+Z/Y | command history | Yes | `test_edit_session` |
 | Save tileset | `tileset.create` (overwrite), `tileset.set_tile`, `tileset.set_rule` | No: immediate file write, not undoable | `test_tilemap_commands` (command side only) |
 | Save clip | `clip.create` (overwrite) | No: immediate file write, not undoable | `test_clip_commands` (command side only) |
 | Selection, panels, brush choice, preview, Play/Stop, F3 overlay | none (view state) | n/a | `test_edit_session` (`test_view_state_is_not_authored`: selection, Play/Stop) |
 | Editor source has no known direct writes | n/a | n/a | `test_edit_session` (`test_editor_source_has_no_direct_scene_writes`) |
 
-CLI-only commands with no editor widget: `transition.set`, `save.config_set`, `debug.set`, `prefab.*` (no save-as-prefab,
-instantiate, override, revert or break-link action in the GUI), `atlas.*`, `asset.*`, `replay.*`; `render` does not exist.
+CLI-only commands with no editor widget: `transition.set`, `save.config_set`, `debug.set`, `atlas.*`, `asset.*`, `replay.*`; `render` does not exist.
 
 ### Still direct / not command-backed
 
@@ -94,3 +109,5 @@ instantiate, override, revert or break-link action in the GUI), `atlas.*`, `asse
 - No automated parity test exists for the tileset and clip panels' GUI path, only for their commands.
 - The direct-write lint in `test_edit_session` is a substring list (`->set_name(`, `create_node(`, `mutable_project()`, `hud.add(`,
   `save_clip_file(`, `.main_scene =` and similar). It finds only known patterns; it cannot discover a new kind of widget write.
+
+**GP4 update:** the Animation Graph panel (list UI: parameters, states, events, transitions) edits only through `animgraph.*` commands run on the `EditSession` (file writes with `animgraph.restore` inverses, like `clip.create`); there is no draft state. `Sprite`/`Collider2D` flip fields are ordinary `prop.set` properties in the Inspector.

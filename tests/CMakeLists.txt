@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_audio test_hud test_text test_hud_input test_tilemap test_particles test_camera2d test_tween)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_tilemap test_particles test_camera2d test_tween)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -36,6 +36,10 @@ add_test(NAME test_clip_authoring COMMAND test_clip_authoring)
 add_executable(test_physics_headless test_physics_headless.cpp)
 target_link_libraries(test_physics_headless PRIVATE box2d)
 add_test(NAME test_physics_headless COMMAND test_physics_headless)
+
+add_executable(test_game_context test_game_context.cpp)
+target_link_libraries(test_game_context PRIVATE arcane_runtime)
+add_test(NAME test_game_context COMMAND test_game_context)
 
 add_executable(test_physics_components test_physics_components.cpp)
 target_link_libraries(test_physics_components PRIVATE arcane_runtime)
@@ -211,6 +215,7 @@ add_test(NAME test_tooling_commands COMMAND test_tooling_commands)
 # AF5B: editor edit path (EditSession): GUI-vs-CLI parity, undo/redo, drag coalescing, save point, direct-write lint.
 add_executable(test_edit_session test_edit_session.cpp)
 target_link_libraries(test_edit_session PRIVATE arcane_tooling)
+target_include_directories(test_edit_session SYSTEM PRIVATE ${TP}/stb)
 target_compile_definitions(test_edit_session PRIVATE
   ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
   ARCANE_EDITOR_SOURCE_PATH="${CMAKE_SOURCE_DIR}/editor/app/editor_main.cpp")
@@ -326,6 +331,16 @@ if(ARCANE_BUILD_SAMPLES)
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> $<TARGET_FILE:sample_game>
     ${CMAKE_COMMAND} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/samples/sample_project)
   set_tests_properties(test_cli_e2e PROPERTIES TIMEOUT 300)
+  # AF10C: arcane render. Without a display it must fail cleanly with exit 8 (no gl label); the golden run needs GL.
+  add_test(NAME test_render_cli_nodisplay COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh nodisplay
+    $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
+  set_tests_properties(test_render_cli_nodisplay PROPERTIES TIMEOUT 60 ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_render_cli COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh gl
+    $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
+  set_tests_properties(test_render_cli PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 endif()
 
 # AF12 rendering evidence: readback + PNG + golden comparison (tolerance documented in the test).
@@ -335,3 +350,12 @@ target_compile_definitions(test_render_golden PRIVATE ARCANE_GOLDEN_DIR="${CMAKE
 add_test(NAME test_render_golden COMMAND test_render_golden)
 set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_physics_events test_physics_events.cpp)
+target_link_libraries(test_physics_events PRIVATE arcane_runtime)
+add_test(NAME test_physics_events COMMAND test_physics_events)
+
+# --- animgraph.* commands --------------------------------------------------------
+add_executable(test_animgraph_commands test_animgraph_commands.cpp)
+target_link_libraries(test_animgraph_commands PRIVATE arcane_tooling)
+add_test(NAME test_animgraph_commands COMMAND test_animgraph_commands)

@@ -1,4 +1,5 @@
 #include "arcane/replay.hpp"
+#include "arcane/game_context.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -340,6 +341,11 @@ std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& s
   const float dt = static_cast<float>(1.0 / fixed_hz);
   PhysicsWorld physics;
   physics.rebuild(scene);
+  struct PhysicsLink {  // gameplay reaches the world through the context only while this run lasts
+    GameContext* context;
+    ~PhysicsLink() { if (context) context->set_physics(nullptr); }
+  } physics_link{active_game_context()};
+  if (physics_link.context) physics_link.context->set_physics(&physics);
   std::optional<ReplayInput> input;
   if (options.recording) input.emplace(*options.recording);
   FakeInputBackend idle;
@@ -352,6 +358,13 @@ std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& s
     if (options.before_step) options.before_step(dt);
     scene.update(dt);
     physics.step(scene, dt);
+    GameContext* context = active_game_context();
+    if (context && context->take_restart_request() && !options.restart_scene_json.empty()) {
+      auto fresh = Scene::load_from_json(options.restart_scene_json, registry);
+      if (!fresh) return std::unexpected(fresh.error());
+      scene = std::move(*fresh);
+      physics.rebuild(scene);
+    }
     hashes.push_back(hash_scene_state(scene, registry));
   }
   set_active_input_map(previous);

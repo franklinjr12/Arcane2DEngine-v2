@@ -7,7 +7,10 @@
 #include <string>
 
 #include "arcane/animation.hpp"
+#include "arcane/animgraph.hpp"
 #include "arcane/audio.hpp"
+#include "arcane/builtin_components.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/node.hpp"
@@ -25,7 +28,7 @@ struct Outcome {
   float player_x = 0.0f, player_y = 0.0f, camera_x = 0.0f;
   std::string score_text, banner_text;
   float health = 0.0f;
-  bool saw_run_clip = false, saw_particles = false;
+  bool saw_flip = false, saw_run_clip = false, saw_particles = false;
   std::size_t coin_cues = 0, hurt_cues = 0;
   int steps_run = 0;
 };
@@ -50,6 +53,8 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   auto audio = arcane::AudioSystem::create(true);
   ARCANE_ASSERT_TRUE(audio.has_value());
   arcane::set_active_audio_system(&*audio);
+  arcane::GameContext context(ARCANE_SLICE_PROJECT_DIR, runtime->registry());
+  arcane::set_active_game_context(&context);
   arcane::PhysicsWorld physics;
   physics.rebuild(scene);
   arcane::InputActionMap input = runtime->session().project().input_actions;
@@ -66,6 +71,9 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
   auto* anim = static_cast<arcane::AnimatedSprite*>(player->find_component("AnimatedSprite"));
   auto* emitter = static_cast<arcane::ParticleEmitter*>(burst->find_component("ParticleEmitter"));
   ARCANE_ASSERT_TRUE(anim && emitter);
+  auto* animator = static_cast<arcane::Animator*>(player->find_component("Animator"));
+  auto* sprite = static_cast<arcane::Sprite*>(player->find_component("Sprite"));
+  ARCANE_ASSERT_TRUE(animator && sprite);
 
   for (int i = 0; i < steps; ++i) {
     keys.set_down(arcane::InputDevice::Keyboard, arcane::Keys::kD, true);
@@ -74,24 +82,25 @@ Outcome simulate(int steps, bool jump = true, bool spikes = true) {
     runtime->module_api()->on_update(kDt);
     scene.update(kDt);
     physics.step(scene, kDt);
-    out.saw_run_clip |= anim->clip == run_clip;
+    out.saw_run_clip |= anim->clip == run_clip && animator->state() == "run";
+    out.saw_flip |= !sprite->flip_x;
     out.saw_particles |= !emitter->particles().empty();
     ++out.steps_run;
   }
 
   out.player_x = player->world_transform().position.x;
   out.player_y = player->world_transform().position.y;
-  out.camera_x = camera->world_transform().position.x;
-  int texts = 0;
-  for (const auto& e : hud.elements()) {
-    if (const auto* t = std::get_if<arcane::HudText>(&e)) (texts++ == 0 ? out.score_text : out.banner_text) = t->text;
-    if (const auto* b = std::get_if<arcane::HudProgressBar>(&e)) out.health = b->fraction;
-  }
+  out.camera_x = static_cast<arcane::Camera2D*>(camera->find_component("Camera2D"))->view_center(800, 600).x;
+  ARCANE_ASSERT_TRUE(hud.find_text("score") && hud.find_text("banner") && hud.find_bar("health"));
+  out.score_text = hud.find_text("score")->text;
+  out.banner_text = hud.find_text("banner")->text;
+  out.health = hud.find_bar("health")->fraction;
   for (const auto& cmd : audio->commands()) {
     if (cmd.file.filename() == "coin.wav") ++out.coin_cues;
     if (cmd.file.filename() == "hurt.wav") ++out.hurt_cues;
   }
   arcane::set_active_input_map(nullptr);
+  arcane::set_active_game_context(nullptr);
   arcane::set_active_audio_system(nullptr);
   arcane::set_active_hud(nullptr);
   return out;
@@ -123,8 +132,10 @@ void test_play_simulation() {
   ARCANE_ASSERT_TRUE(a.score_text == "SCORE " + std::to_string(10 * a.coin_cues));
   ARCANE_ASSERT_TRUE(a.score_text != "SCORE 0");           // HUD score updated by gameplay
   ARCANE_ASSERT_TRUE(a.saw_run_clip);                      // animation clip switched to "run"
+  ARCANE_ASSERT_TRUE(a.saw_flip);                          // facing right: Sprite::flip_x false
   ARCANE_ASSERT_TRUE(a.saw_particles);                     // pickup burst
-  ARCANE_ASSERT_TRUE(a.camera_x >= 400.0f);
+  ARCANE_ASSERT_TRUE(a.camera_x >= 400.0f && a.camera_x <= 880.0f);  // Camera2D follows inside its 0..1280 bounds
+  ARCANE_ASSERT_TRUE(a.camera_x > 450.0f);                            // and actually left the start position
   ARCANE_ASSERT_TRUE(a.health >= 0.0f && a.health <= 1.0f);
 
   const Outcome b = simulate(600);  // fixed step + fixed seeds: identical result
@@ -141,7 +152,7 @@ void test_spikes_and_pit() {
   const Outcome fell = simulate(600, /*jump=*/false, /*spikes=*/false);
   ARCANE_ASSERT_TRUE(fell.health == 0.0f);
   ARCANE_ASSERT_TRUE(fell.banner_text == "GAME OVER");
-  ARCANE_ASSERT_TRUE(fell.hurt_cues == 1);
+  ARCANE_ASSERT_TRUE(fell.hurt_cues == 2);  // first fall respawns at the start, the second ends the game
 }
 
 }  // namespace

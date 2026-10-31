@@ -23,8 +23,9 @@ namespace arcane {
 class ARCANE_API Scene {
  public:
   Scene() = default;
-  Scene(Scene&&) noexcept = default;
-  Scene& operator=(Scene&&) noexcept = default;
+  // Moves re-point every node's scene() at the new owner.
+  Scene(Scene&& other) noexcept;
+  Scene& operator=(Scene&& other) noexcept;
   Scene(const Scene&) = delete;
   Scene& operator=(const Scene&) = delete;
 
@@ -71,6 +72,9 @@ class ARCANE_API Scene {
   // any destructions queued during the tick.
   void update(float fixed_dt);
 
+  // First live (not pending-destroy) node named `name`, depth-first, or nullptr.
+  Node* find_node_by_name(const std::string& name) const noexcept;
+
   const std::vector<std::unique_ptr<Node>>& roots() const noexcept { return roots_; }
 
   NodeId next_id() const noexcept { return next_id_; }
@@ -110,6 +114,7 @@ class ARCANE_API Scene {
 
   bool is_descendant_of(const Node* candidate, const Node* ancestor) const noexcept;
   void mark_pending_destroy(Node* node);
+  void adopt_nodes() noexcept;  // points every node's scene_ at this scene
   void collect_preorder(std::vector<Component*>& out) const;
   void collect_preorder(const std::unique_ptr<Node>& node, std::vector<Component*>& out) const;
   void unlink_and_destroy(std::unique_ptr<Node> node);

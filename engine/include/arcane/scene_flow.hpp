@@ -33,12 +33,21 @@ class ARCANE_API SceneManager {
 
   // Installs `scene` as the current one at once (startup).
   void set_scene(Scene scene);
+  // Same, recording `scene_path` as current_scene_path() (the file the scene
+  // came from) without loading anything.
+  void set_scene(Scene scene, std::string scene_path);
   // Null before the first set_scene/switch.
   Scene* scene() noexcept { return scene_.get(); }
 
   // Persistent nodes must be root nodes of the current scene. They survive
   // switches (the manager updates the node's ID; look it up again with
-  // find_persistent). Returns false for unknown or non-root nodes.
+  // find_persistent). Returns false for unknown or non-root nodes. Roots
+  // authored with `"persistent": true` (Node::persistent) are marked by
+  // set_scene and switch_now; set_persistent(id, false) also clears that flag
+  // so the node is not re-added. When a carried root and an authored
+  // persistent root of the incoming scene share a name, the incoming one is
+  // destroyed (the live object wins, like a DontDestroyOnLoad singleton);
+  // non-persistent incoming nodes with that name are kept.
   bool set_persistent(NodeId id, bool persistent);
   bool is_persistent(NodeId id) const { return persistent_.contains(id); }
   // Persistent root named `name` in the current scene, or nullptr.

@@ -1,15 +1,22 @@
 #pragma once
 
 #include <memory>
+#include <optional>
+#include <vector>
 
 #include "arcane/component.hpp"
 #include "arcane/export.hpp"
 #include "arcane/math2d.hpp"
+#include "arcane/node.hpp"
 
 namespace arcane {
 
 class ComponentRegistry;
 class Scene;
+
+// Highest layer index is 30 so a mask always fits a positive int.
+inline constexpr int kMaxCollisionLayers = 31;
+inline constexpr int kAllCollisionLayers = 0x7FFFFFFF;
 
 enum class BodyType { Static = 0, Kinematic = 1, Dynamic = 2 };
 enum class ColliderShapeType { Box = 0, Circle = 1 };
@@ -38,9 +45,15 @@ class ARCANE_API RigidBody2D : public Component {
   float drop_through_time = 0.0f;
   // Runtime-only: impulse queued by apply_impulse, consumed by the next PhysicsWorld::step.
   Vec2 pending_impulse{};
+  // Runtime-only: position queued by teleport, applied to the Box2D body at the start of the next step.
+  Vec2 pending_teleport{};
+  bool has_pending_teleport = false;
 
   // Overwrites the velocity (pixels/second); takes effect on the next step.
   void set_velocity(Vec2 velocity) noexcept { linear_velocity = velocity; }
+  // Moves the body (and its node, at once) to `position`, a scene-space point for a root node, and stops it.
+  // Safe to call from any hook: the Box2D body follows at the start of the next PhysicsWorld::step.
+  void teleport(Vec2 position) noexcept;
   // Queues an instantaneous impulse in pixel-mass units (px * kg / s, kg = density * shape area in m^2). It is
   // applied after the velocity push of the next step, so the velocity change is impulse / mass; impulses
   // accumulate until then. Static bodies and bodies without a Collider2D (zero mass) are unaffected.
@@ -64,9 +77,19 @@ class ARCANE_API Collider2D : public Component {
   float density = 1.0f;
   float friction = 0.6f;
   float restitution = 0.0f;
+  // A sensor reports overlaps (Component::on_trigger_enter/exit) but never pushes anything.
   bool is_sensor = false;
+  // Collision layer index 0..30 (names live in project.json "collision_layers") and the mask of layers this
+  // collider reacts to (bit i = layer i). Two colliders collide, or trigger, only if each one's mask has the
+  // other's layer. The defaults put everything on layer 0 colliding with everything.
+  int layer = 0;
+  int mask = kAllCollisionLayers;
   // One-way surfaces support bodies from above; intended for static, unrotated boxes.
   bool one_way = false;
+  // Mirror `offset` with the sibling Sprite's flip_x / flip_y (during Play the shape is rebuilt when a flag changes,
+  // which can report a touch exit/enter for contacts it was in). Box and circle shapes are symmetric, so only the
+  // offset moves.
+  bool mirror_with_sprite = false;
 };
 
 ARCANE_API void register_physics_components(ComponentRegistry& registry);
@@ -95,9 +118,25 @@ class ARCANE_API PhysicsWorld {
   // Pushes RigidBody2D::linear_velocity to each body, steps the simulation
   // by `fixed_dt`, pulls resulting position/rotation/velocity back into the
   // owning node's Transform2D and RigidBody2D, and dispatches
-  // Component::on_contact_begin/on_contact_end for shapes that started or
-  // stopped touching this step.
+  // the Component collision and trigger hooks (see component.hpp) for the
+  // shapes that started or stopped touching or overlapping this step.
   void step(Scene& scene, float fixed_dt);
+
+  // Spatial queries in scene pixels against the shapes built by rebuild/step. `layers` is a bit mask of collision
+  // layers (bit i = layer i) a hit must be on; sensors are never hit. Results name nodes by id (Scene::find_node);
+  // lists are sorted by id so they are deterministic.
+  struct RayHit {
+    NodeId node = 0;
+    Vec2 point{};
+    Vec2 normal{};
+    float fraction = 0.0f;  // 0..1 along origin -> end
+    float distance = 0.0f;  // pixels from origin
+  };
+  // Closest solid shape on the segment origin -> end.
+  std::optional<RayHit> raycast(Vec2 origin, Vec2 end, int layers = kAllCollisionLayers) const;
+  // Nodes with a shape overlapping the rectangle [min, max], or containing `point`.
+  std::vector<NodeId> overlap_aabb(Vec2 min, Vec2 max, int layers = kAllCollisionLayers) const;
+  std::vector<NodeId> overlap_point(Vec2 point, int layers = kAllCollisionLayers) const;
 
   // Number of Box2D bodies currently in the world.
   int body_count() const noexcept;

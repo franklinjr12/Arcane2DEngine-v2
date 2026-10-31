@@ -109,6 +109,8 @@ add_library(arcane_runtime SHARED
   engine/src/renderer.cpp
   engine/src/node.cpp
   engine/src/scene.cpp
+  engine/src/assets.cpp
+  engine/src/game_context.cpp
   engine/src/scene_io.cpp
   engine/src/prefab.cpp
   engine/src/component_registry.cpp
@@ -121,6 +123,7 @@ add_library(arcane_runtime SHARED
   engine/src/platformer.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
+  engine/src/animgraph.cpp
   engine/src/tween.cpp
   engine/src/atlas.cpp
   engine/src/save_game.cpp
@@ -150,7 +153,6 @@ set_target_properties(arcane_runtime PROPERTIES
 # --- editor core (testable, no GUI deps) ------------------------------------
 add_library(arcane_editor_core STATIC
   editor/editor_core/src/project_session.cpp
-  editor/editor_core/src/asset_catalog.cpp
   editor/editor_core/src/project_runtime.cpp
   editor/editor_core/src/scene_render.cpp
   editor/editor_core/src/tile_paint.cpp
@@ -169,6 +171,7 @@ add_library(arcane_tooling STATIC
   tooling/src/offline.cpp
   tooling/src/asset_commands.cpp
   tooling/src/run_commands.cpp
+  tooling/src/render_commands.cpp
   tooling/src/export_commands.cpp
   tooling/src/cli.cpp
   tooling/src/all_commands.cpp
@@ -188,6 +191,7 @@ add_library(arcane_tooling STATIC
   tooling/src/hud_commands.cpp
   tooling/src/input_commands.cpp
   tooling/src/clip_commands.cpp
+  tooling/src/animgraph_commands.cpp
   tooling/src/project_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
