@@ -181,8 +181,10 @@ class ARCANE_API HudInput {
   HudInput() = default;
 
   // Pointer position is offset by `origin` (e.g. the editor viewport's
-  // top-left) before hit-testing in HUD pixels.
-  void update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin = {});
+  // top-left) and multiplied by `pointer_scale` before hit-testing in HUD
+  // pixels (a letterboxed view: see pointer_mapping in display.hpp).
+  void update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin = {},
+              Vec2 pointer_scale = {1.0f, 1.0f});
 
   // Valid until the next update() (or until this HudInput is moved/copied).
   const InputBackend& gameplay_backend() const noexcept { return masked_; }

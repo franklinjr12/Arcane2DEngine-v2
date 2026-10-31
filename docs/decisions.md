@@ -242,3 +242,19 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
   Saves are enabled only in the windowed player (not with `--replay`) and editor Play; `run_fixed_frames`,
   headless, `arcane run/test` and replays leave them disabled so they never write into the user's save folder.
 - `Hud::remove(id)` / `contains(id)`; `HudInput` drops focus/press/hover indices that fall out of range.
+
+### GP6: design resolution and window resize (ENG-026)
+
+- `compute_display_viewport` (`display.hpp`, pure math) gives a framebuffer rectangle plus logical size; the
+  player recomputes it every frame from the current framebuffer, which is the whole resize handling (the GLFW
+  window was already resizable). Letterbox rounds to an integer rect, so the logical-to-framebuffer scale can be
+  off by under half a pixel; pointer mapping uses the exact rect, not the design aspect.
+- `SpriteRenderer::begin_frame(fb_w, fb_h, viewport, clear)` clears the full framebuffer black, then scissors to
+  the rectangle, so sprites and the HUD never draw into the bars. The existing `begin_frame(w, h, color)` is
+  unchanged apart from disabling the scissor test; `render_scene` takes an optional `DisplayViewport*`.
+- `HudInput::update` gets an extra `pointer_scale` (logical = (pointer - origin) * scale); `pointer_mapping`
+  derives origin/scale from the viewport and the framebuffer/window ratio (`Window::window_size`), covering HiDPI.
+- The player opens the project before creating the window so it can use the design size; a project error is
+  therefore reported before a missing display (exit 1 instead of 77).
+- Gap: the editor Play viewport is an ImGui-embedded offscreen texture sized to the panel with its own origin
+  mapping, so it still plays at the panel size and ignores `display`; letterboxing it is left for a later step.

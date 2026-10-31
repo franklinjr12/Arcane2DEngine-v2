@@ -415,7 +415,8 @@ void HudInput::mask_all(const std::vector<InputBinding>& bindings) {
   for (const InputBinding& b : bindings) masked_.mask(b.device, b.code);
 }
 
-void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin) {
+void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin,
+                      Vec2 pointer_scale) {
   hud.clicks_.clear();
   masked_ = MaskedInputBackend(backend);
   pointer_consumed_ = false;
@@ -430,7 +431,7 @@ void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, i
 
   // Hit-test (topmost = last drawn wins).
   const Vec2 mouse = backend.mouse_position();
-  const float px = mouse.x - origin.x, py = mouse.y - origin.y;
+  const float px = (mouse.x - origin.x) * pointer_scale.x, py = (mouse.y - origin.y) * pointer_scale.y;
   int hovered = -1;
   for (int i = 0; i < count; ++i) {
     const HudButton* b = button_at(i);

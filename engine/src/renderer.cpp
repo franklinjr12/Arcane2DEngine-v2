@@ -1,5 +1,7 @@
 #include "arcane/renderer.hpp"
 
+#include "arcane/display.hpp"
+
 #include <glad/gl.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -300,7 +302,27 @@ void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, 
   impl_->batch_texture = nullptr;
   impl_->vertices.clear();
   impl_->indices.clear();
+  glDisable(GL_SCISSOR_TEST);
   glViewport(0, 0, framebuffer_width, framebuffer_height);
+  glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, const DisplayViewport& viewport,
+                                 const Color& clear_color) {
+  impl_->fb_width = viewport.logical_width;
+  impl_->fb_height = viewport.logical_height;
+  impl_->stats = RenderStats{};
+  impl_->batch_texture = nullptr;
+  impl_->vertices.clear();
+  impl_->indices.clear();
+  glDisable(GL_SCISSOR_TEST);
+  glViewport(0, 0, framebuffer_width, framebuffer_height);
+  glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  glViewport(viewport.x, viewport.y, viewport.width, viewport.height);
+  glEnable(GL_SCISSOR_TEST);  // sprites and the HUD never bleed into the bars
+  glScissor(viewport.x, viewport.y, viewport.width, viewport.height);
   glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }

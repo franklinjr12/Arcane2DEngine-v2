@@ -140,7 +140,12 @@ void restart_particles(Scene& scene) {
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera,
-                   AtlasCache* atlases) {
+                   AtlasCache* atlases, const DisplayViewport* viewport) {
+  const int fb_width = width, fb_height = height;
+  if (viewport) {
+    width = viewport->logical_width;
+    height = viewport->logical_height;
+  }
   CameraView cam = find_primary_camera(scene);
   bool found = false;
   if (runtime_camera) visit_scene_preorder(scene, [&](Node* node) {
@@ -154,7 +159,9 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
   const float cam_x = cam.x, cam_y = cam.y, cam_zoom = cam.zoom;
 
   renderer.set_camera(cam_x, cam_y, cam_zoom);
-  renderer.begin_frame(width, height, Color{0.12f, 0.12f, 0.16f, 1.0f});
+  const Color clear{0.12f, 0.12f, 0.16f, 1.0f};
+  if (viewport) renderer.begin_frame(fb_width, fb_height, *viewport, clear);
+  else renderer.begin_frame(width, height, clear);
 
   visit_scene_preorder(scene, [&](Node* node) {
     if (tilesets) {

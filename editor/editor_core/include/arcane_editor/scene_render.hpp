@@ -9,6 +9,7 @@
 
 #include "arcane/animation.hpp"
 #include "arcane/atlas.hpp"
+#include "arcane/display.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/particles.hpp"
 #include "arcane/renderer.hpp"
@@ -240,11 +241,15 @@ void restart_particles(Scene& scene);
 // Every ParticleEmitter is drawn (before the node's own Sprite, so the sprite covers them) as one sprite-batch quad per particle (texture or
 // white square, color/size lerped over life).
 //
+// With `viewport` the game is drawn letterboxed into that rectangle of the
+// framebuffer (`width` x `height` are then the framebuffer size, the camera and
+// HUD use the viewport's logical size); null = the whole `width` x `height`.
+//
 // If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
 // space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
                    const Hud* hud = nullptr, TilesetCache* tilesets = nullptr, bool runtime_camera = true,
-                   AtlasCache* atlases = nullptr);
+                   AtlasCache* atlases = nullptr, const DisplayViewport* viewport = nullptr);
 
 }  // namespace arcane::editor

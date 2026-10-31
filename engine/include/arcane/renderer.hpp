@@ -11,6 +11,8 @@
 
 namespace arcane {
 
+struct DisplayViewport;  // display.hpp
+
 struct Color {
   float r = 1.0f, g = 1.0f, b = 1.0f, a = 1.0f;
   friend bool operator==(const Color&, const Color&) = default;
@@ -87,6 +89,11 @@ class ARCANE_API SpriteRenderer {
   void set_camera(float x, float y, float zoom = 1.0f);
 
   void begin_frame(int framebuffer_width, int framebuffer_height, const Color& clear_color);
+  // Letterboxed frame: clears the whole framebuffer (`framebuffer_width` x
+  // `framebuffer_height`) to black, then restricts drawing to the viewport
+  // rectangle, clears it to `clear_color` and projects with the logical size.
+  void begin_frame(int framebuffer_width, int framebuffer_height, const DisplayViewport& viewport,
+                   const Color& clear_color);
   void draw(const SpriteDraw& sprite);
   // Draws everything batched so far (using the current camera). Lets callers
   // change the camera mid-frame, e.g. world pass then screen-space HUD pass.

@@ -1051,7 +1051,7 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 
 ### `arcane render`
 
-Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
+Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default: the project's display design resolution, else 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
 
 Writes files; honors `--dry-run`.
 

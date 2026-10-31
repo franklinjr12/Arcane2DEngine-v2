@@ -1,5 +1,6 @@
 #include <string>
 
+#include "arcane/display.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "test_assert.hpp"
@@ -231,6 +232,35 @@ void test_project_carries_hud() {
 
 }  // namespace
 
+// A letterboxed 1280x720 design view in a 2000x1200 framebuffer shown in a 1000x600 window (HiDPI ratio 2):
+// the pointer is mapped into design pixels so the centred button is hit at the window centre, not elsewhere.
+void test_click_through_letterbox_mapping() {
+  Fixture f;
+  DisplayConfig display;
+  display.design_width = 1280;
+  display.design_height = 720;
+  const DisplayViewport vp = compute_display_viewport(2000, 1200, display);
+  const PointerMapping map = pointer_mapping(vp, 1200, {2.0f, 2.0f});
+  auto frame = [&] {
+    f.input.update(f.hud, f.backend, vp.logical_width, vp.logical_height, map.origin, map.scale);
+    f.actions.update(f.input.gameplay_backend());
+  };
+  f.backend.set_mouse_position({500.0f, 290.0f});  // near the window centre
+  f.backend.set_down(InputDevice::MouseButton, MouseButtons::kLeft, true);
+  frame();
+  f.backend.set_down(InputDevice::MouseButton, MouseButtons::kLeft, false);
+  frame();
+  ARCANE_ASSERT_TRUE(f.clicked.size() == 1 && f.clicked[0] == "start");
+
+  f.clicked.clear();
+  f.backend.set_mouse_position({100.0f, 50.0f});  // far from the button
+  f.backend.set_down(InputDevice::MouseButton, MouseButtons::kLeft, true);
+  frame();
+  f.backend.set_down(InputDevice::MouseButton, MouseButtons::kLeft, false);
+  frame();
+  ARCANE_ASSERT_TRUE(f.clicked.empty());
+}
+
 int main() {
   test_hit_test_scales_with_height();
   test_state_transitions_and_click();
@@ -240,6 +270,7 @@ int main() {
   test_gamepad_confirm_navigation_and_consumption();
   test_navigation_skips_disabled();
   test_removal_resets_stale_focus();
+  test_click_through_letterbox_mapping();
   test_json_round_trip();
   test_project_carries_hud();
   return 0;

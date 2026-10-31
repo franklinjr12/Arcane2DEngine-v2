@@ -134,6 +134,7 @@ add_library(arcane_runtime SHARED
   engine/src/scene_flow.cpp
   engine/src/audio.cpp
   engine/src/hud.cpp
+  engine/src/display.cpp
   engine/src/text.cpp
   engine/src/font_data.cpp
   engine/src/tilemap.cpp

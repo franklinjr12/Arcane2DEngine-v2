@@ -54,8 +54,12 @@ Result render(const OfflineEnv& env, const Json& args, bool dry_run) {
     compare = args["compare"].get<std::string>();
     if (auto ok = offline_check_path(compare, "compare"); !ok) return std::unexpected(ok.error());
   }
-  auto size = parse_size(args.value("size", "320x180"));
-  if (!size) return std::unexpected(size.error());
+  std::optional<std::pair<int, int>> explicit_size;
+  if (args.contains("size")) {
+    auto parsed = parse_size(args["size"].get<std::string>());
+    if (!parsed) return std::unexpected(parsed.error());
+    explicit_size = *parsed;
+  }
   std::vector<ImageMaskRect> masks;
   if (args.contains("mask")) {
     for (const auto& r : args["mask"]) masks.push_back({r[0].get<int>(), r[1].get<int>(), r[2].get<int>(), r[3].get<int>()});
@@ -72,6 +76,11 @@ Result render(const OfflineEnv& env, const Json& args, bool dry_run) {
     camera = *node;
   }
   const NodeId camera_id = camera ? camera->id() : 0;
+  // Explicit --size wins, then the project's design resolution, then 320x180. The image is the logical view (no bars).
+  const DisplayConfig& display = (*context)->session().project().display;
+  const bool has_design = display.design_width > 0 && display.design_height > 0;
+  const auto size = std::optional<std::pair<int, int>>(
+      explicit_size ? *explicit_size : has_design ? std::pair{display.design_width, display.design_height} : std::pair{320, 180});
 
   // GL context first: without one nothing else is worth doing. The window outlives every GL object below.
   auto window = Window::create({.width = 64, .height = 64, .title = "arcane render", .vsync = false, .hidden = true});
@@ -153,7 +162,7 @@ std::vector<OfflineCommand> make_render_commands() {
   c.push_back({{"render",
                 "Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy "
                 "(module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, "
-                "size is WxH (default 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists "
+                "size is WxH (default: the project's display design resolution, else 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists "
                 "[x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). "
                 "The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.",
                 offline_object_schema({{"output", kStr},

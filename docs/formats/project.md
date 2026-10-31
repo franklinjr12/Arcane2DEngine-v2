@@ -59,6 +59,14 @@ resolution, the view is the window) or both within 16..8192. `scale_mode` (`"let
 says how the design view is fitted to a resized window. Edit with `display.get` / `display.set`. Unknown fields
 are errors; the section is omitted when all values are the defaults.
 
+Runtime behaviour: with a design resolution the player opens its (resizable) window at that size and every frame
+fits the design view into the current framebuffer. `letterbox` uses the largest uniform scale, centred, with black
+bars; `stretch` fills the framebuffer with a non-uniform scale. Game code (`GameContext::viewport_size()`), the
+camera, the HUD layout and the pointer all use design pixels, so a HUD button is clicked where it is drawn at any
+window size or HiDPI ratio. A minimised window (0x0 framebuffer) is not rendered. `arcane_player --headless`,
+`arcane run/test` and `arcane render` use the design size as the logical view (`render` defaults `--size` to it
+and renders without bars; an explicit `--size` wins). Without a design size nothing changes: the view is the window.
+
 ### `save`
 
 ```json
