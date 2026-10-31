@@ -28,6 +28,13 @@ WorldTransform2D Node::world_transform() const noexcept {
   return compose(parent_->world_transform(), local_);
 }
 
+bool Node::active_in_hierarchy() const noexcept {
+  for (const Node* node = this; node; node = node->parent_) {
+    if (!node->active_) return false;
+  }
+  return true;
+}
+
 Component* Node::find_component(std::string_view type_name) const noexcept {
   for (const auto& component : components_) {
     if (component->type_name() == type_name) {

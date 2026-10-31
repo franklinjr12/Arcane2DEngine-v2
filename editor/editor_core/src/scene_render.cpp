@@ -13,7 +13,9 @@ namespace arcane::editor {
 
 namespace {
 
+// Skips inactive subtrees (Node::active, runtime-only), so pooled instances are neither drawn nor found as cameras.
 void visit_preorder(Node* node, const std::function<void(Node*)>& visit) {
+  if (!node->active()) return;
   visit(node);
   for (const auto& child : node->children()) {
     visit_preorder(child.get(), visit);

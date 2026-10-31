@@ -1,4 +1,11 @@
 {
+  "collision_layers": [
+    "world",
+    "player",
+    "enemy",
+    "player_attack",
+    "enemy_attack"
+  ],
   "format": "arcane.project",
   "hud": {
     "elements": [
@@ -86,6 +93,15 @@
           }
         ],
         "name": "down"
+      },
+      {
+        "bindings": [
+          {
+            "code": 32,
+            "device": "keyboard"
+          }
+        ],
+        "name": "fire"
       }
     ],
     "format": "arcane.input",

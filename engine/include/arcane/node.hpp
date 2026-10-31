@@ -95,6 +95,14 @@ class ARCANE_API Node {
   // destruction; the node still physically exists until the next flush.
   bool pending_destroy() const noexcept { return pending_destroy_; }
 
+  // Runtime-only enable flag (never serialized, true for new nodes). An inactive node and its subtree get no
+  // on_start/on_update, are not drawn, and their physics bodies are disabled (no contacts, triggers or query
+  // hits). Used by object pools (Spawner2D) to park instances.
+  bool active() const noexcept { return active_; }
+  void set_active(bool active) noexcept { active_ = active; }
+  // False if this node or any ancestor is inactive.
+  bool active_in_hierarchy() const noexcept;
+
  private:
   friend class Scene;
 
@@ -113,6 +121,7 @@ class ARCANE_API Node {
   std::optional<PrefabLink> prefab_link_;
   bool persistent_ = false;
   bool pending_destroy_ = false;
+  bool active_ = true;
 };
 
 }  // namespace arcane

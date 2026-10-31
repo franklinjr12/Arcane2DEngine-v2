@@ -257,7 +257,7 @@ void Scene::flush_destroyed() {
 }
 
 void Scene::collect_preorder(const std::unique_ptr<Node>& node, std::vector<Component*>& out) const {
-  if (node->pending_destroy_) {
+  if (node->pending_destroy_ || !node->active_) {
     return;
   }
   for (auto& component : node->components_) {
@@ -278,8 +278,8 @@ void Scene::update(float fixed_dt) {
   std::vector<Component*> live;
   collect_preorder(live);
   for (Component* component : live) {
-    if (component->node()->pending_destroy()) {
-      continue;  // destroyed earlier in this same tick, by an on_update above
+    if (component->node()->pending_destroy() || !component->node()->active_in_hierarchy()) {
+      continue;  // destroyed or deactivated earlier in this same tick, by an on_update above
     }
     if (!component->started_) {
       component->started_ = true;
@@ -288,7 +288,8 @@ void Scene::update(float fixed_dt) {
     component->on_update(fixed_dt);
   }
   for (Component* component : live) {
-    if (!component->node()->pending_destroy() && component->type_name() == "Camera2D")
+    if (!component->node()->pending_destroy() && component->node()->active_in_hierarchy() &&
+        component->type_name() == "Camera2D")
       static_cast<Camera2D*>(component)->advance(*this, fixed_dt);
   }
   flush_destroyed();
