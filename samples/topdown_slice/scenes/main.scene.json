@@ -1,15 +1,20 @@
 {
   "format": "arcane.scene",
-  "next_id": 40,
+  "next_id": 44,
   "nodes": [
     {
       "components": [
         {
           "id": 2,
           "properties": {
+            "base_enemies": 3,
             "bullet_speed": 360.0,
+            "enemies_per_wave": 2,
             "enemy_speed": 65.0,
-            "player_speed": 120.0
+            "intermission": 3.0,
+            "player_speed": 120.0,
+            "spawn_seed": 12345,
+            "wave_duration": 20.0
           },
           "type": "ArenaRules"
         }
@@ -93,7 +98,7 @@
             "height": 24.0,
             "is_sensor": false,
             "layer": 1,
-            "mask": 23,
+            "mask": 55,
             "mirror_with_sprite": false,
             "offset": [
               0.0,
@@ -576,125 +581,6 @@
     {
       "components": [
         {
-          "id": 31,
-          "properties": {
-            "atlas": 0,
-            "flip_x": false,
-            "flip_y": false,
-            "height": 24.0,
-            "region": "",
-            "texture": 1617945095526466553,
-            "tint": [
-              1.0,
-              0.2,
-              0.2,
-              1.0
-            ],
-            "width": 24.0
-          },
-          "type": "Sprite"
-        },
-        {
-          "id": 32,
-          "properties": {
-            "body_type": 2,
-            "fixed_rotation": true,
-            "gravity_scale": 0.0,
-            "linear_velocity": [
-              0.0,
-              0.0
-            ]
-          },
-          "type": "RigidBody2D"
-        },
-        {
-          "id": 33,
-          "properties": {
-            "density": 1.0,
-            "friction": 0.0,
-            "height": 24.0,
-            "is_sensor": false,
-            "layer": 2,
-            "mask": 11,
-            "mirror_with_sprite": false,
-            "offset": [
-              0.0,
-              0.0
-            ],
-            "one_way": false,
-            "radius": 16.0,
-            "restitution": 0.0,
-            "shape_type": 0,
-            "width": 24.0
-          },
-          "type": "Collider2D"
-        },
-        {
-          "id": 34,
-          "properties": {
-            "allow_diagonal": true,
-            "behavior": 0,
-            "max_acceleration": 600.0,
-            "max_speed": 65.0,
-            "repath_interval": 0.5,
-            "slow_radius": 48.0,
-            "stop_distance": 4.0,
-            "target": "Player",
-            "tilemap": "",
-            "use_pathfinding": true
-          },
-          "type": "SteeringAgent2D"
-        },
-        {
-          "id": 35,
-          "properties": {
-            "destroy_on_death": true,
-            "invulnerability_time": 0.5,
-            "max_health": 3.0,
-            "release_on_death": true
-          },
-          "type": "Health"
-        },
-        {
-          "id": 36,
-          "properties": {
-            "damage_multiplier": 1.0,
-            "health_node": ""
-          },
-          "type": "Hurtbox"
-        },
-        {
-          "id": 37,
-          "properties": {
-            "active": true,
-            "damage": 1.0,
-            "ignore_own_hierarchy": true,
-            "rehit_interval": 0.5
-          },
-          "type": "Hitbox"
-        }
-      ],
-      "id": 30,
-      "name": "Enemy",
-      "parent_id": 1,
-      "position": [
-        450.0,
-        240.0
-      ],
-      "prefab": {
-        "asset": "assets/enemy.prefab.json",
-        "instance_id": 30,
-        "local_id": 1
-      },
-      "rotation_radians": 0.0,
-      "scale": [
-        1.0,
-        1.0
-      ]
-    },
-    {
-      "components": [
-        {
           "id": 39,
           "properties": {
             "auto_start": true,
@@ -714,6 +600,72 @@
       ],
       "id": 38,
       "name": "BulletSpawner",
+      "parent_id": 1,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 41,
+          "properties": {
+            "auto_start": false,
+            "grow": true,
+            "interval": 0.0,
+            "max_alive": 24,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "prefab": "assets/enemy.prefab.json",
+            "prewarm": 8,
+            "spawn_as_root": true
+          },
+          "type": "Spawner2D"
+        }
+      ],
+      "id": 40,
+      "name": "EnemySpawner",
+      "parent_id": 1,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 43,
+          "properties": {
+            "auto_start": false,
+            "grow": true,
+            "interval": 0.0,
+            "max_alive": 32,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "prefab": "assets/coin.prefab.json",
+            "prewarm": 8,
+            "spawn_as_root": true
+          },
+          "type": "Spawner2D"
+        }
+      ],
+      "id": 42,
+      "name": "CoinSpawner",
       "parent_id": 1,
       "position": [
         0.0,
