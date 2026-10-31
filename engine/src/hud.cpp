@@ -116,13 +116,14 @@ using nlohmann::json;
 
 json color_to_json(const Color& c) { return json::array({c.r, c.g, c.b, c.a}); }
 
-HudAnchor anchor_from_json(const json& j, HudAnchor fallback) {
+HudAnchor anchor_from_json(const json& j, HudAnchor fallback, const std::string& where) {
   if (!j.contains("anchor")) return fallback;
-  const std::string name = canonical::as_string(j["anchor"], "HUD 'anchor'");
+  const std::string anchor_ptr = canonical::pointer_child(where, "anchor");
+  const std::string name = canonical::as_string(j["anchor"], anchor_ptr);
   for (size_t i = 0; i < kAnchorNames.size(); ++i) {
     if (name == kAnchorNames[i]) return static_cast<HudAnchor>(i);
   }
-  canonical::fail(std::format("unknown HUD anchor '{}'", name));
+  canonical::fail(std::format("{}: unknown HUD anchor '{}'", anchor_ptr, name));
 }
 
 void put_layout(json& j, HudAnchor anchor, float ox, float oy) {
@@ -132,20 +133,20 @@ void put_layout(json& j, HudAnchor anchor, float ox, float oy) {
 
 void get_offset(const json& j, float& ox, float& oy, const std::string& where) {
   if (!j.contains("offset")) return;
-  const Vec2 v = canonical::as_vec2(j["offset"], where + " 'offset'");
+  const Vec2 v = canonical::as_vec2(j["offset"], canonical::pointer_child(where, "offset"));
   ox = v.x;
   oy = v.y;
 }
 
 void get_size(const json& j, float& w, float& h, const std::string& where) {
   if (!j.contains("size")) return;
-  const Vec2 v = canonical::as_vec2(j["size"], where + " 'size'");
+  const Vec2 v = canonical::as_vec2(j["size"], canonical::pointer_child(where, "size"));
   w = v.x;
   h = v.y;
 }
 
 void get_color(const json& j, const char* key, Color& out, const std::string& where) {
-  if (j.contains(key)) out = canonical::as_color(j[key], where + " '" + key + "'");
+  if (j.contains(key)) out = canonical::as_color(j[key], canonical::pointer_child(where, key));
 }
 
 std::string& element_id(HudElement& element) {
@@ -163,46 +164,46 @@ const char* element_kind(const HudElement& element) {
 
 std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_unknown) {
   auto parsed = canonical::parse_strict(text);
-  if (!parsed) return std::unexpected(std::format("malformed HUD JSON: {}", parsed.error()));
+  if (!parsed) return std::unexpected(canonical::at_root("malformed HUD JSON: " + parsed.error()));
   try {
     const json& root = *parsed;
-    canonical::require_object(root, "HUD");
-    const canonical::Dialect dialect = canonical::detect_dialect(root, kHudFormat, "HUD");
+    canonical::require_object(root, "#");
+    const canonical::Dialect dialect = canonical::detect_dialect(root, kHudFormat, "#");
     const bool v2 = dialect == canonical::Dialect::V2;
     const bool strict = strict_unknown || v2;
     if (strict) {
       if (v2) {
-        canonical::require_only_keys(root, {"format", "version", "elements"}, "HUD");
+        canonical::require_only_keys(root, {"format", "version", "elements"}, "#");
       } else {
-        canonical::require_only_keys(root, {"format_version", "elements"}, "HUD");
+        canonical::require_only_keys(root, {"format_version", "elements"}, "#");
       }
     }
     Hud hud;
     if (!root.contains("elements")) return hud;
-    if (!root["elements"].is_array()) return std::unexpected(std::string("HUD: 'elements' must be an array"));
+    if (!root["elements"].is_array()) return std::unexpected(std::string("#/elements: expected an array"));
     std::unordered_set<std::string> seen_ids;
     for (std::size_t i = 0; i < root["elements"].size(); ++i) {
       const json& j = root["elements"][i];
-      const std::string where = std::format("HUD element {}", i);
+      const std::string where = canonical::pointer_child("#/elements", i);
       canonical::require_object(j, where);
-      const std::string type = j.contains("type") ? canonical::as_string(j["type"], where + " 'type'") : std::string();
+      const std::string type = j.contains("type") ? canonical::as_string(j["type"], canonical::pointer_child(where, "type")) : std::string();
       std::string id;
-      if (j.contains("id")) id = canonical::as_string(j["id"], where + " 'id'");
-      if (v2 && id.empty()) return std::unexpected(std::format("HUD: {} needs a non-empty 'id'", where));
+      if (j.contains("id")) id = canonical::as_string(j["id"], canonical::pointer_child(where, "id"));
+      if (v2 && id.empty()) return std::unexpected(std::format("{}: HUD element needs a non-empty 'id'", canonical::pointer_child(where, "id")));
       if (strict && !id.empty() && !seen_ids.insert(id).second) {
-        return std::unexpected(std::format("HUD: duplicate element id '{}'", id));
+        return std::unexpected(std::format("{}: duplicate element id '{}'", canonical::pointer_child(where, "id"), id));
       }
-      const HudAnchor anchor = anchor_from_json(j, HudAnchor::TopLeft);
+      const HudAnchor anchor = anchor_from_json(j, HudAnchor::TopLeft, where);
       if (type == "text") {
         if (strict) {
           canonical::require_only_keys(j, {"type", "id", "text", "anchor", "offset", "font_scale", "color"}, where);
         }
         HudText t;
         t.id = id;
-        if (j.contains("text")) t.text = canonical::as_string(j["text"], where + " 'text'");
+        if (j.contains("text")) t.text = canonical::as_string(j["text"], canonical::pointer_child(where, "text"));
         t.anchor = anchor;
         get_offset(j, t.offset_x, t.offset_y, where);
-        if (j.contains("font_scale")) t.font_scale = canonical::as_float(j["font_scale"], where + " 'font_scale'");
+        if (j.contains("font_scale")) t.font_scale = canonical::as_float(j["font_scale"], canonical::pointer_child(where, "font_scale"));
         get_color(j, "color", t.color, where);
         hud.add(std::move(t));
       } else if (type == "image") {
@@ -211,13 +212,14 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
         }
         HudImage image;
         image.id = id;
-        if (j.contains("asset")) image.texture_asset = canonical::as_uint(j["asset"], where + " 'asset'");
+        if (j.contains("asset")) image.texture_asset = canonical::as_uint(j["asset"], canonical::pointer_child(where, "asset"));
         if (j.contains("uv")) {
+          const std::string uv_ptr = canonical::pointer_child(where, "uv");
           if (!j["uv"].is_array() || j["uv"].size() != 4) {
-            return std::unexpected(std::format("HUD: {} 'uv' must be an array of 4 numbers", where));
+            return std::unexpected(std::format("{}: expected an array of 4 numbers", canonical::pointer_child(where, "uv")));
           }
-          image.uv = UvRect{canonical::as_float(j["uv"][0], where), canonical::as_float(j["uv"][1], where),
-                            canonical::as_float(j["uv"][2], where), canonical::as_float(j["uv"][3], where)};
+          image.uv = UvRect{canonical::as_float(j["uv"][0], canonical::pointer_child(uv_ptr, 0)), canonical::as_float(j["uv"][1], canonical::pointer_child(uv_ptr, 1)),
+                            canonical::as_float(j["uv"][2], canonical::pointer_child(uv_ptr, 2)), canonical::as_float(j["uv"][3], canonical::pointer_child(uv_ptr, 3))};
         }
         image.anchor = anchor;
         get_offset(j, image.offset_x, image.offset_y, where);
@@ -234,7 +236,7 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
         bar.anchor = anchor;
         get_offset(j, bar.offset_x, bar.offset_y, where);
         get_size(j, bar.width, bar.height, where);
-        if (j.contains("fraction")) bar.fraction = canonical::as_float(j["fraction"], where + " 'fraction'");
+        if (j.contains("fraction")) bar.fraction = canonical::as_float(j["fraction"], canonical::pointer_child(where, "fraction"));
         get_color(j, "fill", bar.fill, where);
         get_color(j, "background", bar.background, where);
         hud.add(std::move(bar));
@@ -247,12 +249,12 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
         }
         HudButton b;
         b.id = id;
-        if (j.contains("label")) b.label = canonical::as_string(j["label"], where + " 'label'");
+        if (j.contains("label")) b.label = canonical::as_string(j["label"], canonical::pointer_child(where, "label"));
         b.anchor = j.contains("anchor") ? anchor : HudAnchor::Center;
         get_offset(j, b.offset_x, b.offset_y, where);
         get_size(j, b.width, b.height, where);
-        if (j.contains("font_scale")) b.font_scale = canonical::as_float(j["font_scale"], where + " 'font_scale'");
-        if (j.contains("enabled")) b.enabled = canonical::as_bool(j["enabled"], where + " 'enabled'");
+        if (j.contains("font_scale")) b.font_scale = canonical::as_float(j["font_scale"], canonical::pointer_child(where, "font_scale"));
+        if (j.contains("enabled")) b.enabled = canonical::as_bool(j["enabled"], canonical::pointer_child(where, "enabled"));
         get_color(j, "normal", b.normal, where);
         get_color(j, "hover", b.hover, where);
         get_color(j, "pressed", b.pressed, where);
@@ -260,7 +262,7 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
         get_color(j, "text_color", b.text_color, where);
         hud.add(std::move(b));
       } else {
-        return std::unexpected(std::format("unknown HUD element type '{}'", type));
+        return std::unexpected(std::format("{}: unknown HUD element type '{}'", canonical::pointer_child(where, "type"), type));
       }
     }
     // Legacy files have no ids on text/bars (and maybe on buttons): assign
@@ -268,7 +270,7 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
     if (!v2) hud.ensure_unique_ids();
     return hud;
   } catch (const canonical::SchemaError& ex) {
-    return std::unexpected(std::format("HUD: {}", ex.what()));
+    return std::unexpected(std::string(ex.what()));
   }
 }
 }  // namespace

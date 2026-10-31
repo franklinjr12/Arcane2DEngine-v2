@@ -47,14 +47,14 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
       auto input_actions = strict ? InputActionMap::load_from_json_strict(root["input_actions"].dump())
                                   : InputActionMap::load_from_json(root["input_actions"].dump());
       if (!input_actions) {
-        return std::unexpected(input_actions.error());
+        return std::unexpected(canonical::rebase_error("/input_actions", input_actions.error()));
       }
       project.input_actions = std::move(*input_actions);
     }
     if (root.contains("hud")) {
       auto hud = strict ? Hud::load_from_json_strict(root["hud"].dump()) : Hud::load_from_json(root["hud"].dump());
       if (!hud) {
-        return std::unexpected(hud.error());
+        return std::unexpected(canonical::rebase_error("/hud", hud.error()));
       }
       project.hud = std::move(*hud);
     }
