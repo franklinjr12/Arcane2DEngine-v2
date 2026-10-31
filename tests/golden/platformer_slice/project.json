@@ -148,6 +148,19 @@
           }
         ],
         "name": "jump"
+      },
+      {
+        "bindings": [
+          {
+            "code": 80,
+            "device": "keyboard"
+          },
+          {
+            "code": 256,
+            "device": "keyboard"
+          }
+        ],
+        "name": "pause"
       }
     ],
     "format": "arcane.input",
