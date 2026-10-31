@@ -2,7 +2,7 @@
 // Minimal JSON Schema (draft 2020-12 subset) validator for the engine's own
 // schemas/arcane.*.schema.json files. Supported keywords: type, properties,
 // required, additionalProperties, items, minItems, maxItems, minimum,
-// maximum, minLength, enum, const, oneOf, pattern, local $ref ("#/$defs/x"),
+// maximum, minLength, enum, const, oneOf, pattern, propertyNames, local $ref ("#/$defs/x"),
 // $defs and the annotations $id, $schema, title, description. Any other
 // keyword in a schema is reported as an error instead of being ignored.
 #include <algorithm>
@@ -152,6 +152,12 @@ class Validator {
         }
       } else if (key == "properties" || key == "additionalProperties") {
         // handled together below
+      } else if (key == "propertyNames") {
+        if (value.is_object()) {
+          for (const auto& [name, child] : value.items()) {
+            run(arg, Json(name), pointer + "/" + escape_token(name), out);
+          }
+        }
       } else if (key == "oneOf") {
         check_one_of(arg, value, pointer, out);
       } else {
@@ -255,7 +261,7 @@ inline void validate_document(const std::filesystem::path& schema_dir, const Jso
   }
   const std::string format = doc["format"].get<std::string>();
   const bool plain_name = !format.empty() && std::all_of(format.begin(), format.end(), [](char c) {
-    return (c >= 'a' && c <= 'z') || c == '.';
+    return (c >= 'a' && c <= 'z') || c == '.' || c == '_';
   });
   std::string schema_text;
   if (!plain_name || !read_text(schema_dir / (format + ".schema.json"), schema_text)) {
