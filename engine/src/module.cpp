@@ -2,6 +2,7 @@
 
 #include <format>
 
+#include "arcane/component_registry.hpp"
 #include "arcane/log.hpp"
 
 #if defined(_WIN32)
@@ -90,26 +91,71 @@ std::expected<GameModule, std::string> GameModule::load(const std::filesystem::p
   GameModule module;
   module.handle_ = handle;
   module.api_ = api;
+  module.lifetime_ = std::make_shared<int>(0);
   ARCANE_LOG_INFO(kLogCategory, "loaded {} ({})", path.string(), api->game_name ? api->game_name : "?");
   return module;
 }
 
-GameModule::GameModule(GameModule&& other) noexcept : handle_(other.handle_), api_(other.api_) {
+GameModule::GameModule(GameModule&& other) noexcept
+    : handle_(other.handle_), api_(other.api_), lifetime_(std::move(other.lifetime_)) {
   other.handle_ = nullptr;
   other.api_ = nullptr;
+  other.lifetime_.reset();
 }
 
 GameModule& GameModule::operator=(GameModule&& other) noexcept {
   if (this != &other) {
-    platform_unload(handle_);
+    release();
     handle_ = other.handle_;
     api_ = other.api_;
+    lifetime_ = std::move(other.lifetime_);
     other.handle_ = nullptr;
     other.api_ = nullptr;
+    other.lifetime_.reset();
   }
   return *this;
 }
 
-GameModule::~GameModule() { platform_unload(handle_); }
+GameModule::~GameModule() { release(); }
+
+void GameModule::register_types(ComponentRegistry& registry) const {
+  registry.set_registration_owner(lifetime_);
+  if (api_ && api_->register_types) {
+    api_->register_types(registry);
+  }
+  registry.clear_registration_owner();
+}
+
+long GameModule::live_references() const noexcept {
+  return lifetime_ ? lifetime_.use_count() - 1 : 0;
+}
+
+std::expected<void, std::string> GameModule::unload() {
+  const long live = live_references();
+  if (live > 0) {
+    auto message = std::format("cannot unload module: {} registry entries or component instances still reference it", live);
+    ARCANE_LOG_ERROR(kLogCategory, "{}", message);
+    return std::unexpected(message);
+  }
+  platform_unload(handle_);
+  handle_ = nullptr;
+  api_ = nullptr;
+  lifetime_.reset();
+  return {};
+}
+
+void GameModule::release() noexcept {
+  const long live = live_references();
+  if (live > 0) {
+    // Their code (vtables, factories, destructors) lives in the library, so
+    // leave it mapped. This only keeps the mapping alive; it is not a heap leak.
+    ARCANE_LOG_ERROR(kLogCategory, "module stays loaded because {} references are alive", live);
+  } else {
+    platform_unload(handle_);
+  }
+  handle_ = nullptr;
+  api_ = nullptr;
+  lifetime_.reset();
+}
 
 }  // namespace arcane
