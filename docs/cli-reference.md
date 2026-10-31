@@ -890,7 +890,7 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 
 ### `arcane prefab remove`
 
-Delete a whole prefab instance (any node of it selects it). Undo recreates it with new IDs and the same overrides.
+Delete a whole prefab instance (any node of it selects it). Undo restores the scene as it was, with the same IDs.
 
 Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 

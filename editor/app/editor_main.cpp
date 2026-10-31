@@ -656,6 +656,32 @@ int main(int argc, char** argv) {
     return *done;
   };
   auto node_selector = [](arcane::NodeId id) { return "id:" + std::to_string(id); };
+  // Prefab instance helpers: the root of the instance holds the override list.
+  auto instance_root = [](arcane::Node* node) -> arcane::Node* {
+    if (!node || !node->prefab_link()) return nullptr;
+    while (node->id() != node->prefab_link()->instance_id && node->parent() && node->parent()->prefab_link()) {
+      node = node->parent();
+    }
+    return node->id() == node->prefab_link()->instance_id ? node : nullptr;
+  };
+  auto is_overridden = [&](arcane::Node* node, const std::string& component, const std::string& property) {
+    const arcane::Node* root = instance_root(node);
+    if (!root) return false;
+    for (const auto& o : root->prefab_link()->overrides) {
+      if (o.local_id == node->prefab_link()->local_id && o.component == component && o.property == property) return true;
+    }
+    return false;
+  };
+  // Edits of a prefab instance node go through prefab.override so they are recorded as overrides.
+  auto override_property = [&](arcane::Node* node, const std::string& component, const std::string& property,
+                               arcane::tooling::Json value) {
+    arcane::tooling::Json args = {{"node", node_selector(node->id())}, {"property", property}, {"value", std::move(value)}};
+    if (!component.empty()) args["component"] = component;
+    return run_edit({"prefab.override", args}, "override:" + std::to_string(node->id()) + component + property);
+  };
+  std::string prefab_save_path;
+  bool prefab_save_overwrite = false;
+  std::string prefab_message;
 
   auto renderer = arcane::SpriteRenderer::create();
   if (!renderer) {
@@ -895,13 +921,37 @@ int main(int argc, char** argv) {
         if (run_edit({"node.remove", {{"node", node_selector(*selection.selected())}}})) selection.clear();
       }
 
+      if (editable && selection.has_selection() && active_scene->find_node(*selection.selected())) {
+        ImGui::SameLine();
+        if (ImGui::Button("Save as Prefab")) {
+          prefab_save_path = "prefabs/" + active_scene->find_node(*selection.selected())->name() + ".prefab.json";
+          ImGui::OpenPopup("Save as Prefab");
+        }
+      }
+      if (ImGui::BeginPopup("Save as Prefab")) {
+        char path_buf[256];
+        std::snprintf(path_buf, sizeof(path_buf), "%s", prefab_save_path.c_str());
+        if (ImGui::InputText("Asset path", path_buf, sizeof(path_buf))) prefab_save_path = path_buf;
+        ImGui::Checkbox("Overwrite", &prefab_save_overwrite);
+        if (ImGui::Button("Save") && selection.has_selection()) {
+          // prefab.save writes the file at once (not an undoable scene edit).
+          auto saved = commands.execute(**context, {"prefab.save", {{"node", node_selector(*selection.selected())},
+                                                                    {"asset", prefab_save_path},
+                                                                    {"overwrite", prefab_save_overwrite}}});
+          prefab_message = saved ? "Saved " + prefab_save_path : "Save failed: " + saved.error().message;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+      }
+      if (!prefab_message.empty()) ImGui::TextUnformatted(prefab_message.c_str());
+
       std::optional<std::pair<arcane::NodeId, arcane::NodeId>> pending_reparent;
       std::function<void(arcane::Node*)> draw_node = [&](arcane::Node* node) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (selection.selected() == node->id()) flags |= ImGuiTreeNodeFlags_Selected;
         if (node->children().empty()) flags |= ImGuiTreeNodeFlags_Leaf;
-        const bool open = ImGui::TreeNodeEx(
-            reinterpret_cast<void*>(static_cast<std::uintptr_t>(node->id())), flags, "%s", node->name().c_str());
+        const bool open = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<std::uintptr_t>(node->id())), flags, "%s%s",
+                                            node->prefab_link() ? "[P] " : "", node->name().c_str());
         if (ImGui::IsItemClicked()) selection.select(node->id());
 
         if (editable && ImGui::BeginDragDropSource()) {
@@ -938,13 +988,40 @@ int main(int argc, char** argv) {
         ImGui::TextUnformatted("No selection");
       } else {
         ImGui::BeginDisabled(!editable);
+        arcane::Node* prefab_root = instance_root(selected_node);
+        if (prefab_root) {
+          // Prefab instance: show the source, the overrides of this node (each revertable) and Break link.
+          ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Prefab: %s", prefab_root->prefab_link()->asset.c_str());
+          const auto local_id = selected_node->prefab_link()->local_id;
+          std::optional<arcane::tooling::Invocation> revert;
+          for (const auto& o : prefab_root->prefab_link()->overrides) {
+            if (o.local_id != local_id) continue;
+            const std::string label = (o.component.empty() ? o.property : o.component + "." + o.property);
+            ImGui::BulletText("* %s", label.c_str());
+            ImGui::SameLine();
+            ImGui::PushID(label.c_str());
+            if (ImGui::SmallButton("Revert")) {
+              arcane::tooling::Json args = {{"node", node_selector(selected_node->id())}, {"property", o.property}};
+              if (!o.component.empty()) args["component"] = o.component;
+              revert = arcane::tooling::Invocation{"prefab.revert", args};
+            }
+            ImGui::PopID();
+          }
+          if (ImGui::Button("Break prefab link")) revert = arcane::tooling::Invocation{"prefab.break_link", {{"node", node_selector(selected_node->id())}}};
+          if (revert) run_edit(*revert);
+          ImGui::Separator();
+        }
         char name_buf[128];
         std::snprintf(name_buf, sizeof(name_buf), "%s", selected_node->name().c_str());
-        if (ImGui::InputText("Name", name_buf, sizeof(name_buf))) {
+        if (ImGui::InputText(is_overridden(selected_node, "", "name") ? "Name *" : "Name", name_buf, sizeof(name_buf))) {
           // Typing coalesces into one undo step; an invalid name (e.g. with '/') is refused and logged.
-          auto renamed = edits.run({"node.rename", {{"node", node_selector(selected_node->id())}, {"name", name_buf}}},
-                                   "rename:" + std::to_string(selected_node->id()));
-          if (!renamed) ARCANE_LOG_ERROR(kLogCategory, "rename failed: {}", renamed.error().message);
+          if (prefab_root) {
+            override_property(selected_node, "", "name", name_buf);
+          } else {
+            auto renamed = edits.run({"node.rename", {{"node", node_selector(selected_node->id())}, {"name", name_buf}}},
+                                     "rename:" + std::to_string(selected_node->id()));
+            if (!renamed) ARCANE_LOG_ERROR(kLogCategory, "rename failed: {}", renamed.error().message);
+          }
         }
         arcane::Transform2D transform = selected_node->local_transform();
         bool transform_changed = false;
@@ -980,6 +1057,10 @@ int main(int argc, char** argv) {
                   ARCANE_LOG_ERROR(kLogCategory, "{}.{} edit failed: {}", component->type_name(), descriptor.name,
                                    set.error().message);
                 }
+              }
+              if (is_overridden(selected_node, component->type_name(), descriptor.name)) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "* overridden");
               }
               ImGui::PopID();
             }
@@ -1041,6 +1122,33 @@ int main(int argc, char** argv) {
                    "AnimatedSprite", "clip");
       assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap", "tileset");
       assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource", "clip");
+
+      // Prefabs: clicking one instantiates it under the selected node (or as a scene root).
+      if (ImGui::CollapsingHeader("Prefabs")) {
+        std::vector<std::string> prefabs;
+        std::error_code scan_ec;
+        for (std::filesystem::recursive_directory_iterator it(session.project_dir(), scan_ec), end; !scan_ec && it != end;
+             it.increment(scan_ec)) {
+          const std::string name = it->path().filename().string();
+          if (name.starts_with(".")) {
+            if (it->is_directory(scan_ec)) it.disable_recursion_pending();
+            continue;
+          }
+          if (it->is_regular_file(scan_ec) && name.ends_with(".prefab.json")) {
+            prefabs.push_back(std::filesystem::relative(it->path(), session.project_dir()).generic_string());
+          }
+        }
+        std::sort(prefabs.begin(), prefabs.end());
+        for (const auto& asset : prefabs) {
+          if (!ImGui::Selectable(asset.c_str()) || !editable) continue;
+          arcane::tooling::Json args = {{"asset", asset}};
+          if (selection.has_selection() && active_scene->find_node(*selection.selected())) {
+            args["parent"] = node_selector(*selection.selected());
+          }
+          if (auto made = run_edit({"prefab.instantiate", args})) selection.select(made->value["instance_id"].get<arcane::NodeId>());
+        }
+        if (prefabs.empty()) ImGui::TextUnformatted("No *.prefab.json files. Use Hierarchy > Save as Prefab.");
+      }
     }
     ImGui::End();
 
