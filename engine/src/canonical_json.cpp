@@ -215,29 +215,58 @@ std::expected<std::string, std::string> dump(const json& value) {
 
 void fail(const std::string& message) { throw SchemaError(message); }
 
+std::string pointer_child(std::string_view base, std::string_view key) {
+  std::string out(base);
+  out += '/';
+  for (const char c : key) {
+    if (c == '~') {
+      out += "~0";
+    } else if (c == '/') {
+      out += "~1";
+    } else {
+      out += c;
+    }
+  }
+  return out;
+}
+
+std::string pointer_child(std::string_view base, std::size_t index) {
+  return std::format("{}/{}", base, index);
+}
+
+std::string at_root(const std::string& parse_error) { return "#: " + parse_error; }
+
+std::string rebase_error(std::string_view prefix_pointer, const std::string& error) {
+  if (error.size() < 2 || error[0] != '#') return error;
+  if (error[1] != '/' && error[1] != ':') return error;
+  return "#" + std::string(prefix_pointer) + error.substr(1);
+}
+
 Dialect detect_dialect(const json& root, std::string_view format_name, std::string_view what) {
-  if (!root.is_object()) fail(std::format("{} JSON must be an object", what));
+  if (!root.is_object()) fail(std::format("#: {} JSON must be an object", what));
   if (root.contains("format")) {
     if (!root["format"].is_string() || root["format"].get<std::string>() != format_name) {
-      fail(std::format("{} JSON has format {}, expected \"{}\"", what, root["format"].dump(), format_name));
+      fail(std::format("#/format: {} JSON has format {}, expected \"{}\"", what, root["format"].dump(), format_name));
     }
-    if (!root.contains("version") || !root["version"].is_number_integer()) {
-      fail(std::format("{} JSON is missing an integer 'version' field", what));
-    }
+    if (!root.contains("version")) fail(std::format("#: {} JSON is missing the 'version' field", what));
+    if (!root["version"].is_number_integer()) fail(std::format("#/version: {} JSON 'version' must be an integer", what));
     const std::int64_t version = root["version"].get<std::int64_t>();
     if (version > 2) {
-      fail(std::format("unsupported {} version {} (this build supports up to 2; file is newer than supported)", what,
+      fail(std::format("#/version: unsupported {} version {} (this build supports up to 2; file is newer than supported)", what,
                        version));
     }
-    if (version != 2) fail(std::format("unsupported {} version {} (v2 files use version 2)", what, version));
+    if (version != 2) fail(std::format("#/version: unsupported {} version {} (v2 files use version 2)", what, version));
     return Dialect::V2;
   }
-  if (!root.contains("format_version") || !root["format_version"].is_number_integer()) {
-    fail(std::format("{} JSON is missing a numeric 'format_version' field (or 'format'/'version' for v2)", what));
+  if (!root.contains("format_version")) {
+    fail(std::format("#: {} JSON is missing a numeric 'format_version' field (or 'format'/'version' for v2)", what));
+  }
+  if (!root["format_version"].is_number_integer()) {
+    fail(std::format("#/format_version: {} JSON 'format_version' must be an integer", what));
   }
   const std::int64_t version = root["format_version"].get<std::int64_t>();
   if (version != 1) {
-    fail(std::format("unsupported {} format_version {} (this build only supports version 1; {} than supported)", what,
+    fail(std::format("#/format_version: unsupported {} format_version {} (this build only supports version 1; {} than supported)", what,
                      version, version > 1 ? "newer" : "older"));
   }
   return Dialect::Legacy;
@@ -252,7 +281,7 @@ void require_only_keys(const json& object, std::initializer_list<std::string_vie
   for (auto it = object.begin(); it != object.end(); ++it) {
     bool known = false;
     for (std::string_view name : allowed) known = known || name == it.key();
-    if (!known) fail(std::format("{}: unknown field '{}'", context, it.key()));
+    if (!known) fail(std::format("{}: unknown field '{}'", pointer_child(context, it.key()), it.key()));
   }
 }
 
@@ -291,12 +320,13 @@ std::string as_string(const json& j, std::string_view context) {
 
 Vec2 as_vec2(const json& j, std::string_view context) {
   if (!j.is_array() || j.size() != 2) fail(std::format("{}: expected an array of 2 numbers", context));
-  return Vec2{as_float(j[0], context), as_float(j[1], context)};
+  return Vec2{as_float(j[0], pointer_child(context, 0)), as_float(j[1], pointer_child(context, 1))};
 }
 
 Color as_color(const json& j, std::string_view context) {
   if (!j.is_array() || j.size() != 4) fail(std::format("{}: expected an array of 4 numbers", context));
-  return Color{as_float(j[0], context), as_float(j[1], context), as_float(j[2], context), as_float(j[3], context)};
+  return Color{as_float(j[0], pointer_child(context, 0)), as_float(j[1], pointer_child(context, 1)),
+               as_float(j[2], pointer_child(context, 2)), as_float(j[3], pointer_child(context, 3))};
 }
 
 void require_project_path(const std::string& path, bool allow_empty, std::string_view context) {

@@ -121,7 +121,7 @@ void set_tile_layers(Tilemap& map, const json& value, bool strict, const std::st
   } else {
     if (!value.is_array()) canonical::fail(std::format("{}: expected an array of layers", context));
     for (std::size_t l = 0; l < value.size(); ++l) {
-      const std::string where = std::format("{} layer {}", context, l);
+      const std::string where = canonical::pointer_child(context, l);
       const json& rows = value[l];
       if (!rows.is_array() || rows.size() != static_cast<std::size_t>(std::max(map.height, 0))) {
         canonical::fail(std::format("{}: expected {} rows (the map height)", where, map.height));
@@ -130,11 +130,12 @@ void set_tile_layers(Tilemap& map, const json& value, bool strict, const std::st
       for (std::size_t y = 0; y < rows.size(); ++y) {
         const json& row = rows[y];
         if (!row.is_array() || row.size() != static_cast<std::size_t>(std::max(map.width, 0))) {
-          canonical::fail(std::format("{} row {}: expected {} tile ids (the map width)", where, y, map.width));
+          canonical::fail(std::format("{}: expected {} tile ids (the map width)", canonical::pointer_child(where, y), map.width));
         }
-        for (const json& id : row) {
-          const int tile = canonical::as_int(id, where);
-          if (tile < 0) canonical::fail(std::format("{} row {}: negative tile id", where, y));
+        for (std::size_t x = 0; x < row.size(); ++x) {
+          const std::string cell = canonical::pointer_child(canonical::pointer_child(where, y), x);
+          const int tile = canonical::as_int(row[x], cell);
+          if (tile < 0) canonical::fail(std::format("{}: negative tile id", cell));
           ids.push_back(tile);
         }
       }
@@ -144,8 +145,8 @@ void set_tile_layers(Tilemap& map, const json& value, bool strict, const std::st
   map.set_layers_from_string("");
   for (std::size_t l = 0; l < layers.size(); ++l) {
     if (layers[l].size() > cells) {
-      canonical::fail(std::format("{} layer {}: {} cells do not fit the {}x{} map", context, l, layers[l].size(),
-                                  map.width, map.height));
+      canonical::fail(std::format("{}: {} cells do not fit the {}x{} map", canonical::pointer_child(context, l),
+                                  layers[l].size(), map.width, map.height));
     }
     map.add_layer();
     for (std::size_t i = 0; i < layers[l].size(); ++i) {
@@ -223,7 +224,7 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
                                                      bool strict_unknown) {
   auto parsed = canonical::parse_strict(text);
   if (!parsed) {
-    return std::unexpected(std::format("malformed scene JSON: {}", parsed.error()));
+    return std::unexpected(canonical::at_root("malformed scene JSON: " + parsed.error()));
   }
   try {
     const json& root = *parsed;
@@ -232,74 +233,88 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
     const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
-        canonical::require_only_keys(root, {"format", "version", "next_id", "nodes"}, "scene");
+        canonical::require_only_keys(root, {"format", "version", "next_id", "nodes"}, "#");
       } else {
-        canonical::require_only_keys(root, {"format_version", "next_id", "nodes"}, "scene");
+        canonical::require_only_keys(root, {"format_version", "next_id", "nodes"}, "#");
       }
     }
-    if (!root.contains("nodes") || !root["nodes"].is_array()) {
-      return std::unexpected(std::string("scene JSON is missing a 'nodes' array"));
-    }
+    if (!root.contains("nodes")) return std::unexpected(std::string("#: scene JSON is missing a 'nodes' array"));
+    if (!root["nodes"].is_array()) return std::unexpected(std::string("#/nodes: scene JSON 'nodes' must be an array"));
 
     Scene scene;
     NodeId max_id = 0;
     std::unordered_set<std::uint64_t> used_ids;  // nodes and components share one id counter
+    const json& nodes = root["nodes"];
 
     // First pass: create every node as a root; parent/child edges are
     // reattached in the second pass so node order in the file doesn't matter.
-    for (const auto& entry : root["nodes"]) {
-      canonical::require_object(entry, "scene node");
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+      const json& entry = nodes[i];
+      const std::string where = canonical::pointer_child("#/nodes", i);
+      canonical::require_object(entry, where);
       if (!entry.contains("id") || !entry.contains("name")) {
-        return std::unexpected(std::string("scene node entry is missing 'id' or 'name'"));
+        return std::unexpected(std::format("{}: scene node entry is missing 'id' or 'name'", where));
       }
-      const NodeId id = canonical::as_uint(entry["id"], "node 'id'");
+      const std::string id_ptr = canonical::pointer_child(where, "id");
+      const NodeId id = canonical::as_uint(entry["id"], id_ptr);
       if (id == kInvalidNodeId) {
-        return std::unexpected(std::string("scene node has invalid id 0"));
+        return std::unexpected(std::format("{}: scene node has invalid id 0", id_ptr));
       }
       if (!used_ids.insert(id).second) {
-        return std::unexpected(std::format("duplicate node id {} in scene JSON", id));
+        return std::unexpected(std::format("{}: duplicate node id {} in scene JSON", id_ptr, id));
       }
-      const std::string where = std::format("node {}", id);
       if (strict) {
         canonical::require_only_keys(
             entry, {"id", "name", "parent_id", "position", "rotation_radians", "scale", "components"}, where);
       }
-      Node* node = scene.create_node_with_id(id, canonical::as_string(entry["name"], where + " 'name'"), nullptr);
+      Node* node = scene.create_node_with_id(id, canonical::as_string(entry["name"], canonical::pointer_child(where, "name")), nullptr);
       max_id = std::max(max_id, id);
 
       Transform2D transform;
-      if (entry.contains("position")) transform.position = canonical::as_vec2(entry["position"], where + " 'position'");
-      if (entry.contains("rotation_radians")) {
-        transform.rotation_radians = canonical::as_float(entry["rotation_radians"], where + " 'rotation_radians'");
+      if (entry.contains("position")) {
+        transform.position = canonical::as_vec2(entry["position"], canonical::pointer_child(where, "position"));
       }
-      if (entry.contains("scale")) transform.scale = canonical::as_vec2(entry["scale"], where + " 'scale'");
+      if (entry.contains("rotation_radians")) {
+        transform.rotation_radians =
+            canonical::as_float(entry["rotation_radians"], canonical::pointer_child(where, "rotation_radians"));
+      }
+      if (entry.contains("scale")) {
+        transform.scale = canonical::as_vec2(entry["scale"], canonical::pointer_child(where, "scale"));
+      }
       node->local_transform() = transform;
 
       if (!entry.contains("components")) continue;
+      const std::string components_ptr = canonical::pointer_child(where, "components");
       if (!entry["components"].is_array()) {
-        return std::unexpected(std::format("{}: 'components' must be an array", where));
+        return std::unexpected(std::format("{}: 'components' must be an array", components_ptr));
       }
-      for (const auto& c : entry["components"]) {
-        canonical::require_object(c, where + " component");
+      const json& components = entry["components"];
+      for (std::size_t j = 0; j < components.size(); ++j) {
+        const json& c = components[j];
+        const std::string cwhere = canonical::pointer_child(components_ptr, j);
+        canonical::require_object(c, cwhere);
         if (!c.contains("id") || !c.contains("type")) {
-          return std::unexpected(std::string("scene component entry is missing 'id' or 'type'"));
+          return std::unexpected(std::format("{}: scene component entry is missing 'id' or 'type'", cwhere));
         }
-        const std::string type_name = canonical::as_string(c["type"], where + " component 'type'");
+        const std::string type_ptr = canonical::pointer_child(cwhere, "type");
+        const std::string type_name = canonical::as_string(c["type"], type_ptr);
         if (!registry.contains(type_name)) {
-          return std::unexpected(std::format("unknown component type '{}' referenced by node '{}'", type_name,
-                                              node->name()));
+          return std::unexpected(std::format("{}: unknown component type '{}' referenced by node '{}'", type_ptr,
+                                              type_name, node->name()));
         }
-        const ComponentId component_id = canonical::as_uint(c["id"], where + " component 'id'");
+        const std::string component_id_ptr = canonical::pointer_child(cwhere, "id");
+        const ComponentId component_id = canonical::as_uint(c["id"], component_id_ptr);
         if (component_id == 0 || !used_ids.insert(component_id).second) {
-          return std::unexpected(std::format("{}: component id {} is zero or already used", where, component_id));
+          return std::unexpected(
+              std::format("{}: component id {} is zero or already used", component_id_ptr, component_id));
         }
-        const std::string cwhere = std::format("{} component {} ({})", where, component_id, type_name);
         if (strict) canonical::require_only_keys(c, {"id", "type", "properties"}, cwhere);
         Component* component = scene.add_component_with_id(node, type_name, component_id, registry);
         max_id = std::max(max_id, component_id);
 
         if (!c.contains("properties")) continue;
-        canonical::require_object(c["properties"], cwhere + " 'properties'");
+        const std::string properties_ptr = canonical::pointer_child(cwhere, "properties");
+        canonical::require_object(c["properties"], properties_ptr);
         const auto* descriptors = registry.properties_of(type_name);
         const json* tile_layers = nullptr;  // applied after width/height, whatever the key order
         const PropertyDescriptor* tile_layers_descriptor = nullptr;
@@ -313,9 +328,11 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
               }
             }
           }
+          const std::string property_ptr = canonical::pointer_child(properties_ptr, it.key());
           if (!descriptor) {
             if (strict) {
-              return std::unexpected(std::format("{}: unknown property '{}'", cwhere, it.key()));
+              return std::unexpected(std::format("{}: unknown property '{}' on component type '{}'", property_ptr,
+                                                  it.key(), type_name));
             }
             continue;  // legacy leniency: unknown property on a known type is ignored, see docs/decisions.md
           }
@@ -324,36 +341,37 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
             tile_layers_descriptor = descriptor;
             continue;
           }
-          descriptor->set(*component, property_value_from_json(descriptor->type, it.value(),
-                                                               std::format("{} property '{}'", cwhere, it.key())));
+          descriptor->set(*component, property_value_from_json(descriptor->type, it.value(), property_ptr));
         }
         if (tile_layers) {
           set_tile_layers(static_cast<Tilemap&>(*component), *tile_layers, strict,
-                          std::format("{} property '{}'", cwhere, tile_layers_descriptor->name));
+                          canonical::pointer_child(properties_ptr, tile_layers_descriptor->name));
         }
       }
     }
 
     // Second pass: reattach each node to its declared parent now that every
     // id exists.
-    for (const auto& entry : root["nodes"]) {
+    for (std::size_t i = 0; i < nodes.size(); ++i) {
+      const json& entry = nodes[i];
+      const std::string parent_ptr = canonical::pointer_child(canonical::pointer_child("#/nodes", i), "parent_id");
       const NodeId id = entry["id"].get<NodeId>();
       const NodeId parent_id =
-          entry.contains("parent_id") ? canonical::as_uint(entry["parent_id"], "node 'parent_id'") : kInvalidNodeId;
+          entry.contains("parent_id") ? canonical::as_uint(entry["parent_id"], parent_ptr) : kInvalidNodeId;
       if (parent_id == kInvalidNodeId) {
         continue;
       }
       Node* parent = scene.find_node(parent_id);
       if (!parent) {
-        return std::unexpected(std::format("node {} references unknown parent_id {}", id, parent_id));
+        return std::unexpected(std::format("{}: node {} references unknown parent_id {}", parent_ptr, id, parent_id));
       }
       if (!scene.reparent(scene.find_node(id), parent)) {
-        return std::unexpected(std::format("node {} has a cyclic or invalid parent_id {}", id, parent_id));
+        return std::unexpected(std::format("{}: node {} has a cyclic or invalid parent_id {}", parent_ptr, id, parent_id));
       }
     }
 
     const NodeId declared_next_id =
-        root.contains("next_id") ? canonical::as_uint(root["next_id"], "scene 'next_id'") : NodeId{0};
+        root.contains("next_id") ? canonical::as_uint(root["next_id"], "#/next_id") : NodeId{0};
     scene.set_next_id(std::max<NodeId>({declared_next_id, max_id + 1, 1}));
     return scene;
   } catch (const canonical::SchemaError& ex) {
@@ -373,11 +391,11 @@ std::expected<std::string, std::string> migrate_scene_json(const std::string& te
   // The result must be a fixed point: reload and re-save gives the same bytes.
   auto reloaded = Scene::load_from_json_strict(*migrated, registry);
   if (!reloaded) {
-    return std::unexpected("migrated scene does not reload: " + reloaded.error());
+    return std::unexpected("#: migrated scene does not reload: " + reloaded.error());
   }
   auto again = reloaded->save_canonical_json(registry);
   if (!again || *again != *migrated) {
-    return std::unexpected(std::string("migrated scene is not idempotent"));
+    return std::unexpected(std::string("#: migrated scene is not idempotent"));
   }
   return migrated;
 }

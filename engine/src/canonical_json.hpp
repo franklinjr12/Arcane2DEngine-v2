@@ -45,6 +45,18 @@ enum class Dialect { Legacy, V2 };
 // versions (never interpreted).
 Dialect detect_dialect(const nlohmann::json& root, std::string_view format_name, std::string_view what);
 
+// Error locations are RFC 6901 JSON pointers written as a URI fragment:
+// "#" is the root, "#/nodes/2/id" a member. A text loader's error string is
+// "#<pointer>: <message>"; callers that know the file prepend its path.
+// See docs/formats/errors.md.
+std::string pointer_child(std::string_view base, std::string_view key);  // escapes '~' and '/'
+std::string pointer_child(std::string_view base, std::size_t index);
+// "#: <parse_error>" for strict-parse failures (the whole document).
+std::string at_root(const std::string& parse_error);
+// "#/x: m" -> "#<prefix>/x: m", "#: m" -> "#<prefix>: m"; anything else is
+// returned unchanged. For loaders that embed another document at `prefix`.
+std::string rebase_error(std::string_view prefix_pointer, const std::string& error);
+
 [[noreturn]]  void fail(const std::string& message);
 void require_object(const nlohmann::json& j, std::string_view context);
 // Throws if `object` has a key that is not in `allowed`.
