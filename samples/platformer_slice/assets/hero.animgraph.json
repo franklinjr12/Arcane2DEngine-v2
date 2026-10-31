@@ -6,6 +6,21 @@
       "default": 0.0,
       "name": "moving",
       "type": "bool"
+    },
+    {
+      "default": 1.0,
+      "name": "grounded",
+      "type": "bool"
+    },
+    {
+      "default": 0.0,
+      "name": "vy",
+      "type": "float"
+    },
+    {
+      "default": 0.0,
+      "name": "hurt",
+      "type": "bool"
     }
   ],
   "states": [
@@ -28,6 +43,24 @@
         }
       ],
       "name": "run",
+      "speed": 1.0
+    },
+    {
+      "clip": 17559667136347521966,
+      "events": [],
+      "name": "jump",
+      "speed": 1.0
+    },
+    {
+      "clip": 12577863256663114985,
+      "events": [],
+      "name": "fall",
+      "speed": 1.0
+    },
+    {
+      "clip": 2107158864639320809,
+      "events": [],
+      "name": "hurt",
       "speed": 1.0
     }
   ],
@@ -53,6 +86,196 @@
       "from": "run",
       "priority": 0,
       "to": "idle"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "hurt"
+        }
+      ],
+      "from": "*",
+      "priority": 10,
+      "to": "hurt"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "hurt"
+        },
+        {
+          "op": "is_false",
+          "param": "grounded"
+        },
+        {
+          "op": "lt",
+          "param": "vy",
+          "value": 0.0
+        }
+      ],
+      "from": "hurt",
+      "priority": 5,
+      "to": "jump"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "hurt"
+        },
+        {
+          "op": "is_false",
+          "param": "grounded"
+        }
+      ],
+      "from": "hurt",
+      "priority": 5,
+      "to": "fall"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "hurt"
+        },
+        {
+          "op": "is_false",
+          "param": "moving"
+        }
+      ],
+      "from": "hurt",
+      "priority": 1,
+      "to": "idle"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "hurt"
+        }
+      ],
+      "from": "hurt",
+      "priority": 0,
+      "to": "run"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "grounded"
+        },
+        {
+          "op": "lt",
+          "param": "vy",
+          "value": 0.0
+        }
+      ],
+      "from": "idle",
+      "priority": 5,
+      "to": "jump"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "grounded"
+        },
+        {
+          "op": "lt",
+          "param": "vy",
+          "value": 0.0
+        }
+      ],
+      "from": "run",
+      "priority": 5,
+      "to": "jump"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "grounded"
+        }
+      ],
+      "from": "idle",
+      "priority": 4,
+      "to": "fall"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "grounded"
+        }
+      ],
+      "from": "run",
+      "priority": 4,
+      "to": "fall"
+    },
+    {
+      "conditions": [
+        {
+          "op": "ge",
+          "param": "vy",
+          "value": 0.0
+        }
+      ],
+      "from": "jump",
+      "priority": 4,
+      "to": "fall"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "grounded"
+        },
+        {
+          "op": "is_false",
+          "param": "moving"
+        }
+      ],
+      "from": "jump",
+      "priority": 2,
+      "to": "idle"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "grounded"
+        }
+      ],
+      "from": "jump",
+      "priority": 1,
+      "to": "run"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "grounded"
+        },
+        {
+          "op": "is_false",
+          "param": "moving"
+        }
+      ],
+      "from": "fall",
+      "priority": 2,
+      "to": "idle"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "grounded"
+        }
+      ],
+      "from": "fall",
+      "priority": 1,
+      "to": "run"
     }
   ],
   "version": 2

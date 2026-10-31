@@ -1,6 +1,6 @@
 {
   "format": "arcane.scene",
-  "next_id": 66,
+  "next_id": 76,
   "nodes": [
     {
       "components": [
@@ -8,6 +8,7 @@
           "id": 2,
           "properties": {
             "coin_value": 10,
+            "enemy_value": 50,
             "hurt_cooldown": 1.0,
             "pit_y": 700.0,
             "win_x": 1300.0
@@ -1010,6 +1011,164 @@
             "atlas": 0,
             "flip_x": false,
             "flip_y": false,
+            "height": 28.0,
+            "region": "",
+            "texture": 279569511929920202,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 28.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 61,
+          "properties": {
+            "body_type": 1,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 62,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 26.0,
+            "is_sensor": false,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              1.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 26.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 63,
+          "properties": {
+            "left_x": 770.0,
+            "right_x": 880.0,
+            "speed": 50.0
+          },
+          "type": "PatrolEnemy"
+        }
+      ],
+      "id": 59,
+      "name": "Enemy0",
+      "parent_id": 1,
+      "position": [
+        800.0,
+        386.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 65,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 28.0,
+            "region": "",
+            "texture": 279569511929920202,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "width": 28.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 66,
+          "properties": {
+            "body_type": 1,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 67,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.0,
+            "height": 26.0,
+            "is_sensor": false,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              1.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 26.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 68,
+          "properties": {
+            "left_x": 1030.0,
+            "right_x": 1100.0,
+            "speed": 40.0
+          },
+          "type": "PatrolEnemy"
+        }
+      ],
+      "id": 64,
+      "name": "Enemy1",
+      "parent_id": 1,
+      "position": [
+        1060.0,
+        386.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    },
+    {
+      "components": [
+        {
+          "id": 70,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
             "height": 64.0,
             "region": "",
             "texture": 1617945095526466553,
@@ -1024,7 +1183,7 @@
           "type": "Sprite"
         },
         {
-          "id": 61,
+          "id": 71,
           "properties": {
             "body_type": 0,
             "fixed_rotation": true,
@@ -1037,7 +1196,7 @@
           "type": "RigidBody2D"
         },
         {
-          "id": 62,
+          "id": 72,
           "properties": {
             "density": 1.0,
             "friction": 0.0,
@@ -1059,14 +1218,14 @@
           "type": "Collider2D"
         },
         {
-          "id": 63,
+          "id": 73,
           "properties": {
             "kind": "goal"
           },
           "type": "SliceTrigger"
         }
       ],
-      "id": 59,
+      "id": 69,
       "name": "Goal",
       "parent_id": 1,
       "position": [
@@ -1082,7 +1241,7 @@
     {
       "components": [
         {
-          "id": 65,
+          "id": 75,
           "properties": {
             "angle_max": 360.0,
             "angle_min": 0.0,
@@ -1122,7 +1281,7 @@
           "type": "ParticleEmitter"
         }
       ],
-      "id": 64,
+      "id": 74,
       "name": "PickupBurst",
       "parent_id": 1,
       "position": [
