@@ -10,6 +10,7 @@
             "coin_value": 10,
             "enemy_value": 50,
             "hurt_cooldown": 1.0,
+            "next_scene": "scenes/level2.scene.json",
             "pit_y": 700.0,
             "win_x": 1300.0
           },

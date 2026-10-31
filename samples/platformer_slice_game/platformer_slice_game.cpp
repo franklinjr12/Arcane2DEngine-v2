@@ -22,9 +22,17 @@
 #include "arcane/hud.hpp"
 #include "arcane/node.hpp"
 #include "arcane/particles.hpp"
+#include "arcane/input.hpp"
 #include "arcane/physics.hpp"
+#include "arcane/scene_flow.hpp"
 
 namespace {
+
+// The score travels from one level to the next through module-static state rather than a persistent root: the
+// Level node (with its SliceRules) is replaced by every scene switch, and a persistent node would drag its whole
+// subtree along. The goal stores the score here and the next level's on_start consumes it (so a standalone load of
+// any level starts at 0); restarting a level re-stores the score it began with.
+int g_carried_score = 0;
 
 class SliceRules : public arcane::Component {
  public:
@@ -33,10 +41,12 @@ class SliceRules : public arcane::Component {
   int coin_value = 10;
   float hurt_cooldown = 1.0f;
   int enemy_value = 50;
+  std::string next_scene;  // project-relative scene to switch to on the goal; empty = last level (YOU WIN)
 
   int score() const noexcept { return score_; }
   float health() const noexcept { return health_; }
   bool won() const noexcept { return won_; }
+  bool paused() const noexcept { return paused_; }
   bool dead() const noexcept { return health_ <= 0.0f; }
   int steps() const noexcept { return steps_; }
   // Where a pit fall puts the player back: the start, or the latest checkpoint reached.
@@ -53,6 +63,8 @@ class SliceRules : public arcane::Component {
     player_ = find_named(*node(), "Player");
     burst_ = find_named(*node(), "PickupBurst");
     if (player_) respawn_ = player_->world_transform().position;
+    score_ = entry_score_ = g_carried_score;
+    g_carried_score = 0;
   }
 
   // Called by SliceTrigger when the Player enters the sensor `trigger` of the given kind.
@@ -73,6 +85,7 @@ class SliceRules : public arcane::Component {
     } else if (kind == "goal") {
       won_ = true;
       cue("win.wav");
+      go_to_next_level();
     }
   }
 
@@ -101,6 +114,8 @@ class SliceRules : public arcane::Component {
 
     arcane::Hud* hud = arcane::active_hud();
     if (hud && hud->clicked("restart")) restart();
+    auto* input = arcane::active_input_map();
+    if (input && input->pressed("pause") && !won_ && !dead()) set_paused(!paused_);
     hurt_timer_ = std::max(0.0f, hurt_timer_ - dt);
 
     if (!won_ && !dead()) {
@@ -113,7 +128,10 @@ class SliceRules : public arcane::Component {
           }
         }
       }
-      if (player_->world_transform().position.x > win_x) won_ = true;  // fallback if the goal node is missing
+      if (player_->world_transform().position.x > win_x) {  // fallback if the goal node is missing
+        won_ = true;
+        go_to_next_level();
+      }
     }
 
     animate(*player_);
@@ -124,6 +142,13 @@ class SliceRules : public arcane::Component {
   // Restart reloads the authored scene (coins, player, this component) through the runner; without a game
   // context only the counters can be reset.
   void restart() {
+    // Under a SceneManager the level being played may not be the project's main scene, which is all the runner's
+    // restart reloads, so reload this one through the manager (applied after the current tick, without a fade).
+    if (auto* manager = arcane::active_scene_manager(); manager && !manager->current_scene_path().empty()) {
+      g_carried_score = entry_score_;
+      manager->request_switch(manager->current_scene_path(), false);
+      return;
+    }
     if (auto* context = arcane::active_game_context()) {
       context->request_restart();
       return;
@@ -132,6 +157,32 @@ class SliceRules : public arcane::Component {
     health_ = 1.0f;
     won_ = false;
     hurt_timer_ = 0.0f;
+  }
+
+  void go_to_next_level() {
+    auto* manager = arcane::active_scene_manager();
+    if (next_scene.empty() || !manager || switching_) return;
+    switching_ = true;
+    g_carried_score = score_;
+    manager->request_switch(next_scene);
+  }
+
+  // Deactivates every gameplay node (all of the Level's children and any other root) except the camera, the Level
+  // node itself and the HUD, remembering exactly which ones so a resume wakes only those.
+  void set_paused(bool paused) {
+    paused_ = paused;
+    if (!paused) {
+      for (arcane::NodeId id : frozen_) if (auto* held = scene()->find_node(id)) held->set_active(true);
+      frozen_.clear();
+      return;
+    }
+    auto hold = [this](arcane::Node& candidate) {
+      if (&candidate == node() || !candidate.active() || candidate.find_component("Camera2D")) return;
+      frozen_.push_back(candidate.id());
+      candidate.set_active(false);
+    };
+    for (const auto& child : node()->children()) hold(*child);
+    for (const auto& root : scene()->roots()) hold(*root);
   }
 
   static arcane::Node* find_named(arcane::Node& root, const std::string& name) {
@@ -189,7 +240,7 @@ class SliceRules : public arcane::Component {
   void refresh_hud(arcane::Hud* hud) {
     if (!hud) return;
     if (auto* text = hud->find_text("score")) text->text = std::format("SCORE {}", score_);
-    if (auto* text = hud->find_text("banner")) text->text = won_ ? "YOU WIN" : (dead() ? "GAME OVER" : "");
+    if (auto* text = hud->find_text("banner")) text->text = won_ ? (switching_ ? "" : "YOU WIN") : (dead() ? "GAME OVER" : (paused_ ? "PAUSED" : ""));
     if (auto* bar = hud->find_bar("health")) bar->fraction = health_;
   }
 
@@ -202,6 +253,10 @@ class SliceRules : public arcane::Component {
   float health_ = 1.0f;
   float hurt_timer_ = 0.0f;
   bool won_ = false;
+  bool paused_ = false;
+  bool switching_ = false;
+  int entry_score_ = 0;  // score when this level began (restart returns to it)
+  std::vector<arcane::NodeId> frozen_;
   int checkpoints_ = 0;
   arcane::Vec2 respawn_{};
   arcane::Node* player_ = nullptr;
@@ -268,6 +323,7 @@ void register_types(arcane::ComponentRegistry& registry) {
           arcane::make_property<SliceRules>("coin_value", PropertyType::Int, &SliceRules::coin_value),
           arcane::make_property<SliceRules>("hurt_cooldown", PropertyType::Float, &SliceRules::hurt_cooldown),
           arcane::make_property<SliceRules>("enemy_value", PropertyType::Int, &SliceRules::enemy_value),
+          arcane::make_property<SliceRules>("next_scene", PropertyType::String, &SliceRules::next_scene),
       });
   registry.register_component(
       "SliceTrigger", [] { return std::make_unique<SliceTrigger>(); },

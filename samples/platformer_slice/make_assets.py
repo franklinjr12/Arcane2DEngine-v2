@@ -118,91 +118,101 @@ graph = {"format": "arcane.animgraph", "version": 2, "initial": "idle",
              trans("fall", "run", 1, cond("grounded", "is_true"))]}
 open(A + "hero.animgraph.json", "w").write(json.dumps(graph, indent=2, sort_keys=True) + "\n")
 
-# ---- scene: everything under "Level" so the module's SliceRules can reach it via node children
-nodes, nid = [], [0]
-def nxt():
-    nid[0] += 1; return nid[0]
-def node(name, pos, parent, comps, scale=(1.0, 1.0)):
-    i = nxt()
-    nodes.append({"id": i, "name": name, "parent_id": parent, "position": list(pos), "rotation_radians": 0.0,
-                  "scale": list(scale), "components": [{"id": nxt(), "type": t, "properties": p} for t, p in comps]})
-    return i
+# ---- scenes: everything under "Level" so the module's SliceRules can reach it via node children
 white = [1.0, 1.0, 1.0, 1.0]
-level = node("Level", (0, 0), 0, [("SliceRules", {
-    "win_x": 1300.0, "pit_y": 700.0, "coin_value": 10, "hurt_cooldown": 1.0, "enemy_value": 50})])
-node("Sky", (400, 300), level, [
-    ("Sprite", {"texture": fnv1a("sky.png"), "width": 128.0, "height": 600.0, "tint": white}),
-    ("ParallaxLayer", {"factor": [0.3, 1.0], "repeat_x": True, "repeat_y": False})])
-player = node("Player", (64, 340), level, [
-    ("Sprite", {"texture": fnv1a("hero.png"), "width": 32.0, "height": 48.0, "tint": white,
-                "flip_x": False, "flip_y": False}),
-    ("AnimatedSprite", {"clip": fnv1a("hero_idle.json"), "speed": 1.0, "playing": True}),
-    ("Animator", {"graph": fnv1a("hero.animgraph.json")}),
-    ("RigidBody2D", {"body_type": 2, "linear_velocity": [0.0, 0.0], "gravity_scale": 1.0, "fixed_rotation": True}),
-    ("Collider2D", {"shape_type": 0, "width": 28.0, "height": 46.0, "radius": 16.0, "offset": [0.0, 1.0],
-                    "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False, "mirror_with_sprite": True}),
-    ("PlatformerController2D", {"max_speed": 200.0, "run_acceleration": 1400.0, "run_deceleration": 1800.0,
-        "air_control": 0.6, "jump_speed": 420.0, "fall_gravity_scale": 1.6, "jump_cut": 0.5, "max_fall_speed": 700.0,
-        "coyote_time": 0.1, "jump_buffer_time": 0.1, "left_action": "move_left", "right_action": "move_right",
-        "jump_action": "jump"})])
-# Follows the Player; the 800x600 design view is kept inside the 1280-wide level (the old left floor of 400).
-node("MainCamera", (400, 300), level, [("Camera2D", {
-    "primary": True, "zoom": 1.0, "target": player, "smoothing": 8.0, "deadzone": [16.0, 100.0],
-    "look_ahead": [40.0, 0.0], "bounds_tilemap": 0, "bounds_enabled": True,
-    "bounds_min": [0.0, 0.0], "bounds_max": [1280.0, 600.0], "pixel_snap": False,
-    "shake_amplitude": 0.0, "shake_duration": 0.0, "shake_seed": 1})])
-W, H = 40, 2
-cells = [[0] * W for _ in range(H)]
-for x in range(W):
-    if 20 <= x <= 22: continue  # pit
-    cells[0][x] = 1; cells[1][x] = 2
-node("Ground", (0, 400), level, [("Tilemap", {
-    "tileset": fnv1a("tiles_set.json"), "tile_width": 32.0, "tile_height": 32.0, "width": W, "height": H,
-    "collide": True, "solid_tiles": "1,2,3", "layers": ",".join(str(c) for r in cells for c in r)})])
-node("Platform", (400, 300), level, [("Tilemap", {
-    "tileset": fnv1a("tiles_set.json"), "tile_width": 32.0, "tile_height": 32.0, "width": 4, "height": 1,
-    "collide": True, "solid_tiles": "1,2,3", "layers": "3,3,3,3"})])
-def sensor(name, pos, w, h, tint, kind):
-    """A pickup/hazard/goal/checkpoint: a Static body with a sensor Collider2D; SliceTrigger reports the Player's entry."""
-    node(name, pos, level, [
-        ("Sprite", {"texture": fnv1a("coin.png"), "width": w, "height": h, "tint": tint}),
-        ("RigidBody2D", {"body_type": 0, "linear_velocity": [0.0, 0.0], "gravity_scale": 0.0, "fixed_rotation": True}),
-        ("Collider2D", {"shape_type": 0, "width": w, "height": h, "radius": 16.0, "offset": [0.0, 0.0],
-                        "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": True,
-                        "mirror_with_sprite": False}),
-        ("SliceTrigger", {"kind": kind})])
-for n, (x, y) in enumerate([(220, 372), (290, 372), (450, 270), (520, 270), (900, 372)]):
-    sensor(f"Coin{n}", (x, y), 20.0, 20.0, white, "coin")
-sensor("Spikes", (620, 384), 28.0, 28.0, [1.0, 0.2, 0.2, 1.0], "spikes")
-# Checkpoint flags (the coin texture as a small tinted bar) stand on the ground before the pit and before the goal.
-sensor("Checkpoint0", (590, 380), 12.0, 40.0, [0.6, 0.6, 0.9, 1.0], "checkpoint")
-sensor("Checkpoint1", (1000, 380), 12.0, 40.0, [0.6, 0.6, 0.9, 1.0], "checkpoint")
-# Patrolling enemies: Kinematic bodies with a solid collider walk between left_x and right_x on the ground (top at y=400).
-def enemy_node(name, x, left, right, speed):
-    node(name, (x, 386), level, [
-        ("Sprite", {"texture": fnv1a("enemy.png"), "width": 28.0, "height": 28.0, "tint": white,
+
+def build_level(path, win_x, next_scene, width, pits, platform, coins, spikes, checkpoints, enemies, goal_x):
+    """One level scene. Same cast in every level (Sky, Player, MainCamera, Ground, Platform, pickups, enemies, goal)."""
+    nodes, nid = [], [0]
+    def nxt():
+        nid[0] += 1; return nid[0]
+    def node(name, pos, parent, comps, scale=(1.0, 1.0)):
+        i = nxt()
+        nodes.append({"id": i, "name": name, "parent_id": parent, "position": list(pos), "rotation_radians": 0.0,
+                      "scale": list(scale), "components": [{"id": nxt(), "type": t, "properties": p} for t, p in comps]})
+        return i
+    level = node("Level", (0, 0), 0, [("SliceRules", {
+        "win_x": win_x, "pit_y": 700.0, "coin_value": 10, "hurt_cooldown": 1.0, "enemy_value": 50,
+        "next_scene": next_scene})])
+    node("Sky", (400, 300), level, [
+        ("Sprite", {"texture": fnv1a("sky.png"), "width": 128.0, "height": 600.0, "tint": white}),
+        ("ParallaxLayer", {"factor": [0.3, 1.0], "repeat_x": True, "repeat_y": False})])
+    player = node("Player", (64, 340), level, [
+        ("Sprite", {"texture": fnv1a("hero.png"), "width": 32.0, "height": 48.0, "tint": white,
                     "flip_x": False, "flip_y": False}),
-        ("RigidBody2D", {"body_type": 1, "linear_velocity": [0.0, 0.0], "gravity_scale": 0.0, "fixed_rotation": True}),
-        ("Collider2D", {"shape_type": 0, "width": 26.0, "height": 26.0, "radius": 16.0, "offset": [0.0, 1.0],
-                        "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False,
-                        "mirror_with_sprite": False}),
-        ("PatrolEnemy", {"speed": speed, "left_x": left, "right_x": right})])
-enemy_node("Enemy0", 800.0, 770.0, 880.0, 50.0)
-enemy_node("Enemy1", 1060.0, 1030.0, 1100.0, 40.0)
-sensor("Goal", (1150, 360), 24.0, 64.0, [0.3, 1.0, 0.5, 1.0], "goal")
-node("PickupBurst", (0, 0), level, [("ParticleEmitter", {
-    "emitting": False, "rate": 0.0, "burst_count": 0, "lifetime_min": 0.3, "lifetime_max": 0.6, "speed_min": 40.0,
-    "speed_max": 120.0, "angle_min": 0.0, "angle_max": 360.0, "gravity": [0.0, 200.0],
-    "start_color": [1.0, 0.85, 0.2, 1.0], "end_color": [1.0, 0.4, 0.0, 0.0], "start_size": 5.0, "end_size": 1.0,
-    "texture": 0, "atlas_columns": 1, "atlas_rows": 1, "frame": 0, "world_space": True, "max_particles": 64, "seed": 3})])
-json.dump({"format_version": 1, "nodes": nodes, "next_id": nid[0] + 1}, open("scenes/main.scene.json", "w"), indent=2)
+        ("AnimatedSprite", {"clip": fnv1a("hero_idle.json"), "speed": 1.0, "playing": True}),
+        ("Animator", {"graph": fnv1a("hero.animgraph.json")}),
+        ("RigidBody2D", {"body_type": 2, "linear_velocity": [0.0, 0.0], "gravity_scale": 1.0, "fixed_rotation": True}),
+        ("Collider2D", {"shape_type": 0, "width": 28.0, "height": 46.0, "radius": 16.0, "offset": [0.0, 1.0],
+                        "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False, "mirror_with_sprite": True}),
+        ("PlatformerController2D", {"max_speed": 200.0, "run_acceleration": 1400.0, "run_deceleration": 1800.0,
+            "air_control": 0.6, "jump_speed": 420.0, "fall_gravity_scale": 1.6, "jump_cut": 0.5, "max_fall_speed": 700.0,
+            "coyote_time": 0.1, "jump_buffer_time": 0.1, "left_action": "move_left", "right_action": "move_right",
+            "jump_action": "jump"})])
+    # Follows the Player; the 800x600 design view is kept inside the level (the old left floor of 400).
+    node("MainCamera", (400, 300), level, [("Camera2D", {
+        "primary": True, "zoom": 1.0, "target": player, "smoothing": 8.0, "deadzone": [16.0, 100.0],
+        "look_ahead": [40.0, 0.0], "bounds_tilemap": 0, "bounds_enabled": True,
+        "bounds_min": [0.0, 0.0], "bounds_max": [float(width * 32), 600.0], "pixel_snap": False,
+        "shake_amplitude": 0.0, "shake_duration": 0.0, "shake_seed": 1})])
+    W, H = width, 2
+    cells = [[0] * W for _ in range(H)]
+    for x in range(W):
+        if x in pits: continue
+        cells[0][x] = 1; cells[1][x] = 2
+    node("Ground", (0, 400), level, [("Tilemap", {
+        "tileset": fnv1a("tiles_set.json"), "tile_width": 32.0, "tile_height": 32.0, "width": W, "height": H,
+        "collide": True, "solid_tiles": "1,2,3", "layers": ",".join(str(c) for r in cells for c in r)})])
+    node("Platform", platform, level, [("Tilemap", {
+        "tileset": fnv1a("tiles_set.json"), "tile_width": 32.0, "tile_height": 32.0, "width": 4, "height": 1,
+        "collide": True, "solid_tiles": "1,2,3", "layers": "3,3,3,3"})])
+    def sensor(name, pos, w, h, tint, kind):
+        """A pickup/hazard/goal/checkpoint: a Static body with a sensor Collider2D; SliceTrigger reports the Player's entry."""
+        node(name, pos, level, [
+            ("Sprite", {"texture": fnv1a("coin.png"), "width": w, "height": h, "tint": tint}),
+            ("RigidBody2D", {"body_type": 0, "linear_velocity": [0.0, 0.0], "gravity_scale": 0.0, "fixed_rotation": True}),
+            ("Collider2D", {"shape_type": 0, "width": w, "height": h, "radius": 16.0, "offset": [0.0, 0.0],
+                            "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": True,
+                            "mirror_with_sprite": False}),
+            ("SliceTrigger", {"kind": kind})])
+    for n, (x, y) in enumerate(coins):
+        sensor(f"Coin{n}", (x, y), 20.0, 20.0, white, "coin")
+    if spikes: sensor("Spikes", spikes, 28.0, 28.0, [1.0, 0.2, 0.2, 1.0], "spikes")
+    # Checkpoint flags (the coin texture as a small tinted bar) stand on the ground before the pit and before the goal.
+    for n, x in enumerate(checkpoints):
+        sensor(f"Checkpoint{n}", (x, 380), 12.0, 40.0, [0.6, 0.6, 0.9, 1.0], "checkpoint")
+    # Patrolling enemies: Kinematic bodies with a solid collider walk between left_x and right_x on the ground (top at y=400).
+    for n, (x, left, right, speed) in enumerate(enemies):
+        node(f"Enemy{n}", (x, 386), level, [
+            ("Sprite", {"texture": fnv1a("enemy.png"), "width": 28.0, "height": 28.0, "tint": white,
+                        "flip_x": False, "flip_y": False}),
+            ("RigidBody2D", {"body_type": 1, "linear_velocity": [0.0, 0.0], "gravity_scale": 0.0, "fixed_rotation": True}),
+            ("Collider2D", {"shape_type": 0, "width": 26.0, "height": 26.0, "radius": 16.0, "offset": [0.0, 1.0],
+                            "density": 1.0, "friction": 0.0, "restitution": 0.0, "is_sensor": False,
+                            "mirror_with_sprite": False}),
+            ("PatrolEnemy", {"speed": speed, "left_x": left, "right_x": right})])
+    sensor("Goal", (goal_x, 360), 24.0, 64.0, [0.3, 1.0, 0.5, 1.0], "goal")
+    node("PickupBurst", (0, 0), level, [("ParticleEmitter", {
+        "emitting": False, "rate": 0.0, "burst_count": 0, "lifetime_min": 0.3, "lifetime_max": 0.6, "speed_min": 40.0,
+        "speed_max": 120.0, "angle_min": 0.0, "angle_max": 360.0, "gravity": [0.0, 200.0],
+        "start_color": [1.0, 0.85, 0.2, 1.0], "end_color": [1.0, 0.4, 0.0, 0.0], "start_size": 5.0, "end_size": 1.0,
+        "texture": 0, "atlas_columns": 1, "atlas_rows": 1, "frame": 0, "world_space": True, "max_particles": 64, "seed": 3})])
+    json.dump({"format_version": 1, "nodes": nodes, "next_id": nid[0] + 1}, open(path, "w"), indent=2)
+
+build_level("scenes/main.scene.json", 1300.0, "scenes/level2.scene.json", 40, {20, 21, 22}, (400, 300),
+            [(220, 372), (290, 372), (450, 270), (520, 270), (900, 372)], (620, 384), [590, 1000],
+            [(800.0, 770.0, 880.0, 50.0), (1060.0, 1030.0, 1100.0, 40.0)], 1150)
+# Level 2 (1600 px): two pits, a higher stepping platform between them, three enemies, a farther goal. It is the last level.
+build_level("scenes/level2.scene.json", 1560.0, "", 50, {12, 13, 30, 31, 32}, (560, 290),
+            [(200, 372), (330, 372), (540, 250), (600, 250), (760, 372), (1200, 372)], (860, 384), [330, 930, 1250],
+            [(600.0, 570.0, 680.0, 60.0), (1100.0, 1060.0, 1150.0, 45.0), (1400.0, 1360.0, 1450.0, 50.0)], 1520)
 
 def action(n, codes):
     return {"name": n, "bindings": [{"device": "keyboard", "code": c} for c in codes]}
 project = {"format_version": 1, "name": "platformer_slice", "main_scene": "scenes/main.scene.json",
            "module": "platformer_slice_game.so",
            "input_actions": {"format_version": 1, "actions": [
-               action("move_left", [65, 263]), action("move_right", [68, 262]), action("jump", [32])]},
+               action("move_left", [65, 263]), action("move_right", [68, 262]), action("jump", [32]), action("pause", [80, 256])]},
            "hud": {"format_version": 1, "elements": [
                {"type": "text", "id": "score", "text": "SCORE 0", "anchor": "top_left", "offset": [16, 16], "font_scale": 3.0,
                 "color": [1, 1, 1, 1]},
