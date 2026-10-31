@@ -13,6 +13,7 @@
             "enemy_speed": 65.0,
             "intermission": 3.0,
             "player_speed": 120.0,
+            "restart_delay": 3.0,
             "spawn_seed": 12345,
             "wave_duration": 20.0
           },
