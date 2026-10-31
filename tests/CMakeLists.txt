@@ -349,6 +349,17 @@ if(ARCANE_BUILD_SAMPLES)
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/topdown_slice $<TARGET_FILE:topdown_slice_game>
     ${ARCANE_TOPDOWN_STRICT_TRACE})
   set_tests_properties(test_topdown_replay_60s PROPERTIES TIMEOUT 120)
+  # GS2: platformer replay (checkpoints, level 1 -> level 2, respawn) vs recorded trace. Needs the windowed player
+  # (the headless runner has no SceneManager), so GL-labeled; regenerate the trace when the slice changes (see script).
+  set(ARCANE_PLATFORMER_STRICT_TRACE 0)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(ARCANE_PLATFORMER_STRICT_TRACE 1)  # the committed trace was recorded with GCC Debug
+  endif()
+  add_test(NAME test_platformer_replay COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_platformer_replay.sh
+    $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
+    ${ARCANE_PLATFORMER_STRICT_TRACE})
+  set_tests_properties(test_platformer_replay PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
+    ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
   # AF10B: author, run, test, export and run the export, all without a display.
   add_test(NAME test_cli_e2e COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_e2e.sh
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> $<TARGET_FILE:sample_game>

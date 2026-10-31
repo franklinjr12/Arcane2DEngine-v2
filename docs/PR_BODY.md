@@ -43,6 +43,8 @@ GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "
 
 PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
 
+GS2: the platformer sample now has sensor-trigger pickups/spikes/goal, checkpoints with pit respawn, a patrolling enemy, hero jump/fall/hurt animation states, pause (P/Escape), camera follow + parallax and a second level reached through the goal (score carries over), plus a replay test (`test_platformer_replay`, GL-labeled) and gaps in `docs/slice_platformer_gaps.md`.
+
 GS1: the top-down sample is now an arena with waves, coin pickups, HUD, pause, game over/restart, a 60 s replay test (`test_topdown_replay_60s`) and perf numbers in `docs/perf.md`.
 
 GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner, an enemy that paths around an interior wall, player health in the HUD, restart on death.
