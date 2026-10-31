@@ -124,6 +124,7 @@ add_library(arcane_runtime SHARED
   engine/src/topdown.cpp
   engine/src/navigation.cpp
   engine/src/spawner.cpp
+  engine/src/combat.cpp
   engine/src/input.cpp
   engine/src/animation.cpp
   engine/src/animgraph.cpp

@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "arcane/builtin_components.hpp"
+#include "arcane/combat.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/navigation.hpp"
 #include "arcane/node.hpp"
@@ -229,6 +230,7 @@ void register_physics_components(ComponentRegistry& registry) {
   register_topdown_components(registry);
   register_navigation_components(registry);
   register_spawner_components(registry);
+  register_combat_components(registry);
 }
 
 struct PhysicsWorld::Impl {
