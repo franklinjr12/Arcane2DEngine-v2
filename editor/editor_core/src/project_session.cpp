@@ -13,7 +13,7 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   }
   auto project = load_project_from_json(*project_text);
   if (!project) {
-    return std::unexpected(project.error());
+    return std::unexpected(located_error("project.json", project.error()));
   }
 
   ProjectSession session;
@@ -24,18 +24,19 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   if (!scene_text) {
     return std::unexpected(scene_text.error());
   }
+  const std::string scene_rel = session.project_.main_scene;
   auto scene = Scene::load_from_json_strict(*scene_text, registry);
   if (!scene && policy == SceneLoadPolicy::Compatible) {
-    session.unsafe_save_reason_ = session.main_scene_path().string() + ": " + scene.error();
+    session.unsafe_save_reason_ = located_error(scene_rel, scene.error());
     scene = Scene::load_from_json(*scene_text, registry);
   }
   if (!scene) {
-    return std::unexpected(scene.error());
+    return std::unexpected(located_error(scene_rel, scene.error()));
   }
   session.scene_ = std::move(*scene);
   auto strict_project = load_project_from_json_strict(*project_text);
   if (!strict_project && session.unsafe_save_reason_.empty()) {
-    session.unsafe_save_reason_ = "project.json: " + strict_project.error();
+    session.unsafe_save_reason_ = located_error("project.json", strict_project.error());
   }
   session.project_revision_ = *project_text;
   session.scene_revision_ = *scene_text;

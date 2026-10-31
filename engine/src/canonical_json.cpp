@@ -354,6 +354,14 @@ void require_project_path(const std::string& path, bool allow_empty, std::string
 
 namespace arcane {
 
+std::string located_error(std::string_view path, const std::string& error) {
+  std::string out(path);
+  if (error.empty() || error.front() != '#') out += "#: ";
+  out += error;
+  return out;
+}
+
+
 std::expected<std::string, std::string> canonicalize_json(const std::string& text) {
   auto parsed = canonical::parse_strict(text);
   if (!parsed) return std::unexpected(parsed.error());

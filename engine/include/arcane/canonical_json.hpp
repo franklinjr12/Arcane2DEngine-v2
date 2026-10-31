@@ -3,6 +3,7 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <string_view>
 
 #include "arcane/export.hpp"
 
@@ -14,6 +15,11 @@ namespace arcane {
 // malformed JSON, duplicate keys, NaN/infinity, floats out of binary32
 // range and invalid UTF-8.
 ARCANE_API std::expected<std::string, std::string> canonicalize_json(const std::string& text);
+
+// Prefixes a loader error (`#<pointer>: <message>`) with the file it came from:
+// `<path>#<pointer>: <message>`. Errors not starting with '#' become
+// `<path>#: <error>`. See docs/formats/errors.md.
+ARCANE_API std::string located_error(std::string_view path, const std::string& error);
 
 ARCANE_API std::expected<std::string, std::string> read_text_file(const std::filesystem::path& path);
 

@@ -62,11 +62,11 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
   }
   auto project_migrated = migrate_project_json(*project_text);
   if (!project_migrated) {
-    return std::unexpected(std::format("project.json: {}", project_migrated.error()));
+    return std::unexpected(located_error("project.json", project_migrated.error()));
   }
   auto project = load_project_from_json_strict(*project_migrated);
   if (!project) {
-    return std::unexpected(std::format("project.json: {}", project.error()));
+    return std::unexpected(located_error("project.json", project.error()));
   }
   report.files.push_back(MigratedFile{"project.json", *project_text != *project_migrated, *project_text,
                                       *project_migrated});
@@ -92,7 +92,7 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
     }
     auto migrated = migrate_scene_json(*text, registry);
     if (!migrated) {
-      return std::unexpected(std::format("{}: {}", scene_path, migrated.error()));
+      return std::unexpected(located_error(scene_path, migrated.error()));
     }
     report.files.push_back(MigratedFile{scene_path, *text != *migrated, *text, *migrated});
   }
@@ -106,7 +106,7 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
     if (kind == AssetKind::None) continue;
     auto migrated = kind == AssetKind::Tileset ? migrate_tileset_json(*text) : migrate_clip_json(*text);
     if (!migrated) {
-      return std::unexpected(std::format("{}: {}", asset_path, migrated.error()));
+      return std::unexpected(located_error(asset_path, migrated.error()));
     }
     report.files.push_back(MigratedFile{asset_path, *text != *migrated, *text, *migrated});
   }

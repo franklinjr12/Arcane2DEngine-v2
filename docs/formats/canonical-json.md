@@ -65,3 +65,5 @@ commit fails. Running it on a v2 project changes nothing. The caller supplies a 
 the builtin types and the project module's types.
 
 Legacy readers stay as the compatibility path for every kind; there is no removal date.
+
+Loader error messages name the file and JSON pointer: see [errors.md](errors.md).

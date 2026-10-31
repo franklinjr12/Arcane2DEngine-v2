@@ -2,11 +2,14 @@
 // JSON pointer ("#/nodes/2/id: ..."; root is "#: ..."), see docs/formats/errors.md.
 // Add a row per failure mode; add a loader name to run_loader for new loaders.
 #include <cstdio>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
 #include "arcane/animation.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/canonical_json.hpp"
 #include "arcane/component_registry.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -156,6 +159,57 @@ std::vector<Case> cases() {
   };
 }
 
+struct FileCase {
+  const char* file;       // project-relative file overwritten with bad content
+  std::string text;
+  std::string expected;   // "<file>#<pointer>" prefix of the migrate_project error
+};
+
+// Copies the golden sample project to a temp dir, overwrites one file per row
+// and checks that migrate_project names the file and the JSON pointer.
+int run_file_cases(const arcane::ComponentRegistry& registry) {
+  namespace fs = std::filesystem;
+  const std::vector<FileCase> rows = {
+      {"project.json", R"({"format":"arcane.project","version":2,"name":3,"main_scene":"scenes/main.scene.json"})",
+       "project.json#/name"},
+      {"project.json", "{", "project.json#"},
+      {"scenes/main.scene.json", R"({"format":"arcane.scene","version":2,"next_id":2,"nodes":[{"id":"x"}]})",
+       "scenes/main.scene.json#/nodes/0"},
+      {"assets/tiles.json", R"({"format":"arcane.tileset","version":2,"texture":1,"tile_width":8,"tile_height":8,
+        "columns":2,"tile_count":4,"tiles":[{"terrain":"x"}]})",
+       "assets/tiles.json#/tiles/0/terrain"},
+      {"assets/bad.clip.json", R"({"format":"arcane.clip","version":2,"frames":[{"uv":[0,0,"a",1]}]})",
+       "assets/bad.clip.json#/frames/0/uv/2"},
+  };
+  int failures = 0;
+  int index = 0;
+  for (const FileCase& row : rows) {
+    const fs::path dir = fs::temp_directory_path() / ("arcane_loader_errors_" + std::to_string(index++));
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    fs::copy(ARCANE_GOLDEN_DIR "/sample_project", dir, fs::copy_options::recursive, ec);
+    bool ok = !ec;
+    if (ok) {
+      // The sample scene needs module components; use an empty one so only the bad row can fail.
+      std::ofstream scene(dir / "scenes/main.scene.json", std::ios::binary | std::ios::trunc);
+      scene << R"({"format":"arcane.scene","version":2,"next_id":1,"nodes":[]})";
+      scene.close();
+      std::ofstream out(dir / row.file, std::ios::binary | std::ios::trunc);
+      out << row.text;
+      out.close();
+      auto result = arcane::migrate_project(dir, registry);
+      ok = !result.has_value() && result.error().rfind(row.expected, 0) == 0;
+      if (!ok) {
+        std::fprintf(stderr, "FILE CASE FAILED [%s] expected '%s...'\n  got: %s\n", row.file, row.expected.c_str(),
+                     result ? "(migrated fine)" : result.error().c_str());
+      }
+    }
+    fs::remove_all(dir, ec);
+    if (!ok) ++failures;
+  }
+  return failures;
+}
+
 }  // namespace
 
 int main() {
@@ -172,6 +226,7 @@ int main() {
       ++failures;
     }
   }
+  failures += run_file_cases(registry);
   ARCANE_ASSERT_TRUE(failures == 0);
   return 0;
 }

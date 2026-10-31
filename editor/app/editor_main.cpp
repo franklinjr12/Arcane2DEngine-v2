@@ -32,6 +32,7 @@
 #include "arcane_editor/clip_authoring.hpp"
 
 #include "arcane/audio.hpp"
+#include "arcane/canonical_json.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
@@ -802,7 +803,7 @@ int main(int argc, char** argv) {
             std::string content((std::istreambuf_iterator<char>(in)), {});
             auto loaded = arcane::load_tileset_from_json(content);
             if (loaded) { tileset_draft = *loaded; tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear(); }
-            else tileset_message = loaded.error();
+            else tileset_message = arcane::located_error(asset.relative_path, loaded.error());
           }
         }
         ImGui::TreePop();

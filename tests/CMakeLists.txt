@@ -8,6 +8,7 @@ foreach(t test_logger test_timestep test_json test_scene test_scene_json test_ca
 endforeach()
 target_include_directories(test_json PRIVATE ${TP}/json)
 target_include_directories(test_canonical_json PRIVATE ${TP}/json)
+target_compile_definitions(test_loader_errors PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
 
 add_executable(test_editor_state test_editor_state.cpp)
 target_link_libraries(test_editor_state PRIVATE arcane_editor_core)

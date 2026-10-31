@@ -1,5 +1,7 @@
 #include "arcane_editor/clip_authoring.hpp"
 
+#include "arcane/canonical_json.hpp"
+
 #include <algorithm>
 #include <fstream>
 #include <sstream>
@@ -78,7 +80,9 @@ std::expected<AnimationClip, std::string> load_clip_file(const std::filesystem::
   if (!in) return std::unexpected("cannot open: " + path.string());
   std::ostringstream ss;
   ss << in.rdbuf();
-  return load_clip_from_json(ss.str());
+  auto clip = load_clip_from_json(ss.str());
+  if (!clip) return std::unexpected(located_error(path.generic_string(), clip.error()));
+  return clip;
 }
 
 std::filesystem::file_time_type file_stamp(const std::filesystem::path& path) {
