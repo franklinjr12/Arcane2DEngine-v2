@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API), GP2 (collision/trigger events, layers, queries, tile tags) and GP3 (camera follow, viewport size, parallax) have run so far.
+This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API), GP2 (collision/trigger events, layers, queries, tile tags) and GP3 (camera follow, viewport size, parallax) have run, followed by GP4 (animation graph, sprite flip) and PX1 (prefab follow-ups). PX2, GP5, GS1, GS2, GP6, PF1, GP7, KI2 and AU2 did not run: each was blocked by its board prerequisite (see "Night status" below), so nothing from them is in this PR.
 
 **1. Step-by-step manual checks**
 
@@ -66,6 +66,13 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - Anyone who relied on the committed `.so` must build once so CMake copies it in.
 
 ---
+
+## Night status (WRAP, 2026-10-31 02:40 BRT)
+
+- Done and committed: HY1, AF10C, AF8C, GP1, GP2, GP3, GP4, PX1 (8 commits on top of ac03c08, listed by `git log engine-hermes-2026-10-30..HEAD`).
+- Not run, PARTIAL in `jobs/<ID>/RESULT.md`: PX2, GP5, GS1, GS2, GP6, PF1, GP7, KI2, AU2 and their R-retry jobs. Reason in each: the Engine TASKS board prerequisite (ENG-021 onward) was still todo or in progress, and the parallel protocol forbids claiming a row until its dependencies are done. No code was written for them.
+- Validation of the final commit (`1c6ea03`, WRAP session): `cmake --build build-gcc` up to date; `ctest` 72/72 passed (gcc Debug, headless, includes the sample player/export runs). The last full `scripts/build-and-test.sh` recorded in the PX1 job (same tree as this commit): gcc PASS, clang ASan/UBSan PASS, mingw build PASS. WRAP did not re-run clang or mingw.
+- Working tree clean; no `-wip` branch was needed.
 
 ## Technical detail
 
