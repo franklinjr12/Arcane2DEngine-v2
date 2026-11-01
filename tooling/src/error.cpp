@@ -12,7 +12,7 @@ int exit_code(const ToolError& error) {
       {"NODE_NOT_FOUND", 4},  {"COMPONENT_NOT_FOUND", 4}, {"COMPONENT_TYPE_UNKNOWN", 4},
       {"SELECTOR_AMBIGUOUS", 5}, {"CONFLICT", 5},
       {"MODULE_LOAD_FAILED", 6}, {"MODULE_FAILURE", 6},
-      {"UNSUPPORTED_VERSION", 7}, {"DRY_RUN_UNSUPPORTED", 7},
+      {"UNSUPPORTED_VERSION", 7}, {"DRY_RUN_UNSUPPORTED", 7}, {"TRANSACTION_UNSUPPORTED", 7},
   };
   auto it = kCodes.find(error.code);
   return it == kCodes.end() ? 1 : it->second;

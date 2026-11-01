@@ -1,16 +1,22 @@
 // Headless tests for the editor's command-backed edit path (AF5B): the GUI
 // helper (EditSession) must give the same scene as the CLI/registry calls,
 // node and property edits undo/redo exactly, drags coalesce into one step,
-// the save point tracks dirty state, module properties work, and the editor
-// source has no direct scene writes left on the routed paths (lint).
+// the save point tracks dirty state, module properties work, HUD and input map
+// edits (AF7B) match the CLI model and undo exactly, and the editor source has
+// no direct scene or project writes left on the routed paths (lint). AF8B adds
+// parity/undo for audio, physics, particle and module properties, module
+// edits surviving a reopen, and selection/Play/Stop staying out of the history.
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
+#include "arcane/hud.hpp"
 #include "arcane/module.hpp"
+#include "arcane/particles.hpp"
 #include "arcane/physics.hpp"
+#include "arcane_editor/editor_state.hpp"
 #include "arcane_editor/project_session.hpp"
 #include "arcane_tooling/command.hpp"
 #include "arcane_tooling/edit_session.hpp"
@@ -32,12 +38,16 @@ struct TempProject {
     arcane::register_builtin_components(registry);
     arcane::register_audio_components(registry);
     arcane::register_physics_components(registry);
+    arcane::register_particle_components(registry);
     module->api()->register_types(registry);
     auto session = arcane::editor::ProjectSession::create(dir, "EditSession", registry);
     ARCANE_ASSERT_TRUE(session.has_value());
     arcane::Node* node = session->scene().create_node("Player");
     session->scene().add_component(node, "Spinner", registry);
     session->scene().add_component(node, "Sprite", registry);
+    for (const char* type : {"AudioSource", "RigidBody2D", "Collider2D", "ParticleEmitter"}) {
+      session->scene().add_component(node, type, registry);
+    }
     ARCANE_ASSERT_TRUE(session->save(registry).has_value());
   }
   ~TempProject() {
@@ -216,8 +226,252 @@ void test_failed_edit_changes_nothing() {
   ARCANE_ASSERT_TRUE(!edits.can_undo() && !edits.modified());
 }
 
-// Routed editor paths must not write the scene directly any more (AF5B). Tile painting,
-// clips, HUD and input maps are AF6/AF7 and listed in docs/editor-command-inventory.md.
+std::string read_file(const fs::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
+}
+
+// The HUD and input map calls the editor panels make, in panel order (a drag sends several hud.set).
+std::vector<Invocation> hud_input_calls() {
+  return {{"hud.add", {{"type", "button"}}},
+          {"hud.add", {{"type", "text"}}},
+          {"hud.add", {{"type", "image"}}},
+          {"hud.add", {{"type", "bar"}}},
+          {"hud.set", {{"index", 0}, {"field", "label"}, {"value", "Go"}}},
+          {"hud.set", {{"index", 1}, {"field", "color"}, {"value", {0.5, 0.25, 1.0, 1.0}}}},
+          {"hud.set", {{"index", 2}, {"field", "uv"}, {"value", {0.0, 0.0, 0.5, 0.5}}}},
+          {"hud.set", {{"index", 2}, {"field", "tint"}, {"value", {1.0, 0.5, 0.5, 1.0}}}},
+          {"hud.set", {{"index", 2}, {"field", "anchor"}, {"value", "BottomRight"}}},
+          {"hud.set", {{"index", 2}, {"field", "width"}, {"value", 64.0}}},
+          {"hud.remove", {{"index", 3}}},
+          {"input.add_action", {{"name", "jump"}}},
+          {"input.add_action", {{"name", "fire"}, {"player", 1}}},
+          {"input.add_binding", {{"action", "jump"}, {"device", "keyboard"}, {"code", 32}}},
+          {"input.add_binding", {{"action", "jump"}, {"device", "gamepad_axis"}}},
+          {"input.set_binding", {{"action", "jump"}, {"index", 1}, {"field", "deadzone"}, {"value", 0.25}}},
+          {"input.set_binding", {{"action", "jump"}, {"index", 1}, {"field", "axis_sign"}, {"value", -1}}},
+          {"input.set_player", {{"action", "jump"}, {"player", 2}}},
+          {"input.remove_binding", {{"action", "jump"}, {"index", 0}}},
+          {"input.remove_action", {{"action", "fire"}}}};
+}
+
+// AF7B: the editor's HUD and Input Map panels edit project.json data in memory through EditSession; the CLI model
+// persists each command. Both must write the same canonical project.json, and undo must restore the original.
+void test_gui_hud_input_matches_cli_model() {
+  TempProject gui_project("arcane_edit_session_hud_gui");
+  TempProject cli_project("arcane_edit_session_hud_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  const std::string original = read_file(gui_project.dir / "project.json");
+  ARCANE_ASSERT_TRUE(original == read_file(cli_project.dir / "project.json"));
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+
+  for (const Invocation& call : hud_input_calls()) {
+    ARCANE_ASSERT_TRUE(ok(edits.run(call)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, call, {.persist = true})));
+  }
+  ARCANE_ASSERT_TRUE(edits.modified());
+  ARCANE_ASSERT_TRUE(gui->project_dirty());
+  ARCANE_ASSERT_TRUE(ok(gui->save()));  // the in-memory edits reach disk only on save
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == read_file(cli_project.dir / "project.json"));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") != original);
+
+  // Undo/redo cover project data too: undoing everything restores the original canonical project.json.
+  const std::string edited = read_file(gui_project.dir / "project.json");
+  while (edits.can_undo()) ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(gui->save()));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == original);
+  while (edits.can_redo()) ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(ok(gui->save()));
+  ARCANE_ASSERT_TRUE(read_file(gui_project.dir / "project.json") == edited);
+}
+
+void test_hud_drag_coalesces_to_one_undo_step() {
+  TempProject project("arcane_edit_session_hud_drag");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  ARCANE_ASSERT_TRUE(ok(edits.run({"hud.add", {{"type", "bar"}}})));
+  edits.end_gesture();
+
+  // One drag of the bar fraction: many frames, one key.
+  for (double v : {0.9, 0.7, 0.5, 0.3}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run({"hud.set", {{"index", 0}, {"field", "fraction"}, {"value", v}}}, "hud.set:0:fraction")));
+  }
+  edits.end_gesture();
+  // A drag of another field is its own step.
+  ARCANE_ASSERT_TRUE(ok(edits.run({"hud.set", {{"index", 0}, {"field", "width"}, {"value", 100.0}}}, "hud.set:0:width")));
+  edits.end_gesture();
+
+  const auto& bar = std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]);
+  ARCANE_ASSERT_TRUE(bar.width == 100.0f && bar.fraction == 0.3f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // width
+  ARCANE_ASSERT_TRUE(std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]).width == 200.0f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // the whole fraction drag
+  ARCANE_ASSERT_TRUE(std::get<arcane::HudProgressBar>(context->session().project().hud.elements()[0]).fraction == 1.0f);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));  // the add
+  ARCANE_ASSERT_TRUE(context->session().project().hud.elements().empty());
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+}
+
+void test_gui_project_settings_match_cli_model() {
+  TempProject gui_project("arcane_edit_session_proj_gui");
+  TempProject cli_project("arcane_edit_session_proj_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+  const auto get = [&](ProjectContext& context) { return registry.execute(context, {"project.get", Json::object()}, {}); };
+
+  auto before = get(*gui);
+  ARCANE_ASSERT_TRUE(ok(before));
+  const Json original = before->value;
+  ARCANE_ASSERT_TRUE(!edits.modified());
+
+  const Invocation rename{"project.set", {{"name", "Renamed"}}};
+  const Invocation scene{"project.set", {{"main_scene", "scenes/other.json"}}};
+  for (const Invocation& call : {rename, scene}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run(call)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, call, {})));
+  }
+  auto gui_after = get(*gui);
+  auto cli_after = get(*cli);
+  ARCANE_ASSERT_TRUE(ok(gui_after) && ok(cli_after));
+  ARCANE_ASSERT_TRUE(gui_after->value == cli_after->value);
+  ARCANE_ASSERT_TRUE(gui_after->value["name"] == "Renamed" && gui_after->value["main_scene"] == "scenes/other.json");
+  ARCANE_ASSERT_TRUE(edits.modified());
+
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(get(*gui)->value == original);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(get(*gui)->value == cli_after->value);
+  ARCANE_ASSERT_TRUE(edits.modified());
+}
+
+void test_project_name_typing_coalesces_to_one_undo_step() {
+  TempProject project("arcane_edit_session_proj_typing");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  const std::string original = context->session().project().name;
+  for (const char* typed : {"A", "Ab", "Abc"}) {
+    ARCANE_ASSERT_TRUE(ok(edits.run({"project.set", {{"name", typed}}}, "project.name")));
+  }
+  edits.end_gesture();
+  ARCANE_ASSERT_TRUE(context->session().project().name == "Abc");
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(context->session().project().name == original);
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+}
+
+// Routed editor paths must not write the scene or project data directly any more (AF5B scene, AF6 tiles,
+// AF7B HUD, input map and clip Save). What still bypasses commands is listed in docs/editor-command-inventory.md.
+void test_audio_physics_particle_props_match_cli() {
+  TempProject project("arcane_edit_session_apx");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(project);
+  auto cli = open(project);
+  EditSession edits(*gui, registry);
+  const std::string original = scene_text(*gui);
+
+  struct Case {
+    const char* type;
+    const char* name;
+    arcane::PropertyValue value;
+    Json json;
+  };
+  const std::vector<Case> cases = {
+      {"AudioSource", "volume", 0.25f, 0.25},
+      {"AudioSource", "loop", true, true},
+      {"AudioSource", "play_on_start", true, true},
+      {"RigidBody2D", "gravity_scale", 2.5f, 2.5},
+      {"Collider2D", "friction", 0.75f, 0.75},
+      {"ParticleEmitter", "rate", 12.5f, 12.5},
+  };
+  std::vector<std::string> states{original};
+  for (const Case& c : cases) {
+    ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*gui, c.type), descriptor(*gui, c.type, c.name), c.value)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(
+        *cli, {"prop.set", {{"node", "id:1"}, {"component", c.type}, {"name", c.name}, {"value", c.json}}}, {})));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == scene_text(*cli));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) != states.back());
+    states.push_back(scene_text(*gui));
+  }
+  for (std::size_t i = cases.size(); i > 0; --i) {
+    ARCANE_ASSERT_TRUE(ok(edits.undo()));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == states[i - 1]);
+  }
+  ARCANE_ASSERT_TRUE(scene_text(*gui) == original);
+  for (std::size_t i = 1; i <= cases.size(); ++i) {
+    ARCANE_ASSERT_TRUE(ok(edits.redo()));
+    ARCANE_ASSERT_TRUE(scene_text(*gui) == states[i]);
+  }
+}
+
+void test_module_property_undo_after_reopen() {
+  TempProject project("arcane_edit_session_module_reopen");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  std::string saved;
+  {
+    auto context = open(project);
+    EditSession edits(*context, registry);
+    ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*context, "Spinner"),
+                                             descriptor(*context, "Spinner", "speed_degrees_per_second"), 123.0f)));
+    ARCANE_ASSERT_TRUE(edits.modified());
+    ARCANE_ASSERT_TRUE(context->save().has_value());
+    edits.mark_saved();
+    saved = scene_text(*context);
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(scene_text(*context) == saved);
+  EditSession edits(*context, registry);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(ok(edits.set_property(1, component_id(*context, "Spinner"),
+                                           descriptor(*context, "Spinner", "speed_degrees_per_second"), 7.0f)));
+  ARCANE_ASSERT_TRUE(scene_text(*context) != saved);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(scene_text(*context) == saved);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+}
+
+void test_view_state_is_not_authored() {
+  TempProject project("arcane_edit_session_view_state");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  const std::string original = scene_text(*context);
+
+  arcane::editor::Selection selection;
+  selection.select(1);
+  selection.clear();
+  selection.select(1);
+  arcane::editor::PlayStopController play;
+  ARCANE_ASSERT_TRUE(play.play(context->scene(), context->registry()));
+  play.tick(0.016f);
+  play.stop();
+
+  ARCANE_ASSERT_TRUE(!edits.modified());
+  ARCANE_ASSERT_TRUE(!edits.can_undo());
+  ARCANE_ASSERT_TRUE(scene_text(*context) == original);
+  ARCANE_ASSERT_TRUE(!edits.undo());
+  ARCANE_ASSERT_TRUE(scene_text(*context) == original);
+  ARCANE_ASSERT_TRUE(!edits.modified());
+}
+
 void test_editor_source_has_no_direct_scene_writes() {
   std::ifstream in(ARCANE_EDITOR_SOURCE_PATH);
   ARCANE_ASSERT_TRUE(in.good());
@@ -226,7 +480,8 @@ void test_editor_source_has_no_direct_scene_writes() {
   const std::string source = ss.str();
   for (const char* forbidden : {"->set_name(", "create_node(", "destroy_node(", "flush_destroyed(", "->reparent(",
                                  "add_component(", "descriptor.set(", "local_transform() =", "auto& transform = ", "sprite->texture",
-                                 "->texture =", "->clip =", "->tileset ="}) {
+                                 "->texture =", "->clip =", "->tileset =", "mutable_project()", "hud.add(", ".set_action(",
+                                 ".remove_action(", "save_clip_file(", "elements.erase(", ".main_scene =", ".module =", "project().name ="}) {
     if (source.find(forbidden) != std::string::npos) {
       std::fprintf(stderr, "editor_main.cpp writes the scene directly: %s\n", forbidden);
       ARCANE_ASSERT_TRUE(false);
@@ -242,6 +497,13 @@ int main() {
   test_drag_coalescing();
   test_save_point_dirty_tracking();
   test_failed_edit_changes_nothing();
+  test_gui_hud_input_matches_cli_model();
+  test_hud_drag_coalesces_to_one_undo_step();
+  test_gui_project_settings_match_cli_model();
+  test_project_name_typing_coalesces_to_one_undo_step();
+  test_audio_physics_particle_props_match_cli();
+  test_module_property_undo_after_reopen();
+  test_view_state_is_not_authored();
   test_editor_source_has_no_direct_scene_writes();
   return 0;
 }

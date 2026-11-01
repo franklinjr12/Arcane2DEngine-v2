@@ -162,6 +162,20 @@ void register_debug_commands(CommandRegistry& registry);
 // and tileset.info/validate/create/set_tile/set_rule/remove_rule (tileset files under assets/, written at once).
 void register_tilemap_commands(CommandRegistry& registry);
 
+// Registers hud.list/add/remove/set/move (the HUD layout in project.json, edited in memory; saved with the project).
+void register_hud_commands(CommandRegistry& registry);
+
+// Registers input.list/add_action/remove_action/restore_action/set_player/add_binding/remove_binding/set_binding
+// (the input action map in project.json, edited in memory; saved with the project).
+void register_input_commands(CommandRegistry& registry);
+
+// Registers clip.slice/info/create/add_frames/remove_frame/move_frame/set_frame/set/restore (animation clip files under the
+// project, written at once; clip.restore is the inverse of the others). Sheet sizes are read from PNG files.
+void register_clip_commands(CommandRegistry& registry);
+
+// Registers project.get/project.set (name, main_scene, module in project.json, edited in memory; saved with the project).
+void register_project_commands(CommandRegistry& registry);
+
 // Registers bench.run (headless benchmark; needs a project context only because every command takes one).
 void register_bench_commands(CommandRegistry& registry);
 

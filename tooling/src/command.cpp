@@ -111,6 +111,7 @@ std::expected<CommandResult, ToolError> CommandRegistry::execute(ProjectContext&
     return std::unexpected(valid.error());
   }
 
+  const bool project_was_dirty = context.project_dirty();
   // Module code runs inside commands (property setters); a throwing module
   // must not take the caller down or leave a half-applied command behind.
   auto result = run_guarded(entry.fn, context, call.args);
@@ -122,6 +123,7 @@ std::expected<CommandResult, ToolError> CommandRegistry::execute(ProjectContext&
   auto roll_back = [&] {
     auto inverse = entries_.find(result->inverse->command);
     if (inverse != entries_.end()) (void)run_guarded(inverse->second.fn, context, result->inverse->args);
+    if (!project_was_dirty) context.clear_project_dirty();  // memory equals the loaded project again
   };
   if (options.dry_run) {
     roll_back();

@@ -39,7 +39,7 @@ diagnostic goes to stderr. `arcane docs` prints this reference as raw Markdown.
 | 4 | Schema, reference or validation error | `SCHEMA_INVALID`, `VALUE_INVALID`, `PROPERTY_UNKNOWN`, `NODE_NOT_FOUND`, `COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED`; `validate` with problems; `fmt --check` with differences |
 | 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |
 | 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |
-| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED` |
+| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |
 
 ## Selectors
 
@@ -51,24 +51,71 @@ Node: `id:42` (preferred, stable) or `path:/Root/Player` (names must be unique a
 Every scene command saves the scene file by writing a temporary file next to it and renaming it, after
 serializing and re-validating in memory; a failure leaves the old file. If the scene file changed on disk
 since it was read the command fails with `CONFLICT` (an edit check, not a lock). The CLI keeps no undo
-history; use git. Atomicity is per command, not per batch.
+history; use git. Atomicity is per command; `batch` is atomic for the whole script (see below).
 
 ## Batch
 
 `arcane batch FILE|-` reads one JSON object per line, `{"command":"prop.set","args":{...}}` (command
-names use dots; blank lines are skipped), and runs them in order against one open project, saving after
-each. It stops at the first failure and reports `failed_line`, the error and the results so far. With
-`--dry-run` the commands run cumulatively in memory and nothing is saved.
+names use dots; blank lines are skipped) and either commits every line or writes nothing:
+
+1. Validate all: every line must have the right shape (`ARGS_INVALID`) and a known command
+   (`UNKNOWN_COMMAND`). Commands that write files outside the transaction are refused with
+   `TRANSACTION_UNSUPPORTED` (exit 7): the ones marked as writing files immediately (`clip.*`,
+   `transition.set`, `atlas.pack`, `prefab.save`, ...) and file-level commands that change files
+   (`scene.new`, `migrate`, `fmt`, `project.new`, ...). Nothing has run when this fails.
+2. Run in memory: the lines run in order against one open project and the edits accumulate. Read-only
+   file-level commands (`scene.list`, `validate`, ...) are allowed but see the files on disk, not the
+   uncommitted edits. The first failing line stops the run; nothing is saved, and the reply has
+   `failed_line`, the error and the results so far.
+3. Commit: after every line succeeded, the changed files (the scene and, if a project-level command
+   ran, `project.json`) are written in one transactional save. If that fails the reply has the error,
+   `"failed_line": null` and the per-line `results`, with the files unchanged.
+
+The success reply has `"committed"`: true when files were written, false for `--dry-run` or when nothing
+changed. With `--dry-run` the commands run cumulatively in memory and nothing is saved.
 
 ## Coverage
 
 Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,
 replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):
 tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics
-authoring beyond properties, asset import, `run`, `export`, `render`, `test`. The editor does not use
+authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use
 these commands for its edits yet (docs/editor-command-inventory.md).
 
 ## Commands
+
+### `arcane asset import`
+
+Copy a checked image (.png/.jpg/.jpeg/.bmp), clip (.json) or audio (.wav/.ogg/.mp3/.flac) file into assets/; never overwrites unless overwrite is set. Content is checked by header only.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--dest` | string | no | 2 |
+| `--overwrite` | boolean | no |  |
+| `--source` | string | yes | 1 |
+
+### `arcane asset list`
+
+List the image, clip and audio files under assets/ with their path-derived ids, sorted by path.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--kind` | string | no |  |
+
+### `arcane asset reimport`
+
+Re-validate an existing asset in place, or atomically replace it from a checked source of the same kind; the id does not change.
+
+Writes files; honors `--dry-run`.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--path` | string | yes | 1 |
+| `--source` | string | no |  |
 
 ### `arcane atlas make-clip`
 
@@ -135,11 +182,170 @@ Read only.
 | `--particles-per-emitter` | integer | no |  |
 | `--sprites` | integer | no |  |
 
+### `arcane clip add-frames`
+
+Insert grid cells `from`..`to` (inclusive, either order) into a clip at frame `index` (default: append). The clip is reopened on the given grid first; new frames last 1/fps of the first frame. Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | yes |  |
+| `--index` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | yes |  |
+
+### `arcane clip create`
+
+Create a clip file from sprite sheet grid cells (`cells`, or the inclusive range `from`..`to`), `fps` (default 10) and optional per-frame `durations` in seconds (0 = 1/fps). Fails if the file exists unless overwrite=true. Writes the file at once; the inverse is clip.restore.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--cells` | array | no |  |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--durations` | array | no |  |
+| `--fps` | number | no |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | no |  |
+| `--loop` | boolean | no |  |
+| `--margin` | integer | no |  |
+| `--name` | string | no |  |
+| `--overwrite` | boolean | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | no |  |
+
+### `arcane clip info`
+
+Describe a clip file: name, loop and frames [{uv, seconds}]. With `sheet` and the grid arguments (columns, rows ...) it also reopens the clip on that grid and returns `cells`, `durations` and `fps`; frames that are not on the grid are a VALUE_INVALID error naming the frame.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | no |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | no |  |
+| `--sheet` | string | no |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip move-frame`
+
+Move frame `from` to position `to` (both 0-based frame indices; durations travel with the frame). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--from` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+| `--to` | integer | yes |  |
+
+### `arcane clip remove-frame`
+
+Remove frame `index` from a clip (reopened on the given grid). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--index` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip restore`
+
+Put a clip file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete the file. Used as the inverse of the other clip.* writes; not meant for authoring.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--absent` | boolean | no |  |
+| `--clip` | string | yes |  |
+| `--content` | string | no |  |
+
+### `arcane clip set`
+
+Set the `name` and/or `loop` flag of a clip file; frames are kept exactly (no grid needed). Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--clip` | string | yes |  |
+| `--loop` | boolean | no |  |
+| `--name` | string | no |  |
+
+### `arcane clip set-frame`
+
+Change frame `index` of a clip (reopened on the given grid): `cell` picks another grid cell, `seconds` (> 0) sets its duration. Writes the file at once.
+
+Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--cell` | integer | no |  |
+| `--clip` | string | yes |  |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--index` | integer | yes |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--seconds` | number | no |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
+### `arcane clip slice`
+
+Cut a sprite sheet into a regular grid: returns the sheet size (read from the PNG) and the UV rect [u0,v0,u1,v1] of every cell, numbered row-major from the top-left. frame_width/frame_height 0 = auto.
+
+Read only.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--columns` | integer | yes |  |
+| `--frame-height` | integer | no |  |
+| `--frame-width` | integer | no |  |
+| `--margin` | integer | no |  |
+| `--rows` | integer | yes |  |
+| `--sheet` | string | yes |  |
+| `--spacing` | integer | no |  |
+
 ### `arcane component add`
 
 Attach a new component of a registered type (default property values) to a node.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -160,7 +366,7 @@ Read only.
 
 Detach and destroy a component (by id, or by type name when attached once).
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -215,6 +421,151 @@ Writes files; honors `--dry-run`.
 | `--check` | boolean | no |  |
 | `--file` | string | no |  |
 
+### `arcane hud add`
+
+Insert a HUD element (text, image, bar or button) with editor defaults; `element` overrides fields (see hud.set).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--element` | object | no |  |
+| `--index` | integer | no |  |
+| `--type` | string | yes |  |
+
+### `arcane hud list`
+
+List the HUD elements (index, type and every persisted field).
+
+Read only.
+
+No arguments.
+
+### `arcane hud move`
+
+Move the HUD element at `from` so it ends up at index `to` (draw order).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--from` | integer | yes |  |
+| `--to` | integer | yes |  |
+
+### `arcane hud remove`
+
+Remove the HUD element at `index`.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--index` | integer | yes |  |
+
+### `arcane hud set`
+
+Set one field of the HUD element at `index`. Common: id, anchor (TopLeft..BottomRight), offset_x, offset_y. text: text, font_scale, color; image: texture_asset (0 = none), uv [u0,v0,u1,v1], width, height, tint; bar: width, height, fraction, fill, background; button: label, width, height, font_scale, enabled, normal, hover, pressed, disabled, text_color. Colors are [r,g,b,a].
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--field` | string | yes |  |
+| `--index` | integer | yes |  |
+| `--value` | json | yes |  |
+
+### `arcane input add-action`
+
+Add an empty input action `name` for `player` (-1 = any pad, default).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--name` | string | yes |  |
+| `--player` | integer | no |  |
+
+### `arcane input add-binding`
+
+Add a binding to an action (device keyboard|mouse_button|gamepad_button|gamepad_axis, code, pad -1..3, axis_sign -1..1, deadzone 0..0.99, threshold 0..1; axis fields only persist for gamepad_axis). `index` inserts (default append).
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--axis-sign` | integer | no |  |
+| `--code` | integer | no |  |
+| `--deadzone` | number | no |  |
+| `--device` | string | no |  |
+| `--index` | integer | no |  |
+| `--pad` | integer | no |  |
+| `--threshold` | number | no |  |
+
+### `arcane input list`
+
+List the input actions (name, player, bindings with device/code/pad/axis_sign/deadzone/threshold).
+
+Read only.
+
+No arguments.
+
+### `arcane input remove-action`
+
+Remove the input action `action` with its bindings.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+
+### `arcane input remove-binding`
+
+Remove the binding at `index` of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--index` | integer | yes |  |
+
+### `arcane input restore-action`
+
+Recreate an input action exactly from an input.list entry `action` {name, player, bindings}, inserted at `index` (default append). Inverse of input.remove_action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | object | yes |  |
+| `--index` | integer | no |  |
+
+### `arcane input set-binding`
+
+Set one field (device, code, pad, axis_sign, deadzone, threshold) of the binding at `index` of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--field` | string | yes |  |
+| `--index` | integer | yes |  |
+| `--value` | json | yes |  |
+
+### `arcane input set-player`
+
+Set the player (gamepad number, -1 = any pad) of an action.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--action` | string | yes |  |
+| `--player` | integer | yes |  |
+
 ### `arcane migrate`
 
 Migrate every project file to canonical v2 atomically (all or nothing); idempotent; honors --dry-run.
@@ -227,7 +578,7 @@ No arguments.
 
 Create a node (a root, or under `parent`) with an optional local transform; the id is allocated.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -241,7 +592,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Deep-copy a node subtree (components and property values) with new ids; entity_id properties that pointed inside the subtree point at the copy. Refused for prefab-instance nodes.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -276,7 +627,7 @@ Read only.
 
 Remove a node and its subtree. Refused for prefab-instance nodes and while a node outside the subtree references it through an entity_id property.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -286,7 +637,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Rename a node (ids stay). Names must not contain '/'.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -297,7 +648,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Move a node (with its subtree) under `parent`, or make it a root when `parent` is omitted. It becomes the last child. Refused for cycles and non-root prefab-instance nodes.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -308,7 +659,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Set a node's local transform fields; omitted fields keep their value.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -321,7 +672,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Turn a prefab instance into plain nodes: links and override records are removed, IDs and values stay.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -341,7 +692,7 @@ Read only.
 
 Create a copy of a prefab with fresh scene IDs under 'parent' (default: a scene root). 'name' and 'position' are shortcuts for overrides of the root; 'overrides' is a list of {local_id, component?, property, value}.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -355,7 +706,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Set one property of a prefab instance node and record it as an override of the prefab value. Without 'component' the property is a node field (name, position, rotation_radians, scale). Setting the prefab's own value drops the override.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -368,7 +719,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Re-attach plain nodes to a prefab as one instance (the inverse of prefab.break_link). 'nodes' pairs scene IDs with prefab-local IDs; 'instance_id' is the root's scene ID.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -381,7 +732,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Delete a whole prefab instance (any node of it selects it). Undo recreates it with new IDs and the same overrides.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -391,7 +742,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Drop an override: the property returns to the prefab's value. No-op when the property is not overridden.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -411,6 +762,14 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 | `--node` | string | yes |  |
 | `--overwrite` | boolean | no |  |
 
+### `arcane project get`
+
+Show the project-level properties: name, main_scene and module (from project.json).
+
+Read only.
+
+No arguments.
+
 ### `arcane project info`
 
 Describe the project: name, main scene, module, format, scene count, transition/save/debug settings.
@@ -429,6 +788,18 @@ Writes files; honors `--dry-run`.
 | --- | --- | --- | --- |
 | `--name` | string | no |  |
 | `--path` | string | yes | 1 |
+
+### `arcane project set`
+
+Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), `module` (project-relative path, empty for none). At least one is required. main_scene and module take effect the next time the project is opened; nothing is reloaded now.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--main-scene` | string | no |  |
+| `--module` | string | no |  |
+| `--name` | string | no |  |
 
 ### `arcane project settings-get`
 
@@ -477,7 +848,7 @@ Read only.
 
 Set one registered property. The value is JSON typed by the property (bool, int, float, [x,y], [r,g,b,a], string, unsigned id); a wrong type or unknown property changes nothing.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -625,7 +996,7 @@ No arguments.
 
 Internal inverse of structural edits: replaces the open scene with a canonical scene v2 text. Node and component pointers from before the call are invalid afterwards.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -658,7 +1029,7 @@ Read only.
 
 Append an empty layer; the result names its index.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -680,7 +1051,7 @@ Writes files immediately; `--dry-run` is refused (`DRY_RUN_UNSUPPORTED`).
 
 Clear one cell (tile 0).
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -693,7 +1064,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Fill the inclusive cell rectangle x0,y0..x1,y1 with a tile (0 = erase). Corners may be given in any order and must be inside the grid.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -722,7 +1093,7 @@ Read only.
 
 Write CSV tile ids into a layer starting at cell (x, y) (default 0,0). Give the text as `csv` or read it from a project-relative `file`. Rows must be the same length, fit the grid and use valid tile ids; nothing changes otherwise.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -747,7 +1118,7 @@ Read only.
 
 Paint one cell with a tile id (layer defaults to 0).
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -761,7 +1132,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Set many cells at once: cells is a list of {layer, x, y, tile}. All are validated first; nothing changes if any is invalid. This is also the inverse of every other cell edit.
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |
@@ -772,7 +1143,7 @@ Edits the open scene and saves it atomically; `--dry-run` shows the result and s
 
 Paint (or with erase=true clear) a cell with auto-tiling: the tile is picked from the tileset's rule for `terrain` by its N/E/S/W neighbours, and the neighbours of that terrain are re-picked (the editor's terrain brush).
 
-Edits the open scene and saves it atomically; `--dry-run` shows the result and saves nothing.
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
 
 | Argument | Type | Required | Positional |
 | --- | --- | --- | --- |

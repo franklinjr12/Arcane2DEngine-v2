@@ -234,6 +234,11 @@ target_compile_definitions(test_cli PRIVATE
 add_dependencies(test_cli arcane)
 add_test(NAME test_cli COMMAND test_cli)
 
+# asset.list/import/reimport on temporary projects (failure injection, hot reload of a reimported clip).
+add_executable(test_asset_commands test_asset_commands.cpp)
+target_link_libraries(test_asset_commands PRIVATE arcane_tooling)
+add_test(NAME test_asset_commands COMMAND test_asset_commands)
+
 # Registered module properties of the top-down slice through the registry.
 add_executable(test_topdown_commands test_topdown_commands.cpp)
 target_link_libraries(test_topdown_commands PRIVATE arcane_tooling)
@@ -258,6 +263,18 @@ target_compile_definitions(test_tilemap_commands PRIVATE
   ARCANE_TOPDOWN_MODULE_PATH="$<TARGET_FILE:topdown_slice_game>")
 add_dependencies(test_tilemap_commands topdown_slice_game)
 add_test(NAME test_tilemap_commands COMMAND test_tilemap_commands)
+
+# --- hud.* / input commands (project.json data edited in memory) ---------------
+add_executable(test_hud_input_commands test_hud_input_commands.cpp)
+target_link_libraries(test_hud_input_commands PRIVATE arcane_tooling)
+target_include_directories(test_hud_input_commands SYSTEM PRIVATE ${TP}/stb)
+add_test(NAME test_hud_input_commands COMMAND test_hud_input_commands)
+
+# --- clip.* commands (sheet grid slicing, clip files) ----------------------------
+add_executable(test_clip_commands test_clip_commands.cpp)
+target_link_libraries(test_clip_commands PRIVATE arcane_tooling)
+target_include_directories(test_clip_commands SYSTEM PRIVATE ${TP}/stb)
+add_test(NAME test_clip_commands COMMAND test_clip_commands)
 
 # --- FE22 scene transitions, save API, transition.* / save.* commands ---------
 add_executable(test_scene_flow test_scene_flow.cpp)

@@ -1,6 +1,7 @@
 // File-level `arcane` commands: project/scene files, validate, fmt, migrate, schema, docs
 // (docs/cli-reference.md). They need no open scene, so they work on projects that cannot be opened.
 #include "arcane_tooling/offline.hpp"
+#include "offline_internal.hpp"
 
 #include <algorithm>
 #include <fstream>
@@ -15,17 +16,12 @@
 
 namespace arcane::tooling {
 
-namespace {
-
-using Result = std::expected<Json, ToolError>;
-
-ToolError error(const char* code, std::string message, std::string file = {}, std::string path = {},
-                std::string hint = {}) {
+ToolError offline_error(const char* code, std::string message, std::string file, std::string path, std::string hint) {
   return ToolError{code, std::move(message), std::move(file), std::move(path), std::move(hint)};
 }
 
-Json object_schema(Json properties, std::initializer_list<const char*> required = {},
-                   std::initializer_list<const char*> positional = {}) {
+Json offline_object_schema(Json properties, std::initializer_list<const char*> required,
+                           std::initializer_list<const char*> positional) {
   Json req = Json::array();
   for (const char* name : required) req.push_back(name);
   Json pos = Json::array();
@@ -35,19 +31,35 @@ Json object_schema(Json properties, std::initializer_list<const char*> required 
   return out;
 }
 
+std::expected<void, ToolError> offline_require_project(const OfflineEnv& env) {
+  std::error_code ec;
+  if (!std::filesystem::is_regular_file(env.project_dir / "project.json", ec)) {
+    return std::unexpected(offline_error("PROJECT_NOT_FOUND", "No project.json in " + env.project_dir.string(), "", "",
+                                         "Pass --project DIR pointing at a directory containing project.json"));
+  }
+  return {};
+}
+
+namespace {
+
+using Result = std::expected<Json, ToolError>;
+
+ToolError error(const char* code, std::string message, std::string file = {}, std::string path = {},
+                std::string hint = {}) {
+  return offline_error(code, std::move(message), std::move(file), std::move(path), std::move(hint));
+}
+
+Json object_schema(Json properties, std::initializer_list<const char*> required = {},
+                   std::initializer_list<const char*> positional = {}) {
+  return offline_object_schema(std::move(properties), required, positional);
+}
+
 const Json kStringArg = {{"type", "string"}};
 const Json kBoolArg = {{"type", "boolean"}};
 
 std::string slash(const std::filesystem::path& path) { return path.generic_string(); }
 
-std::expected<void, ToolError> require_project(const OfflineEnv& env) {
-  std::error_code ec;
-  if (!std::filesystem::is_regular_file(env.project_dir / "project.json", ec)) {
-    return std::unexpected(error("PROJECT_NOT_FOUND", "No project.json in " + env.project_dir.string(), "", "",
-                                 "Pass --project DIR pointing at a directory containing project.json"));
-  }
-  return {};
-}
+std::expected<void, ToolError> require_project(const OfflineEnv& env) { return offline_require_project(env); }
 
 std::expected<void, ToolError> check_relative(const std::string& path, const char* arg) {
   if (is_project_relative_path(path)) return {};
@@ -420,6 +432,7 @@ std::vector<OfflineCommand> make_commands() {
   c.push_back({{"docs", "Print the generated command reference (md, the default) or a command list (json).",
                 object_schema({{"format", {{"type", "string"}, {"enum", Json::array({"md", "json"})}}}}), {{"type", "object"}}, false},
                docs});
+  for (auto& asset : make_asset_commands()) c.push_back(std::move(asset));
   return c;
 }
 

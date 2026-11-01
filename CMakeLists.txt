@@ -167,6 +167,7 @@ embed_schemas(${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp ${CMAKE_CURRENT
 add_library(arcane_tooling STATIC
   ${CMAKE_BINARY_DIR}/generated/embedded_schemas.cpp
   tooling/src/offline.cpp
+  tooling/src/asset_commands.cpp
   tooling/src/cli.cpp
   tooling/src/all_commands.cpp
   tooling/src/scene_commands.cpp
@@ -181,7 +182,11 @@ add_library(arcane_tooling STATIC
   tooling/src/prefab_commands.cpp
   tooling/src/bench_commands.cpp
   tooling/src/replay_commands.cpp
-  tooling/src/tilemap_commands.cpp)
+  tooling/src/tilemap_commands.cpp
+  tooling/src/hud_commands.cpp
+  tooling/src/input_commands.cpp
+  tooling/src/clip_commands.cpp
+  tooling/src/project_commands.cpp)
 target_include_directories(arcane_tooling PUBLIC tooling/include ${TP}/json)
 target_link_libraries(arcane_tooling PUBLIC arcane_editor_core)
 

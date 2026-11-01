@@ -18,9 +18,13 @@ open and nothing is written. The module stays loaded until the context is
 destroyed; the scene and registry are destroyed first. Do not keep node,
 component or descriptor pointers beyond the context.
 
-`save()` writes the scene file only (serialized first, replaced atomically,
-old file kept on failure) and fails with `CONFLICT` if the file changed on disk
-since it was read or last saved.
+`save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*` and `input.*`),
+`project.json`. Both are serialized before anything is written, both files are written in one transactional
+step (project.json first): all-or-nothing for ordinary failures, with the earlier file restored if the second
+commit fails, but not crash-atomic (a kill between the two renames can leave a mix); a failure is `IO_ERROR` and keeps both dirty flags. It fails with `CONFLICT`, writing
+nothing, if a file it would write changed on disk since it was read or last saved. Project-level commands edit
+`session().mutable_project()` in memory only, are ordinary mutating commands (`persist` and `dry_run` work as
+for scene commands, `dry_run` leaves the project clean) and never write on their own.
 
 ## Execution
 
@@ -137,6 +141,129 @@ integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or
 `validate` (rule tiles inside `tile_count`, rule tiles marked with their terrain, duplicate/empty rules; `ok:false` lists
 problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
 `tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
+
+## HUD commands
+
+`hud.*` edit the HUD layout stored in `project.json` (`docs/formats/hud.md`), addressing elements by 0-based
+`index` into the draw order. Registered by `register_hud_commands`; see `tooling/src/hud_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `hud.list` | none | `{count, elements:[{index,type,id,...fields}]}`; `type` is `text`, `image`, `bar` or `button` |
+| `hud.add` (mutating) | `type`, `index?` (default append), `element?` (field overrides) | `{index, id}`; inverse `hud.remove` |
+| `hud.remove` (mutating) | `index` | `{index,id,type}`; inverse `hud.add` with every field and the index |
+| `hud.set` (mutating) | `index`, `field`, `value` | `{index,field,previous,value,changed}`; inverse `hud.set` with the previous value |
+| `hud.move` (mutating) | `from`, `to` | `{from,to,changed}`; inverse `hud.move` with the indices swapped |
+
+Defaults match the editor's `+` buttons (button id `button` label `Button`; text `Text`, white; default bar; default
+image). A new element without an `id` gets an unused one (`button`, then `<type>_<n>`); ids are unique and non-empty.
+Fields: all types `id`, `anchor` (`TopLeft`, `Top`, `TopRight`, `Left`, `Center`, `Right`, `BottomLeft`, `Bottom`,
+`BottomRight`), `offset_x`, `offset_y`; text `text`, `font_scale`, `color`; image `texture_asset` (image asset id,
+0 = none; a non-zero id must name an image under `assets/`), `uv` `[u0,v0,u1,v1]`, `width`, `height`, `tint`;
+bar `width`, `height`, `fraction` (0..1), `fill`, `background`; button `label`, `width`, `height`, `font_scale`,
+`enabled`, `normal`, `hover`, `pressed`, `disabled`, `text_color`. Colors are `[r,g,b,a]`; sizes are >= 0 and
+`font_scale` > 0. Runtime-only state (`HudImage::texture`, button `state`/`focused`) is never exposed. An unknown
+field is `ARGS_INVALID` with the valid names in the hint, a bad value or index `VALUE_INVALID`; a rejected call changes
+nothing. Setting a field to its current value, or moving an element onto itself, is a no-op without an inverse.
+
+## Input commands
+
+`input.*` edit the input action map stored in `project.json` (`input_actions`, `docs/formats/input.md`). Actions are
+addressed by name, bindings by 0-based `index`. Registered by `register_input_commands`; see
+`tooling/src/input_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `input.list` | none | `{count, actions:[{name,player,bindings:[{device,code,pad,axis_sign,deadzone,threshold}]}]}` |
+| `input.add_action` (mutating) | `name`, `player?` (-1..3, default -1) | `{name,player}`; inverse `input.remove_action` |
+| `input.remove_action` (mutating) | `action` | `{name}`; inverse `input.restore_action` with the full action and its position |
+| `input.restore_action` (mutating) | `action` (object from `input.list`), `index?` (default append) | `{name,index}`; inverse `input.remove_action` |
+| `input.set_player` (mutating) | `action`, `player` | `{action,previous,player,changed}`; inverse `input.set_player` |
+| `input.add_binding` (mutating) | `action`, `device?`, `code?`, `pad?`, `axis_sign?`, `deadzone?`, `threshold?`, `index?` | `{index}`; inverse `input.remove_binding` |
+| `input.remove_binding` (mutating) | `action`, `index` | `{index}`; inverse `input.add_binding` with every field and the index |
+| `input.set_binding` (mutating) | `action`, `index`, `field`, `value` | `{action,index,field,previous,value,changed}`; inverse `input.set_binding` with the previous value |
+
+`device` is `keyboard`, `mouse_button`, `gamepad_button` or `gamepad_axis` (the persisted names; default `keyboard`).
+Ranges: `pad` -1..3 (-1 = the action's player), `axis_sign` -1..1, `deadzone` 0..0.99, `threshold` 0..1, `code` >= 0;
+the axis fields are only persisted for `gamepad_axis`. Action names are unique and non-empty. Action order is the
+persisted order; `input.restore_action` rebuilds the map to insert at `index`, so undo restores equal content and order.
+An unknown action or out-of-range index is `VALUE_INVALID` (hint: list with `input.list`); a rejected call changes
+nothing, and setting a field to its current value is a no-op without an inverse.
+
+## Clip commands
+
+`clip.*` slice a sprite sheet and author animation clip files (`docs/formats/clip.md`). Like `atlas.*` and `tileset.*` they
+read and write asset files only, at once (no `persist`/`dry_run`, the CLI refuses `--dry-run`). Paths (`clip`, `sheet`) are
+project-relative `/` paths; clips normally live under `assets/`. The sheet's pixel size is read from the PNG file without
+a GL context, so only PNG sheets are supported (`VALUE_INVALID` otherwise, `IO_ERROR` if missing). Registered by
+`register_clip_commands`; see `tooling/src/clip_commands.cpp`.
+
+Grid arguments (the editor's Animation Clip panel fields): `columns`, `rows` (>= 1), `frame_width`, `frame_height`
+(0 = sheet size / count), `margin`, `spacing` (>= 0). Cells are numbered row-major from the top-left.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `clip.slice` | `sheet`, grid | `{sheet_width, sheet_height, cells:[{index, uv:[u0,v0,u1,v1]}]}`; an empty cell is `VALUE_INVALID` |
+| `clip.info` | `clip`, `sheet?` + grid | `{name, loop, frames:[{uv,seconds}]}`; with a sheet also `{cells, durations, fps}` |
+| `clip.create` | `clip`, `sheet`, grid, `cells` or `from`+`to`, `fps?` (10), `durations?`, `loop?`, `name?`, `overwrite?` | `{clip, frames, cells}`; inverse `clip.restore` |
+| `clip.add_frames` | `clip`, `sheet`, grid, `from`, `to`, `index?` (append) | `{clip, frames, added, index, changed}` |
+| `clip.remove_frame` | `clip`, `sheet`, grid, `index` | `{clip, frames, index, changed}` |
+| `clip.move_frame` | `clip`, `sheet`, grid, `from`, `to` | `{clip, frames, from, to, changed}` |
+| `clip.set_frame` | `clip`, `sheet`, grid, `index`, `cell?`, `seconds?` | `{clip, frames, index, changed}` |
+| `clip.set` | `clip`, `name?`, `loop?` | `{clip, name, loop, changed}`; no grid needed, frames are kept exactly |
+| `clip.restore` | `clip`, `content` or `absent=true` | `{clip, restored}`; only used as the inverse of the others |
+
+`clip.create` builds the clip with `ClipDraft` + `build_clip` (a `durations` entry of 0 means `1/fps`) and refuses an
+existing file (`CONFLICT`) unless `overwrite=true`. The edit commands reopen the clip with `draft_from_clip` on the grid
+you pass: clip files do not store their grid, so every frame must be exactly one grid cell, otherwise the call fails with
+`VALUE_INVALID` naming the frame and the file is untouched. Durations are kept per frame; frames added by `add_frames` use
+`1/fps` of the first frame (change them with `set_frame --seconds`). Setting a value to what it already is writes nothing
+and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
+undo restores the exact bytes.
+
+## Project commands
+
+`project.get` / `project.set` read and edit the project-level properties in `project.json` (`name`, `main_scene`,
+`module`). Like `hud.*` they edit the project in memory and mark it dirty; File > Save (or `--persist`) writes
+`project.json`. Nothing is reloaded: `main_scene` and `module` take effect the next time the project is opened.
+Registered by `register_project_commands`; see `tooling/src/project_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `project.get` | none | `{name, main_scene, module}` |
+| `project.set` (mutating) | `name?`, `main_scene?`, `module?` (at least one) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+
+`name` must be non-empty. `main_scene` must be a project-relative `/` path without `..` that ends in `.json`.
+`module` may be empty (no native module) or a project-relative path. Anything else is `VALUE_INVALID` (file
+`project.json`, path `/name`, `/main_scene` or `/module`) and nothing is changed, even if another argument was valid.
+Setting a value to what it already is is a no-op without an inverse.
+
+## Assets
+
+`asset.list`, `asset.import` and `asset.reimport` are file-level (offline) commands on `<project>/assets`; they need a
+`project.json` (`PROJECT_NOT_FOUND` otherwise) but open neither the scene nor the module. An asset id is
+`editor::asset_id_for_relative_path` of its path relative to `assets/`, so there is no import database or sidecar file.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `asset.list` | `kind?` = `image`/`clip`/`audio`/`all` (default) | `{assets:[{id, path, kind, bytes}]}` sorted by path |
+| `asset.import` (mutating) | `source`, `dest?` (relative to `assets/`, default the source file name), `overwrite?` | `{id, path, kind, bytes, replaced}` |
+| `asset.reimport` (mutating) | `path` (must exist), `source?` | `{id, path, kind, bytes, changed}` |
+
+The kind comes from the extension: image `.png .jpg .jpeg .bmp`, clip `.json`, audio `.wav .ogg .mp3 .flac`; anything
+else, a `dest` with `..`, a backslash, an absolute or drive path, or a source of another kind than `dest`/`path` is
+`ARGS_INVALID`. A missing or unreadable source, or a missing reimport `path`, is `IO_ERROR`. Content is checked by header
+only (PNG signature and non-zero IHDR size, JPEG `FF D8 FF`, BMP `BM`, WAV/Ogg/FLAC/MP3 magic; clips must load with the
+clip loader) and a failure is `VALUE_INVALID` naming the source. An existing `dest` is `CONFLICT` unless `overwrite`.
+`asset.reimport` without `source` re-validates the file in place (`changed:false`, a corrupt file is `VALUE_INVALID` and
+not modified); with `source` it atomically replaces the file and `changed` is whether the bytes differ. Every check runs
+before the first write, so a failure leaves the project untouched; `--dry-run` writes nothing. The two writing commands
+are rejected in `arcane batch` with `TRANSACTION_UNSUPPORTED`; `asset.list` is allowed.
+
+Hot reload: a write is an atomic rename (`write_text_file_atomic`), so a running editor or player never reads a half
+written file. Their caches notice the change on the next file-time poll (about twice a second in the editor and the player; the player
+skips it during `--replay`) and reload the asset. The id stays the same, so scene references keep resolving.
+Registered by `tooling/src/asset_commands.cpp`; tested by `test_asset_commands`.
 
 ## Errors
 

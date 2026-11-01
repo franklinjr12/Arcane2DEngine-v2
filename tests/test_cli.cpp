@@ -221,21 +221,48 @@ void test_scenes_and_batch() {
       "{\"command\":\"component.add\",\"args\":{\"node\":\"id:2\",\"type\":\"Spinner\"}}\n"
       "{\"command\":\"prop.set\",\"args\":{\"node\":\"id:2\",\"component\":\"Spinner\",\"name\":\"label\",\"value\":\"batched\"}}\n";
   auto dry = cli({"--project", p.dir.string(), "--module", ARCANE_SAMPLE_GAME_PATH, "--dry-run", "batch", "-"}, script);
-  ARCANE_ASSERT_TRUE(dry.code == 0 && dry.json["executed"] == 4 && dry.json["dry_run"] == true);
+  ARCANE_ASSERT_TRUE(dry.code == 0 && dry.json["executed"] == 4 && dry.json["dry_run"] == true && dry.json["committed"] == false);
   ARCANE_ASSERT_TRUE(slurp(p.scene()) == main_before);
   auto ran = cli({"--project", p.dir.string(), "--module", ARCANE_SAMPLE_GAME_PATH, "batch", "-"}, script);
-  ARCANE_ASSERT_TRUE(ran.code == 0 && ran.json["executed"] == 4);
+  ARCANE_ASSERT_TRUE(ran.code == 0 && ran.json["executed"] == 4 && ran.json["committed"] == true);
   ARCANE_ASSERT_TRUE(p.run({"prop", "get", "--node", "path:/One/Two", "--component", "Spinner", "--name", "label"}).json["value"] == "batched");
 
   const std::string failing =
       "{\"command\":\"node.add\",\"args\":{\"name\":\"Kept\"}}\n"
       "{\"command\":\"node.remove\",\"args\":{\"node\":\"id:999\"}}\n"
       "{\"command\":\"node.add\",\"args\":{\"name\":\"NotRun\"}}\n";
-  auto failed = cli({"--project", p.dir.string(), "--module", ARCANE_SAMPLE_GAME_PATH, "batch", "-"}, failing);
+  const std::string scene_before = slurp(p.scene());
+  const std::string project_before = slurp(p.dir / "project.json");
+  const std::vector<std::string> base = {"--project", p.dir.string(), "--module", ARCANE_SAMPLE_GAME_PATH, "batch", "-"};
+  auto failed = cli(base, failing);
   ARCANE_ASSERT_TRUE(failed.code == 4 && failed.json["failed_line"] == 2 && failed.json["results"].size() == 1);
-  ARCANE_ASSERT_TRUE(p.run({"node", "find", "--name", "Kept"}).json["count"] == 1);  // per-command atomicity
+  ARCANE_ASSERT_TRUE(p.run({"node", "find", "--name", "Kept"}).json["count"] == 0);  // all-or-nothing
   ARCANE_ASSERT_TRUE(p.run({"node", "find", "--name", "NotRun"}).json["count"] == 0);
-  ARCANE_ASSERT_TRUE(cli({"--project", p.dir.string(), "batch", "-"}, "not json\n").code == 2);
+  ARCANE_ASSERT_TRUE(slurp(p.scene()) == scene_before);
+
+  // A project-level command and a scene edit commit together.
+  auto both = cli(base,
+                  "{\"command\":\"project.set\",\"args\":{\"name\":\"Renamed\"}}\n"
+                  "{\"command\":\"node.add\",\"args\":{\"name\":\"Both\"}}\n");
+  ARCANE_ASSERT_TRUE(both.code == 0 && both.json["committed"] == true);
+  ARCANE_ASSERT_TRUE(slurp(p.dir / "project.json") != project_before && slurp(p.scene()) != scene_before);
+
+  // An immediate-write command is refused up front; line 1 is not applied.
+  const std::string scene_mid = slurp(p.scene());
+  auto immediate = cli(base,
+                       "{\"command\":\"node.add\",\"args\":{\"name\":\"Early\"}}\n"
+                       "{\"command\":\"clip.create\",\"args\":{}}\n");
+  ARCANE_ASSERT_TRUE(immediate.code == 7 && immediate.error_code() == "TRANSACTION_UNSUPPORTED" && immediate.json["failed_line"] == 2);
+  ARCANE_ASSERT_TRUE(slurp(p.scene()) == scene_mid);
+
+  // A file-level mutating command is refused too.
+  auto offline = cli(base, "{\"command\":\"scene.new\",\"args\":{\"path\":\"scenes/x.scene.json\"}}\n");
+  ARCANE_ASSERT_TRUE(offline.code == 7 && offline.error_code() == "TRANSACTION_UNSUPPORTED");
+
+  // Shape errors on any line stop everything before it runs.
+  auto bad = cli(base, "not json\n{\"command\":\"node.add\",\"args\":{\"name\":\"Late\"}}\n");
+  ARCANE_ASSERT_TRUE(bad.code == 2 && bad.json["failed_line"] == 1);
+  ARCANE_ASSERT_TRUE(slurp(p.scene()) == scene_mid);
 }
 
 void copy_sample(const fs::path& dest) {
