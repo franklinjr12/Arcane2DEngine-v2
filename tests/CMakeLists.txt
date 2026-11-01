@@ -205,6 +205,17 @@ if(ARCANE_BUILD_SAMPLES)
     ARCANE_SCHEMA_DIR="${CMAKE_SOURCE_DIR}/schemas"
     ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
   add_test(NAME test_migration COMMAND test_migration)
+
+  # Every golden and (migrated) sample resource validates against schemas/.
+  add_executable(test_schema_validation test_schema_validation.cpp)
+  target_link_libraries(test_schema_validation PRIVATE arcane_editor_core)
+  target_include_directories(test_schema_validation PRIVATE ${TP}/json)
+  target_compile_definitions(test_schema_validation PRIVATE
+    ARCANE_SCHEMA_DIR="${CMAKE_SOURCE_DIR}/schemas"
+    ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden"
+    ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+    ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+  add_test(NAME test_schema_validation COMMAND test_schema_validation)
 endif()
 
 # --- every public engine header must compile standalone ---------------------
