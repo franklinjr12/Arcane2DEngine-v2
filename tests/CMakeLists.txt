@@ -368,3 +368,21 @@ add_test(NAME test_physics_events COMMAND test_physics_events)
 add_executable(test_animgraph_commands test_animgraph_commands.cpp)
 target_link_libraries(test_animgraph_commands PRIVATE arcane_tooling)
 add_test(NAME test_animgraph_commands COMMAND test_animgraph_commands)
+
+# --- IN6 headless bench regression gate (docs/perf_gate.md), label "perf" -----
+set(ARCANE_PERF_FLAVOR "${CMAKE_BUILD_TYPE}-${CMAKE_CXX_COMPILER_ID}")
+if(ARCANE_SANITIZE)
+  string(APPEND ARCANE_PERF_FLAVOR "-san")
+endif()
+set(ARCANE_PERF_GATE_ARGS -DBENCH=$<TARGET_FILE:arcane_bench> -DBASELINE=${CMAKE_SOURCE_DIR}/docs/perf_baseline.json
+    -DFLAVOR=${ARCANE_PERF_FLAVOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
+add_test(NAME perf_gate COMMAND ${CMAKE_COMMAND} ${ARCANE_PERF_GATE_ARGS})
+# A 1000x slowdown must fail even when the baseline flavor differs (FORCE ignores the flavor check).
+add_test(NAME perf_gate_forced_slow COMMAND ${CMAKE_COMMAND} -DFORCE=ON ${ARCANE_PERF_GATE_ARGS})
+set_tests_properties(perf_gate perf_gate_forced_slow PROPERTIES LABELS perf RUN_SERIAL TRUE)
+set_tests_properties(perf_gate PROPERTIES SKIP_RETURN_CODE 77)
+set_tests_properties(perf_gate_forced_slow PROPERTIES WILL_FAIL TRUE ENVIRONMENT ARCANE_PERF_GATE_SCALE=1000)
+# Refresh the baseline for this build: cmake --build DIR --target perf_baseline_update
+add_custom_target(perf_baseline_update
+  COMMAND ${CMAKE_COMMAND} -DMODE=update ${ARCANE_PERF_GATE_ARGS}
+  DEPENDS arcane_bench USES_TERMINAL)
