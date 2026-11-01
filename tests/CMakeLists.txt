@@ -249,6 +249,15 @@ target_compile_definitions(test_cli PRIVATE
 add_dependencies(test_cli arcane)
 add_test(NAME test_cli COMMAND test_cli)
 
+# IN5: every registered command given an invalid argument: exit 2, JSON error shape, no file change.
+add_executable(test_cli_contract test_cli_contract.cpp)
+target_link_libraries(test_cli_contract PRIVATE arcane_tooling)
+target_compile_definitions(test_cli_contract PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
+  ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+  ARCANE_CLI_REFERENCE_PATH="${CMAKE_SOURCE_DIR}/docs/cli-reference.md")
+add_test(NAME test_cli_contract COMMAND test_cli_contract)
+
 # asset.list/import/reimport on temporary projects (failure injection, hot reload of a reimported clip).
 add_executable(test_asset_commands test_asset_commands.cpp)
 target_link_libraries(test_asset_commands PRIVATE arcane_tooling)

@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff. Jobs so far: IN4 (ENG-034).
+This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff. Jobs so far: IN4 (ENG-034), IN5 (ENG-035).
 
 **1. Step-by-step manual checks**
 
@@ -15,6 +15,7 @@ cmake -S . -B build -G "Visual Studio 18 2026" -A x64     # or "Visual Studio 17
 cmake --build build --config Debug
 ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pass, including test_atomic_save
 ```
+IN5 check: `ctest --test-dir build-gcc -R test_cli_contract --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_cli_contract`); expect pass.
 IN4 manual check (any platform): open a project in the editor, change something in the scene and project settings, File > Save. Expected: both saved, no `*.arcane-tmp` or `.arcane-commit` file left in the project folder.
 
 **2. What you can visibly see**
@@ -31,6 +32,10 @@ Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises 
 ---
 
 ## Technical detail
+
+### IN5: CLI exit-code and error contract test (ENG-035)
+- New `tests/test_cli_contract.cpp`: for every registry and offline command (generated list) runs `arcane <cmd> --args <invalid>` on a copy of `samples/sample_project`; asserts exit 2, `ok:false` with `code/message/file/path/hint`, `ARGS_INVALID`, single-line stdout, stderr diagnostic, and no project file changed. Also pins `exit_code()` for every code and checks each is listed in its row of `docs/cli-reference.md`. The exit table already existed in the generator, so no generator change.
+- Tests: gcc Debug and clang ASan/UBSan green, mingw build OK. UNTESTED on native Windows/MSVC.
 
 ### IN4: crash-atomic multi-file save (ENG-034)
 - New `arcane/atomic_save.hpp` + `engine/src/atomic_save.cpp`: `commit_files_atomic(root, files, options)` stages every file as `NAME.arcane-tmp` (fwrite + fsync), writes a manifest `ROOT/.arcane-commit` (itself via temp + rename = the commit point), renames the staged files, fsyncs the root, removes the manifest. `recover_pending_commit(root)` rolls a committed-but-unfinished save forward, or discards a missing/torn manifest and all stale `.arcane-tmp`. A kill therefore yields entirely old or entirely new files.
