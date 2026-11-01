@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <map>
 #include <cstdlib>
+#include <expected>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -33,6 +34,7 @@
 #include "arcane_editor/clip_authoring.hpp"
 
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/debug.hpp"
 #include "arcane/hud.hpp"
@@ -308,6 +310,159 @@ void draw_hud_editor(const arcane::Hud& hud, const std::vector<arcane::editor::A
   if (remove >= 0) edit({"hud.remove", {{"index", remove}}}, {});
 }
 
+// State of the Animation Graph panel: which graph file is open and the small forms for adding things. The graph
+// itself is never held here: it is read with animgraph.info and every change is an animgraph.* command, so edits are
+// undoable and identical to the CLI.
+struct AnimGraphPanelState {
+  int graph_index = 0;
+  char new_file[96] = "hero.animgraph.json";
+  char name[48] = "";
+  char event_name[48] = "";
+  int param_type = 0, clip_index = 0, event_frame = 0;
+  int from_index = 0, to_index = 0, param_index = 0, op_index = 0, priority = 0;
+  float value = 0.0f;
+  std::string status;
+};
+
+void draw_animgraph_panel(AnimGraphPanelState& st, const std::vector<arcane::editor::AssetEntry>& all_json,
+                          const std::vector<arcane::editor::AssetEntry>& clips,
+                          const std::function<std::expected<arcane::tooling::CommandResult, std::string>(
+                              const arcane::tooling::Invocation&)>& run) {
+  using arcane::tooling::Invocation;
+  std::vector<const arcane::editor::AssetEntry*> graphs;
+  for (const auto& a : all_json) {
+    if (a.relative_path.ends_with(".animgraph.json")) graphs.push_back(&a);
+  }
+  ImGui::InputText("New file", st.new_file, sizeof(st.new_file));
+  ImGui::SameLine();
+  if (ImGui::Button("Create graph")) {
+    auto done = run({"animgraph.create", {{"graph", std::string("assets/") + st.new_file}}});
+    st.status = done ? "Created." : done.error();
+  }
+  if (graphs.empty()) {
+    ImGui::TextWrapped("No *.animgraph.json under assets/. %s", st.status.c_str());
+    return;
+  }
+  st.graph_index = std::clamp(st.graph_index, 0, static_cast<int>(graphs.size()) - 1);
+  if (ImGui::BeginCombo("Graph", graphs[static_cast<std::size_t>(st.graph_index)]->relative_path.c_str())) {
+    for (int i = 0; i < static_cast<int>(graphs.size()); ++i) {
+      if (ImGui::Selectable(graphs[static_cast<std::size_t>(i)]->relative_path.c_str(), i == st.graph_index)) st.graph_index = i;
+    }
+    ImGui::EndCombo();
+  }
+  const std::string graph = "assets/" + graphs[static_cast<std::size_t>(st.graph_index)]->relative_path;
+  auto info = run({"animgraph.info", {{"graph", graph}}});
+  if (!info) {
+    ImGui::TextWrapped("%s", info.error().c_str());
+    return;
+  }
+  const arcane::tooling::Json value = info->value;
+  auto edit = [&](const char* command, arcane::tooling::Json args) {
+    args["graph"] = graph;
+    auto done = run({command, std::move(args)});
+    st.status = done ? "" : done.error();
+  };
+  std::vector<std::string> state_names, param_names;
+  for (const auto& s : value["states"]) state_names.push_back(s["name"]);
+  for (const auto& p : value["parameters"]) param_names.push_back(p["name"]);
+  auto combo = [](const char* label, int& index, const std::vector<std::string>& names) {
+    if (names.empty()) return;
+    index = std::clamp(index, 0, static_cast<int>(names.size()) - 1);
+    if (ImGui::BeginCombo(label, names[static_cast<std::size_t>(index)].c_str())) {
+      for (int i = 0; i < static_cast<int>(names.size()); ++i) {
+        if (ImGui::Selectable(names[static_cast<std::size_t>(i)].c_str(), i == index)) index = i;
+      }
+      ImGui::EndCombo();
+    }
+  };
+
+  ImGui::SeparatorText("Parameters");
+  for (const auto& p : value["parameters"]) {
+    const std::string name = p["name"];
+    ImGui::PushID(name.c_str());
+    ImGui::Text("%s (%s)", name.c_str(), p["type"].get<std::string>().c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_param", {{"name", name}});
+    ImGui::PopID();
+  }
+  ImGui::InputText("Name", st.name, sizeof(st.name));
+  ImGui::Combo("Type", &st.param_type, "bool\0float\0trigger\0");
+  if (ImGui::Button("Add parameter")) {
+    edit("animgraph.add_param", {{"name", st.name}, {"type", st.param_type == 0 ? "bool" : st.param_type == 1 ? "float" : "trigger"}});
+  }
+
+  ImGui::SeparatorText("States");
+  for (const auto& s : value["states"]) {
+    const std::string name = s["name"];
+    ImGui::PushID(name.c_str());
+    ImGui::Text("%s%s  clip %llu  speed %.2f", name.c_str(), value["initial"] == name ? " (initial)" : "",
+                static_cast<unsigned long long>(s["clip"].get<std::uint64_t>()), s["speed"].get<float>());
+    if (ImGui::SmallButton("Make initial")) edit("animgraph.set_state", {{"name", name}, {"initial", true}});
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_state", {{"name", name}});
+    int event_index = 0;
+    for (const auto& e : s["events"]) {
+      ImGui::BulletText("frame %d: %s", e["frame"].get<int>(), e["name"].get<std::string>().c_str());
+      ImGui::SameLine();
+      ImGui::PushID(event_index);
+      if (ImGui::SmallButton("x")) edit("animgraph.remove_event", {{"state", name}, {"index", event_index}});
+      ImGui::PopID();
+      ++event_index;
+    }
+    ImGui::PopID();
+  }
+  std::vector<std::string> clip_names;
+  for (const auto& c : clips) {
+    if (!c.relative_path.ends_with(".animgraph.json")) clip_names.push_back(c.relative_path);
+  }
+  combo("Clip", st.clip_index, clip_names);
+  if (ImGui::Button("Add state (name above)") && !clip_names.empty()) {
+    edit("animgraph.add_state", {{"name", st.name}, {"clip", "assets/" + clip_names[static_cast<std::size_t>(st.clip_index)]}});
+  }
+  ImGui::InputText("Event", st.event_name, sizeof(st.event_name));
+  ImGui::InputInt("Frame", &st.event_frame);
+  if (ImGui::Button("Add event to state of the same name above") && !state_names.empty()) {
+    edit("animgraph.add_event", {{"state", st.name}, {"frame", std::max(0, st.event_frame)}, {"name", st.event_name}});
+  }
+
+  ImGui::SeparatorText("Transitions");
+  for (const auto& t : value["transitions"]) {
+    std::string line = t["from"].get<std::string>() + " -> " + t["to"].get<std::string>() + "  prio " + std::to_string(t["priority"].get<int>());
+    for (const auto& c : t["conditions"]) {
+      line += "  [" + c["param"].get<std::string>() + " " + c["op"].get<std::string>();
+      if (c.contains("value")) line += " " + std::to_string(c["value"].get<float>());
+      line += "]";
+    }
+    ImGui::PushID(t["index"].get<int>());
+    ImGui::TextUnformatted(line.c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Remove")) edit("animgraph.remove_transition", {{"index", t["index"]}});
+    ImGui::PopID();
+  }
+  std::vector<std::string> from_names = state_names;
+  from_names.insert(from_names.begin(), "*");
+  combo("From", st.from_index, from_names);
+  combo("To", st.to_index, state_names);
+  ImGui::InputInt("Priority", &st.priority);
+  combo("Parameter", st.param_index, param_names);
+  static const std::vector<std::string> ops = {"is_true", "is_false", "lt", "le", "gt", "ge", "eq", "ne", "fired"};
+  combo("Operator", st.op_index, ops);
+  ImGui::InputFloat("Value", &st.value);
+  if (ImGui::Button("Add transition") && !state_names.empty()) {
+    arcane::tooling::Json args = {{"from", from_names[static_cast<std::size_t>(st.from_index)]},
+                                  {"to", state_names[static_cast<std::size_t>(st.to_index)]}, {"priority", st.priority}};
+    args["conditions"] = arcane::tooling::Json::array();
+    if (!param_names.empty()) {
+      arcane::tooling::Json cond = {{"param", param_names[static_cast<std::size_t>(st.param_index)]},
+                                    {"op", ops[static_cast<std::size_t>(st.op_index)]}};
+      if (st.op_index >= 2 && st.op_index <= 7) cond["value"] = st.value;
+      args["conditions"].push_back(cond);
+    }
+    edit("animgraph.add_transition", std::move(args));
+  }
+  if (!st.status.empty()) ImGui::TextWrapped("%s", st.status.c_str());
+}
+
 // State of the Animation Clip panel: the sheet being sliced and the clip being built.
 struct ClipPanelState {
   arcane::editor::ClipDraft draft;
@@ -320,13 +475,14 @@ struct ClipPanelState {
 };
 
 // Authors a clip from a sprite sheet grid: pick the sheet, set the grid, add/reorder
-// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it). The draft is transient;
-// Save runs clip.create (overwrite) through `run_clip`, which returns an error message or nullopt on success.
+// frames, preview, and save to <assets>/<file>.json (the clip cache hot-reloads it). The draft is transient view state;
+// Open clip reads with clip.info and Save runs clip.create (overwrite, one undoable step) through `run_clip`, which
+// returns the command result or an error message.
 // `saved` is called after a successful save so the caller can rescan assets.
 void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
                      const std::vector<arcane::editor::AssetEntry>& images, const std::filesystem::path& project_dir,
                      const std::filesystem::path& assets_dir, float dt,
-                     const std::function<std::optional<std::string>(const arcane::tooling::Invocation&)>& run_clip,
+                     const std::function<std::expected<arcane::tooling::CommandResult, std::string>(const arcane::tooling::Invocation&)>& run_clip,
                      const std::function<void()>& saved) {
   auto& d = st.draft;
   const arcane::editor::AssetEntry* sheet_entry = nullptr;
@@ -395,14 +551,28 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
     const std::filesystem::path rel(st.file_name);
     if (rel.empty() || rel.is_absolute() || rel.string().find("..") != std::string::npos) {
       st.status = "invalid file name";
-    } else if (auto loaded = arcane::editor::load_clip_file(assets_dir / rel); !loaded) {
-      st.status = loaded.error();
-    } else if (auto reopened = arcane::editor::draft_from_clip(*loaded, d.grid, tex->width(), tex->height()); !reopened) {
-      st.status = "cannot reopen on this grid: " + reopened.error();
+    } else if (!sheet_entry) {
+      st.status = "the sheet is not in the asset list";
     } else {
-      d = std::move(*reopened);
-      std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
-      st.status = "opened " + rel.string();
+      // clip.info with the sheet and grid reopens the clip on that grid (frames off the grid are an error).
+      const std::string clip_path = (std::filesystem::relative(assets_dir, project_dir) / rel).generic_string();
+      const std::string sheet_path = std::filesystem::relative(sheet_entry->absolute_path, project_dir).generic_string();
+      auto opened = run_clip({"clip.info",
+                              {{"clip", clip_path}, {"sheet", sheet_path}, {"columns", d.grid.columns}, {"rows", d.grid.rows},
+                               {"frame_width", d.grid.frame_width}, {"frame_height", d.grid.frame_height},
+                               {"margin", d.grid.margin}, {"spacing", d.grid.spacing}}});
+      if (!opened) {
+        st.status = "cannot reopen on this grid: " + opened.error();
+      } else {
+        const auto& v = opened->value;
+        d.name = v["name"].get<std::string>();
+        d.loop = v["loop"].get<bool>();
+        d.fps = v["fps"].get<float>();
+        d.cells = v["cells"].get<std::vector<int>>();
+        d.durations = v["durations"].get<std::vector<float>>();
+        std::snprintf(st.name, sizeof(st.name), "%s", d.name.c_str());
+        st.status = "opened " + rel.string();
+      }
     }
   }
   ImGui::SameLine();
@@ -423,9 +593,9 @@ void draw_clip_panel(ClipPanelState& st, arcane::editor::TextureCache& textures,
            {"frame_width", d.grid.frame_width}, {"frame_height", d.grid.frame_height}, {"margin", d.grid.margin},
            {"spacing", d.grid.spacing}, {"cells", d.cells}, {"fps", d.fps}, {"durations", d.durations},
            {"loop", d.loop}, {"name", d.name}, {"overwrite", true}}};
-      const auto failure = run_clip(call);
-      st.status = failure ? *failure : "saved " + rel.string();
-      if (!failure) saved();
+      const auto done = run_clip(call);
+      st.status = done ? "saved " + rel.string() : done.error();
+      if (done) saved();
     }
   }
   if (!st.status.empty()) ImGui::TextUnformatted(st.status.c_str());
@@ -486,6 +656,32 @@ int main(int argc, char** argv) {
     return *done;
   };
   auto node_selector = [](arcane::NodeId id) { return "id:" + std::to_string(id); };
+  // Prefab instance helpers: the root of the instance holds the override list.
+  auto instance_root = [](arcane::Node* node) -> arcane::Node* {
+    if (!node || !node->prefab_link()) return nullptr;
+    while (node->id() != node->prefab_link()->instance_id && node->parent() && node->parent()->prefab_link()) {
+      node = node->parent();
+    }
+    return node->id() == node->prefab_link()->instance_id ? node : nullptr;
+  };
+  auto is_overridden = [&](arcane::Node* node, const std::string& component, const std::string& property) {
+    const arcane::Node* root = instance_root(node);
+    if (!root) return false;
+    for (const auto& o : root->prefab_link()->overrides) {
+      if (o.local_id == node->prefab_link()->local_id && o.component == component && o.property == property) return true;
+    }
+    return false;
+  };
+  // Edits of a prefab instance node go through prefab.override so they are recorded as overrides.
+  auto override_property = [&](arcane::Node* node, const std::string& component, const std::string& property,
+                               arcane::tooling::Json value) {
+    arcane::tooling::Json args = {{"node", node_selector(node->id())}, {"property", property}, {"value", std::move(value)}};
+    if (!component.empty()) args["component"] = component;
+    return run_edit({"prefab.override", args}, "override:" + std::to_string(node->id()) + component + property);
+  };
+  std::string prefab_save_path;
+  bool prefab_save_overwrite = false;
+  std::string prefab_message;
 
   auto renderer = arcane::SpriteRenderer::create();
   if (!renderer) {
@@ -518,9 +714,12 @@ int main(int argc, char** argv) {
   arcane::editor::AnimationClipCache clips;
   clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   arcane::editor::TilesetCache tilesets;
+  arcane::editor::AtlasCache atlases;
+  atlases.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
   bool preview_animations = false;
   ClipPanelState clip_panel;
+  AnimGraphPanelState animgraph_panel;
   double asset_poll_accum = 0.0;
   bool preview_particles = false;
   bool paint_mode = false;
@@ -559,9 +758,17 @@ int main(int argc, char** argv) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create audio system: {}", audio.error());
     return 1;
   }
+  arcane::GameContext game_context(session.project_dir(), registry);
+  // Runs the authored scene under a SceneManager (fades, request_switch, persistent roots).
+  auto start_runtime = [&] {
+    return play_stop.play(session.scene(), registry, session.project_dir(), session.project().transition,
+                          session.project().main_scene);
+  };
   auto begin_play = [&] {
+    game_context.take_restart_request();
+    arcane::set_active_game_context(&game_context);
     input_map = session.project().input_actions;
-    play_stop.play(session.scene(), registry);
+    start_runtime();
     audio->clear_commands();
     arcane::set_active_audio_system(&*audio);
     hud = session.project().hud;
@@ -581,6 +788,7 @@ int main(int argc, char** argv) {
     audio->stop_all();
     play_stop.stop();
     arcane::set_active_input_map(nullptr);
+    arcane::set_active_game_context(nullptr);
     arcane::set_active_audio_system(nullptr);
     arcane::set_active_hud(nullptr);
   };
@@ -612,9 +820,11 @@ int main(int argc, char** argv) {
       textures.set_assets(arcane::editor::list_image_assets(session.assets_dir()));
       clips.set_assets(clip_assets);
       tilesets.set_assets(clip_assets);
+      atlases.set_assets(clip_assets);
       textures.refresh();
       clips.refresh();
       tilesets.refresh();
+      atlases.refresh();
     }
     const int steps = timestep.advance(delta_seconds);
     if (play_stop.mode() == arcane::editor::EditorMode::Play) {
@@ -623,8 +833,18 @@ int main(int argc, char** argv) {
       input_map.update(hud_input.gameplay_backend());
       arcane::set_active_input_map(&input_map);
       for (int i = 0; i < steps; ++i) {
+        const arcane::Scene* before = play_stop.active_scene(session.scene());
         play_stop.tick(static_cast<float>(timestep.fixed_delta_seconds()));
         ++play_tick_count;
+        if (arcane::Scene* now_scene = play_stop.active_scene(session.scene()); now_scene != before) {
+          // The scene manager switched scenes: start the new scene's play_on_start sounds.
+          arcane::editor::start_play_on_start_sounds(*now_scene, *audio,
+                                                      arcane::editor::list_audio_assets(session.assets_dir()));
+        }
+        if (game_context.take_restart_request()) {  // gameplay asked for a restart: replay from the authored scene
+          play_stop.stop();
+          start_runtime();
+        }
       }
       if (args.play_frames.has_value() && play_tick_count >= *args.play_frames) {
         end_play();
@@ -716,13 +936,37 @@ int main(int argc, char** argv) {
         if (run_edit({"node.remove", {{"node", node_selector(*selection.selected())}}})) selection.clear();
       }
 
+      if (editable && selection.has_selection() && active_scene->find_node(*selection.selected())) {
+        ImGui::SameLine();
+        if (ImGui::Button("Save as Prefab")) {
+          prefab_save_path = "prefabs/" + active_scene->find_node(*selection.selected())->name() + ".prefab.json";
+          ImGui::OpenPopup("Save as Prefab");
+        }
+      }
+      if (ImGui::BeginPopup("Save as Prefab")) {
+        char path_buf[256];
+        std::snprintf(path_buf, sizeof(path_buf), "%s", prefab_save_path.c_str());
+        if (ImGui::InputText("Asset path", path_buf, sizeof(path_buf))) prefab_save_path = path_buf;
+        ImGui::Checkbox("Overwrite", &prefab_save_overwrite);
+        if (ImGui::Button("Save") && selection.has_selection()) {
+          // prefab.save writes the file at once (not an undoable scene edit).
+          auto saved = commands.execute(**context, {"prefab.save", {{"node", node_selector(*selection.selected())},
+                                                                    {"asset", prefab_save_path},
+                                                                    {"overwrite", prefab_save_overwrite}}});
+          prefab_message = saved ? "Saved " + prefab_save_path : "Save failed: " + saved.error().message;
+          ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+      }
+      if (!prefab_message.empty()) ImGui::TextUnformatted(prefab_message.c_str());
+
       std::optional<std::pair<arcane::NodeId, arcane::NodeId>> pending_reparent;
       std::function<void(arcane::Node*)> draw_node = [&](arcane::Node* node) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
         if (selection.selected() == node->id()) flags |= ImGuiTreeNodeFlags_Selected;
         if (node->children().empty()) flags |= ImGuiTreeNodeFlags_Leaf;
-        const bool open = ImGui::TreeNodeEx(
-            reinterpret_cast<void*>(static_cast<std::uintptr_t>(node->id())), flags, "%s", node->name().c_str());
+        const bool open = ImGui::TreeNodeEx(reinterpret_cast<void*>(static_cast<std::uintptr_t>(node->id())), flags, "%s%s",
+                                            node->prefab_link() ? "[P] " : "", node->name().c_str());
         if (ImGui::IsItemClicked()) selection.select(node->id());
 
         if (editable && ImGui::BeginDragDropSource()) {
@@ -759,13 +1003,40 @@ int main(int argc, char** argv) {
         ImGui::TextUnformatted("No selection");
       } else {
         ImGui::BeginDisabled(!editable);
+        arcane::Node* prefab_root = instance_root(selected_node);
+        if (prefab_root) {
+          // Prefab instance: show the source, the overrides of this node (each revertable) and Break link.
+          ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "Prefab: %s", prefab_root->prefab_link()->asset.c_str());
+          const auto local_id = selected_node->prefab_link()->local_id;
+          std::optional<arcane::tooling::Invocation> revert;
+          for (const auto& o : prefab_root->prefab_link()->overrides) {
+            if (o.local_id != local_id) continue;
+            const std::string label = (o.component.empty() ? o.property : o.component + "." + o.property);
+            ImGui::BulletText("* %s", label.c_str());
+            ImGui::SameLine();
+            ImGui::PushID(label.c_str());
+            if (ImGui::SmallButton("Revert")) {
+              arcane::tooling::Json args = {{"node", node_selector(selected_node->id())}, {"property", o.property}};
+              if (!o.component.empty()) args["component"] = o.component;
+              revert = arcane::tooling::Invocation{"prefab.revert", args};
+            }
+            ImGui::PopID();
+          }
+          if (ImGui::Button("Break prefab link")) revert = arcane::tooling::Invocation{"prefab.break_link", {{"node", node_selector(selected_node->id())}}};
+          if (revert) run_edit(*revert);
+          ImGui::Separator();
+        }
         char name_buf[128];
         std::snprintf(name_buf, sizeof(name_buf), "%s", selected_node->name().c_str());
-        if (ImGui::InputText("Name", name_buf, sizeof(name_buf))) {
+        if (ImGui::InputText(is_overridden(selected_node, "", "name") ? "Name *" : "Name", name_buf, sizeof(name_buf))) {
           // Typing coalesces into one undo step; an invalid name (e.g. with '/') is refused and logged.
-          auto renamed = edits.run({"node.rename", {{"node", node_selector(selected_node->id())}, {"name", name_buf}}},
-                                   "rename:" + std::to_string(selected_node->id()));
-          if (!renamed) ARCANE_LOG_ERROR(kLogCategory, "rename failed: {}", renamed.error().message);
+          if (prefab_root) {
+            override_property(selected_node, "", "name", name_buf);
+          } else {
+            auto renamed = edits.run({"node.rename", {{"node", node_selector(selected_node->id())}, {"name", name_buf}}},
+                                     "rename:" + std::to_string(selected_node->id()));
+            if (!renamed) ARCANE_LOG_ERROR(kLogCategory, "rename failed: {}", renamed.error().message);
+          }
         }
         arcane::Transform2D transform = selected_node->local_transform();
         bool transform_changed = false;
@@ -801,6 +1072,10 @@ int main(int argc, char** argv) {
                   ARCANE_LOG_ERROR(kLogCategory, "{}.{} edit failed: {}", component->type_name(), descriptor.name,
                                    set.error().message);
                 }
+              }
+              if (is_overridden(selected_node, component->type_name(), descriptor.name)) {
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.4f, 0.8f, 1.0f, 1.0f), "* overridden");
               }
               ImGui::PopID();
             }
@@ -862,6 +1137,33 @@ int main(int argc, char** argv) {
                    "AnimatedSprite", "clip");
       assign_asset("Tilesets", arcane::editor::list_animation_clip_assets(session.assets_dir()), "Tilemap", "tileset");
       assign_asset("Sounds", arcane::editor::list_audio_assets(session.assets_dir()), "AudioSource", "clip");
+
+      // Prefabs: clicking one instantiates it under the selected node (or as a scene root).
+      if (ImGui::CollapsingHeader("Prefabs")) {
+        std::vector<std::string> prefabs;
+        std::error_code scan_ec;
+        for (std::filesystem::recursive_directory_iterator it(session.project_dir(), scan_ec), end; !scan_ec && it != end;
+             it.increment(scan_ec)) {
+          const std::string name = it->path().filename().string();
+          if (name.starts_with(".")) {
+            if (it->is_directory(scan_ec)) it.disable_recursion_pending();
+            continue;
+          }
+          if (it->is_regular_file(scan_ec) && name.ends_with(".prefab.json")) {
+            prefabs.push_back(std::filesystem::relative(it->path(), session.project_dir()).generic_string());
+          }
+        }
+        std::sort(prefabs.begin(), prefabs.end());
+        for (const auto& asset : prefabs) {
+          if (!ImGui::Selectable(asset.c_str()) || !editable) continue;
+          arcane::tooling::Json args = {{"asset", asset}};
+          if (selection.has_selection() && active_scene->find_node(*selection.selected())) {
+            args["parent"] = node_selector(*selection.selected());
+          }
+          if (auto made = run_edit({"prefab.instantiate", args})) selection.select(made->value["instance_id"].get<arcane::NodeId>());
+        }
+        if (prefabs.empty()) ImGui::TextUnformatted("No *.prefab.json files. Use Hierarchy > Save as Prefab.");
+      }
     }
     ImGui::End();
 
@@ -924,11 +1226,23 @@ int main(int argc, char** argv) {
       if (ImGui::TreeNode("Open tileset")) {
         for (const auto& asset : arcane::editor::list_animation_clip_assets(session.assets_dir())) {
           if (ImGui::Selectable(asset.relative_path.c_str())) {
-            std::ifstream in(asset.absolute_path);
-            std::string content((std::istreambuf_iterator<char>(in)), {});
-            auto loaded = arcane::load_tileset_from_json(content);
-            if (loaded) { tileset_draft = *loaded; tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear(); }
-            else tileset_message = loaded.error();
+            const std::string file = std::filesystem::relative(asset.absolute_path, (*context)->project_dir()).generic_string();
+            auto info = commands.execute(**context, {"tileset.info", {{"tileset", file}}});
+            if (info) {
+              const auto& v = info->value;
+              arcane::Tileset loaded;
+              loaded.texture = v["texture"]; loaded.tile_width = v["tile_width"]; loaded.tile_height = v["tile_height"];
+              loaded.columns = v["columns"]; loaded.tile_count = v["tile_count"];
+              loaded.tiles.resize(static_cast<std::size_t>(loaded.tile_count));
+              for (const auto& tile : v["tiles"]) {
+                loaded.tiles[tile["id"].get<std::size_t>() - 1] = {tile["solid"].get<bool>(), tile["terrain"].get<int>()};
+              }
+              for (const auto& rule : v["terrains"]) {
+                arcane::TerrainRule r; r.terrain = rule["terrain"]; r.tiles = rule["tiles"].get<decltype(r.tiles)>();
+                loaded.terrains.push_back(r);
+              }
+              tileset_draft = std::move(loaded); tileset_path = asset.absolute_path; selected_tile = 1; tileset_message.clear();
+            } else tileset_message = info.error().message;
           }
         }
         ImGui::TreePop();
@@ -968,28 +1282,21 @@ int main(int argc, char** argv) {
           ImGui::TreePop();
         }
         if (ImGui::Button("Save tileset")) {
-          // The draft is written by the same tileset.* commands the CLI uses: create (overwrite), then tile flags and rules.
+          // One tileset.replace through the EditSession: a single undoable step (Edit > Undo restores the old file).
           using arcane::tooling::Json;
-          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
-          std::string failure;
-          auto step = [&](const char* command, Json call_args) {
-            if (!failure.empty()) return;
-            auto done = commands.execute(**context, {command, std::move(call_args)});
-            if (!done) failure = done.error().message;
-          };
-          step("tileset.create", {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
-                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
-                                  {"tile_count", tileset_draft.tile_count}, {"overwrite", true}});
+          Json tiles = Json::array(), terrains = Json::array();
           for (std::size_t i = 0; i < tileset_draft.tiles.size(); ++i) {
             const auto& tile = tileset_draft.tiles[i];
-            if (tile.solid || tile.terrain != 0) {
-              step("tileset.set_tile", {{"tileset", file}, {"tile", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
-            }
+            if (tile.solid || tile.terrain != 0) tiles.push_back({{"id", i + 1}, {"solid", tile.solid}, {"terrain", tile.terrain}});
           }
-          for (const auto& rule : tileset_draft.terrains) {
-            step("tileset.set_rule", {{"tileset", file}, {"terrain", rule.terrain}, {"tiles", rule.tiles}});
-          }
-          tileset_message = failure.empty() ? "Saved." : "Could not save tileset: " + failure;
+          for (const auto& rule : tileset_draft.terrains) terrains.push_back({{"terrain", rule.terrain}, {"tiles", rule.tiles}});
+          const std::string file = std::filesystem::relative(tileset_path, (*context)->project_dir()).generic_string();
+          auto done = edits.run({"tileset.replace",
+                                 {{"tileset", file}, {"texture", tileset_draft.texture}, {"tile_width", tileset_draft.tile_width},
+                                  {"tile_height", tileset_draft.tile_height}, {"columns", tileset_draft.columns},
+                                  {"tile_count", tileset_draft.tile_count}, {"tiles", tiles}, {"terrains", terrains}}});
+          edits.end_gesture();
+          tileset_message = done ? "Saved." : "Could not save tileset: " + done.error().message;
           tilesets.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir()));
           tilesets.refresh();
         }
@@ -1003,12 +1310,29 @@ int main(int argc, char** argv) {
       ImGui::BeginDisabled(!editable);
       draw_clip_panel(clip_panel, textures, arcane::editor::list_image_assets(session.assets_dir()),
                       (*context)->project_dir(), session.assets_dir(), static_cast<float>(delta_seconds),
-                      [&](const arcane::tooling::Invocation& call) -> std::optional<std::string> {
-                        auto done = commands.execute(**context, call);  // immediate file write, no scene history
-                        if (!done) return done.error().message;
-                        return std::nullopt;
+                      [&](const arcane::tooling::Invocation& call) -> std::expected<arcane::tooling::CommandResult, std::string> {
+                        // clip.info is a read; clip.create goes through the EditSession (one undoable file write).
+                        auto done = call.command == "clip.info" ? commands.execute(**context, call) : edits.run(call);
+                        edits.end_gesture();
+                        if (!done) return std::unexpected(done.error().message);
+                        return *done;
                       },
                       [&] { clips.set_assets(arcane::editor::list_animation_clip_assets(session.assets_dir())); });
+      ImGui::EndDisabled();
+    }
+    ImGui::End();
+
+    if (ImGui::Begin("Animation Graph")) {
+      ImGui::BeginDisabled(!editable);
+      draw_animgraph_panel(animgraph_panel, arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                           arcane::editor::list_animation_clip_assets(session.assets_dir()),
+                           [&](const arcane::tooling::Invocation& call) -> std::expected<arcane::tooling::CommandResult, std::string> {
+                             // animgraph.info is a read; the other animgraph.* commands are undoable file writes.
+                             auto done = call.command == "animgraph.info" ? commands.execute(**context, call) : edits.run(call);
+                             if (call.command != "animgraph.info") edits.end_gesture();
+                             if (!done) return std::unexpected(done.error().message);
+                             return *done;
+                           });
       ImGui::EndDisabled();
     }
     ImGui::End();
@@ -1090,23 +1414,59 @@ int main(int argc, char** argv) {
       ImGui::BeginDisabled(!editable);
       // Edits are project.set commands; a field shows the project value until it is being typed in, and one
       // typing gesture (same coalesce key) is one undo step.
-      auto project_field = [&](const char* label, const char* key, const std::string& current) {
+      auto project_field = [&](const char* label, const char* command, const char* key, const std::string& current) {
         static std::map<std::string, std::string> buffers;
-        std::string& buffer = buffers[key];
+        std::string& buffer = buffers[std::string(command) + key];
         if (buffer.empty() || !ImGui::IsAnyItemActive()) buffer = current;
         char text[512] = {};
         std::snprintf(text, sizeof(text), "%s", buffer.c_str());
         if (ImGui::InputText(label, text, sizeof(text))) {
           buffer = text;
-          run_edit({"project.set", {{key, buffer}}}, std::string("project.") + key);
+          run_edit({command, {{key, buffer}}}, std::string(command) + "." + key);
         }
         if (ImGui::IsItemDeactivated()) edits.end_gesture();
       };
       const auto& project = session.project();
-      project_field("Name", "name", project.name);
-      project_field("Main scene", "main_scene", project.main_scene);
-      project_field("Module", "module", project.module);
+      project_field("Name", "project.set", "name", project.name);
+      project_field("Main scene", "project.set", "main_scene", project.main_scene);
+      project_field("Module", "project.set", "module", project.module);
       ImGui::TextDisabled("Main scene and module take effect on next open.");
+
+      // Scene transition, save and debug settings: transition.set / save.config_set / debug.set, in the same history.
+      using arcane::tooling::Json;
+      ImGui::SeparatorText("Scene transition");
+      float fade_out = project.transition.fade_out_seconds, fade_in = project.transition.fade_in_seconds;
+      if (ImGui::DragFloat("Fade out (s)", &fade_out, 0.01f, 0.0f, 60.0f)) {
+        run_edit({"transition.set", {{"fade_out_seconds", fade_out}}}, "transition.fade_out");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      if (ImGui::DragFloat("Fade in (s)", &fade_in, 0.01f, 0.0f, 60.0f)) {
+        run_edit({"transition.set", {{"fade_in_seconds", fade_in}}}, "transition.fade_in");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+      float fade_color[4] = {project.transition.color.r, project.transition.color.g, project.transition.color.b, project.transition.color.a};
+      if (ImGui::ColorEdit4("Fade colour", fade_color)) {
+        run_edit({"transition.set", {{"color", Json::array({fade_color[0], fade_color[1], fade_color[2], fade_color[3]})}}},
+                 "transition.color");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+
+      ImGui::SeparatorText("Save");
+      project_field("Game id", "save.config_set", "game_id", project.save.game_id);
+      int data_version = project.save.data_version;
+      if (ImGui::InputInt("Data version", &data_version) && data_version >= 1) {
+        run_edit({"save.config_set", {{"data_version", data_version}}}, "save.data_version");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
+
+      ImGui::SeparatorText("Debug overlay");
+      bool overlay_visible = project.debug.overlay_visible;
+      if (ImGui::Checkbox("Visible at start", &overlay_visible)) run_edit({"debug.set", {{"overlay_visible", overlay_visible}}});
+      float font_scale = project.debug.overlay_font_scale;
+      if (ImGui::DragFloat("Font scale", &font_scale, 0.01f, 0.1f, 8.0f)) {
+        run_edit({"debug.set", {{"overlay_font_scale", font_scale}}}, "debug.font_scale");
+      }
+      if (ImGui::IsItemDeactivated()) edits.end_gesture();
       ImGui::EndDisabled();
     }
     ImGui::End();
@@ -1121,7 +1481,7 @@ int main(int argc, char** argv) {
       viewport.bind();
       arcane::editor::render_scene(*active_scene, *renderer, textures, viewport.width(), viewport.height(), &clips,
                                   editable ? nullptr : &*hud_renderer, editable ? nullptr : &hud,
-                                  &tilesets, !editable);
+                                  &tilesets, !editable, &atlases);
       ViewportTarget::unbind();
 
       ImGui::Image(static_cast<ImTextureID>(static_cast<std::uintptr_t>(viewport.texture())),
@@ -1131,6 +1491,7 @@ int main(int argc, char** argv) {
       viewport_origin = {image_min.x, image_min.y};
       viewport_w = viewport.width();
       viewport_h = viewport.height();
+      game_context.set_viewport_size(viewport_w, viewport_h);
 
       if (paint_mode && paint_map) {
         const bool left = ImGui::IsMouseDown(ImGuiMouseButton_Left);

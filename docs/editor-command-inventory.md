@@ -1,5 +1,18 @@
 # Editor authoring command inventory
 
+**AF8C update (current):** no authored data action is direct any more. Open clip is `clip.info` (with the panel's sheet and grid)
+and Open tileset is `tileset.info`; Save clip is `clip.create` (overwrite) and Save tileset is one `tileset.replace`, both run
+through `EditSession`, so each Save is **one undoable step** (undo restores the previous file bytes or removes a new file via
+`clip.restore`/`tileset.restore`) and sets `*modified*`. The panels keep a draft model on purpose: edits to the draft fields
+before Save (grid, frames, tile flags, terrain rules, New tileset) are unsaved view state like a text box, not authored data; the
+authored change is the Save. Project Settings now also edits the scene transition (fade out/in, colour), save (game id, data
+version) and debug overlay (visible, font scale) through `transition.set`, `save.config_set` and `debug.set`. Those three edit the
+project data in memory like `project.set` (AF8C changed them from immediate `project.json` writes, which would have conflicted with
+File > Save), so they undo/redo, coalesce slider drags and are written by File > Save (CLI: persisted per command). Covered by
+`test_edit_session` (`test_gui_flow_settings_match_cli_model`, `test_tileset_save_is_one_undoable_command`,
+`test_clip_open_and_save_through_commands`) and the extended source lint. The tables below are history; where they say
+"No: immediate file write" for tileset/clip Save, "Still direct" or "no editor widget" for transition/save/debug, AF8C supersedes them.
+
 **AF5B update:** the core scene paths below (hierarchy create/delete/reparent,
 node name/transform, Add Component, Inspector properties incl. module types,
 asset assignment to Sprite/ParticleEmitter/AnimatedSprite/AudioSource/Tilemap) now run
@@ -25,7 +38,7 @@ drafts before Save) is not authored data and stays out of the history (tested fo
 tileset/clip draft editing before Save and Open clip. Transition, save and debug settings have CLI commands (`transition.set`,
 `save.config_set`, `debug.set`; immediate writes) but no editor widgets.
 
-Historical list (before AF5B): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
+Historical list (before AF5B; **historical, superseded by the AF11B audit below**): these paths mutated authored data directly. Locations refer to `editor/app/editor_main.cpp`.
 
 - Core scene (AF5): hierarchy creates, deletes and reparents nodes; Inspector
   changes node name and local transform, adds components and calls registered
@@ -60,23 +73,41 @@ play mode and unsaved panel drafts are transient editor state. A draft becomes
 an authored change when saved; it must then use the shared command path.
 This inventory is a starting point, not proof of exhaustive command coverage.
 
-## AF11 review
+## AF11B audit (2026-10-30)
 
-A widget-by-widget review of `editor_main.cpp` also identifies **New tileset**
-(which creates a file), tileset texture selection and terrain-rule edits followed
-by **Save tileset**, clip grid/frame edits followed by **Save clip**, and tile
-paint Undo/Redo as authored operations requiring registry-backed equivalents.
-The input panel changes player assignment and binding device, code, pad, axis
-direction, deadzone and threshold as well as adding/removing actions and bindings.
-HUD creation, removal and field edits are authored; the panel currently offers
-button, text and bar creation, but no image creation. Hierarchy drag/drop is a
-reparent operation. The selected asset can change component asset properties.
+Reviewed `editor/app/editor_main.cpp` widget by widget. "Via EditSession" means the widget calls `edit(...)`/`run_edit(...)`
+on `arcane_tooling::EditSession` (undo/redo, coalescing, `*modified*`). Immediate-write commands run through the registry but are
+not in the scene history.
 
-Camera/panel/selection controls, preview toggles, Play/Stop and unsaved draft
-fields are transient; saving a draft is an authored operation. This inventory is
-an audit of the present editor, not an automated guarantee: registry, CLI,
-coverage manifest, routing and direct-write lint remain absent. Completion needs
-behavioral parity tests as well as a manifest; a manifest alone cannot discover
-new direct widget writes.
+| GUI action | Command(s) | Via EditSession? | Covered by |
+| ---------- | ---------- | ---------------- | ---------- |
+| Hierarchy create/delete/reparent, node name/transform | `node.add/remove/rename/reparent`, `prop.set` (transform) | Yes | `test_edit_session` (GUI/CLI model parity, undo/redo, coalescing, save point), `test_cli` |
+| Add Component, Inspector properties (incl. audio, physics, particle, module types), asset assignment | `component.add`, `prop.set` | Yes | `test_edit_session` (incl. `test_audio_physics_particle_props_match_cli`, `test_module_property_undo_after_reopen`) |
+| Tilemap add layer, brush, erase, rect fill, terrain brush; paint Undo/Redo | `tilemap.add_layer/paint/erase/fill_rect/terrain_paint` | Yes (one drag = one step) | `test_tilemap_commands`, `test_edit_session` (undo/coalescing) |
+| HUD add button/text/bar/image, remove, every field | `hud.add/remove/set` | Yes (in memory; File > Save writes) | `test_hud_input_commands`, `test_edit_session` (`test_gui_hud_input_matches_cli_model`, `test_hud_drag_coalesces_to_one_undo_step`) |
+| Input Map actions, player, bindings and fields | `input.add_action/remove_action/set_player/add_binding/remove_binding/set_binding` | Yes (in memory; File > Save writes) | `test_hud_input_commands`, `test_edit_session` |
+| Project Settings: name, main scene, module | `project.set` | Yes | `test_edit_session` (`test_gui_project_settings_match_cli_model`, name typing coalescing) |
+| File > Save | `ProjectSession::save` (same transactional write as `ProjectContext::save`) | n/a | `test_edit_session` (save point), `test_cli` |
+| Hierarchy > Save as Prefab | `prefab.save` (immediate file write) | No: not undoable | `test_prefab` (command side) |
+| Assets > Prefabs (click) | `prefab.instantiate` | Yes | `test_prefab` |
+| Inspector on prefab-instance nodes: edits, Revert, Break prefab link | `prefab.override` (via `EditSession::set_property/set_transform`, name), `prefab.revert`, `prefab.break_link` | Yes | `test_prefab` (`test_edit_session_records_overrides`) |
+| Edit > Undo/Redo, Ctrl+Z/Y | command history | Yes | `test_edit_session` |
+| Save tileset | `tileset.create` (overwrite), `tileset.set_tile`, `tileset.set_rule` | No: immediate file write, not undoable | `test_tilemap_commands` (command side only) |
+| Save clip | `clip.create` (overwrite) | No: immediate file write, not undoable | `test_clip_commands` (command side only) |
+| Selection, panels, brush choice, preview, Play/Stop, F3 overlay | none (view state) | n/a | `test_edit_session` (`test_view_state_is_not_authored`: selection, Play/Stop) |
+| Editor source has no known direct writes | n/a | n/a | `test_edit_session` (`test_editor_source_has_no_direct_scene_writes`) |
 
-- Prefabs (FE18): no editor action exists yet for save-as-prefab, instantiate, override, revert or break-link; they are `prefab.*` registry commands only. The GUI should call them (not a separate path) when AF5 routes the hierarchy and Inspector.
+CLI-only commands with no editor widget: `transition.set`, `save.config_set`, `debug.set`, `atlas.*`, `asset.*`, `replay.*`; `render` does not exist.
+
+### Still direct / not command-backed
+
+- Tileset panel: draft editing (texture, tile size, columns, tile count, tile flags, terrain rules, Add terrain rule) and **New tileset**
+  (resets the in-memory draft; the file is created only by Save tileset). Only the Save step is registry-backed, and no test drives the
+  panel's Save against the CLI result.
+- Clip panel: draft editing (grid, frames, timing, name) and **Open clip** (a read through `load_clip_file`). Save clip is `clip.create`.
+- Tileset/clip Save are immediate writes outside the EditSession history; they are not undoable and do not set `*modified*`.
+- No automated parity test exists for the tileset and clip panels' GUI path, only for their commands.
+- The direct-write lint in `test_edit_session` is a substring list (`->set_name(`, `create_node(`, `mutable_project()`, `hud.add(`,
+  `save_clip_file(`, `.main_scene =` and similar). It finds only known patterns; it cannot discover a new kind of widget write.
+
+**GP4 update:** the Animation Graph panel (list UI: parameters, states, events, transitions) edits only through `animgraph.*` commands run on the `EditSession` (file writes with `animgraph.restore` inverses, like `clip.create`); there is no draft state. `Sprite`/`Collider2D` flip fields are ordinary `prop.set` properties in the Inspector.

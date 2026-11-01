@@ -6,6 +6,47 @@
 
 namespace arcane {
 
+Scene::Scene(Scene&& other) noexcept
+    : roots_(std::move(other.roots_)),
+      nodes_by_id_(std::move(other.nodes_by_id_)),
+      components_by_id_(std::move(other.components_by_id_)),
+      next_id_(other.next_id_) {
+  other.nodes_by_id_.clear();
+  other.components_by_id_.clear();
+  adopt_nodes();
+}
+
+Scene& Scene::operator=(Scene&& other) noexcept {
+  if (this != &other) {
+    roots_ = std::move(other.roots_);
+    nodes_by_id_ = std::move(other.nodes_by_id_);
+    components_by_id_ = std::move(other.components_by_id_);
+    next_id_ = other.next_id_;
+    other.nodes_by_id_.clear();
+    other.components_by_id_.clear();
+    adopt_nodes();
+  }
+  return *this;
+}
+
+void Scene::adopt_nodes() noexcept {
+  for (auto& entry : nodes_by_id_) entry.second->scene_ = this;
+}
+
+Scene* Component::scene() const noexcept { return node_ ? node_->scene() : nullptr; }
+
+Node* Scene::find_node_by_name(const std::string& name) const noexcept {
+  std::function<Node*(const std::vector<std::unique_ptr<Node>>&)> search =
+      [&](const std::vector<std::unique_ptr<Node>>& nodes) -> Node* {
+    for (const auto& node : nodes) {
+      if (!node->pending_destroy() && node->name() == name) return node.get();
+      if (Node* found = search(node->children())) return found;
+    }
+    return nullptr;
+  };
+  return search(roots_);
+}
+
 Node* Scene::create_node(std::string name, Node* parent) {
   return create_node_with_id(allocate_id(), std::move(name), parent);
 }
@@ -14,6 +55,7 @@ Node* Scene::create_node_with_id(NodeId id, std::string name, Node* parent) {
   std::unique_ptr<Node> node(new Node(id, std::move(name)));
   Node* raw = node.get();
   node->parent_ = parent;
+  node->scene_ = this;
   if (parent) {
     parent->children_.push_back(std::move(node));
   } else {
@@ -153,6 +195,11 @@ Node* Scene::adopt_root(Scene& from, Node* root, const ComponentRegistry& regist
     }
   }
   Node* raw = owned.get();
+  std::function<void(Node&)> point = [&](Node& node) {
+    node.scene_ = this;
+    for (auto& child : node.children_) point(*child);
+  };
+  point(*owned);
   roots_.push_back(std::move(owned));
   return raw;
 }
@@ -210,7 +257,7 @@ void Scene::flush_destroyed() {
 }
 
 void Scene::collect_preorder(const std::unique_ptr<Node>& node, std::vector<Component*>& out) const {
-  if (node->pending_destroy_) {
+  if (node->pending_destroy_ || !node->active_) {
     return;
   }
   for (auto& component : node->components_) {
@@ -231,8 +278,8 @@ void Scene::update(float fixed_dt) {
   std::vector<Component*> live;
   collect_preorder(live);
   for (Component* component : live) {
-    if (component->node()->pending_destroy()) {
-      continue;  // destroyed earlier in this same tick, by an on_update above
+    if (component->node()->pending_destroy() || !component->node()->active_in_hierarchy()) {
+      continue;  // destroyed or deactivated earlier in this same tick, by an on_update above
     }
     if (!component->started_) {
       component->started_ = true;
@@ -241,7 +288,8 @@ void Scene::update(float fixed_dt) {
     component->on_update(fixed_dt);
   }
   for (Component* component : live) {
-    if (!component->node()->pending_destroy() && component->type_name() == "Camera2D")
+    if (!component->node()->pending_destroy() && component->node()->active_in_hierarchy() &&
+        component->type_name() == "Camera2D")
       static_cast<Camera2D*>(component)->advance(*this, fixed_dt);
   }
   flush_destroyed();

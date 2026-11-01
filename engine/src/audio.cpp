@@ -1,4 +1,5 @@
 #include "arcane/audio.hpp"
+#include "arcane/game_context.hpp"
 
 #define MA_NO_ENCODING
 #include <miniaudio.h>
@@ -130,6 +131,16 @@ void register_audio_components(ComponentRegistry& registry) {
           make_property<AudioSource>("loop", PropertyType::Bool, &AudioSource::loop),
           make_property<AudioSource>("play_on_start", PropertyType::Bool, &AudioSource::play_on_start),
       });
+}
+
+bool AudioSource::play() const {
+  GameContext* context = active_game_context();
+  return context && context->play_sound(clip, volume, loop, loop ? AudioBus::Music : AudioBus::Sfx);
+}
+
+bool play_one_shot(AssetId clip, float volume) {
+  GameContext* context = active_game_context();
+  return context && context->play_sound(clip, volume);
 }
 
 void set_active_audio_system(AudioSystem* system) noexcept { g_active_audio_system = system; }

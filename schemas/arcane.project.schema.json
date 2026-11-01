@@ -9,6 +9,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "collision_layers": {
+      "items": {
+        "pattern": "^[a-z0-9_]{1,32}$",
+        "type": "string"
+      },
+      "maxItems": 31,
+      "type": "array"
+    },
     "debug": {
       "additionalProperties": false,
       "properties": {

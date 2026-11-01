@@ -1,6 +1,7 @@
 #include "arcane_editor/project_session.hpp"
 
 #include "arcane/canonical_json.hpp"
+#include "arcane/prefab.hpp"
 
 namespace arcane::editor {
 
@@ -40,7 +41,8 @@ std::expected<ProjectSession, std::string> ProjectSession::open(const std::files
   session.project_revision_ = *project_text;
   session.scene_revision_ = *scene_text;
   session.scene_revision_path_ = session.main_scene_path();
-  session.dirty_ = false;
+  // Prefab edits reach instances on load; the file on disk is rewritten only by the next save.
+  session.dirty_ = refresh_prefab_instances(session.scene_, project_dir, registry).values_updated > 0;
   return session;
 }
 

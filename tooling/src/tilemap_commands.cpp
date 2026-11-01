@@ -192,6 +192,32 @@ std::expected<TilesetFile, ToolError> load_tileset_file(ProjectContext& context,
   return TilesetFile{*path, std::move(*tileset)};
 }
 
+// The file text before a write (nullopt = the file did not exist), and the tileset.restore call that puts it back.
+std::optional<std::string> tileset_text_on_disk(ProjectContext& context, const std::string& path) {
+  auto text = read_text_file(context.project_dir() / path);
+  if (!text) return std::nullopt;
+  return std::move(*text);
+}
+
+Invocation tileset_restore_call(const std::string& path, const std::optional<std::string>& previous) {
+  Json args = {{"tileset", path}};
+  if (previous) args["content"] = *previous;
+  else args["absent"] = true;
+  return Invocation{"tileset.restore", args};
+}
+
+// `texture` is an assets/ image path or an unsigned asset id.
+std::expected<AssetId, ToolError> resolve_texture(ProjectContext& context, const Json& texture) {
+  if (texture.is_number_unsigned()) return texture.get<AssetId>();
+  if (texture.is_string() && is_project_relative_path(texture.get<std::string>()) && texture.get<std::string>().starts_with("assets/")) {
+    if (!std::filesystem::exists(context.project_dir() / texture.get<std::string>())) {
+      return std::unexpected(fail("IO_ERROR", "texture file " + texture.get<std::string>() + " does not exist", "/texture"));
+    }
+    return editor::asset_id_for_relative_path(texture.get<std::string>().substr(7));
+  }
+  return std::unexpected(fail("ARGS_INVALID", "texture is an assets/ image path or an unsigned asset id", "/texture"));
+}
+
 std::expected<void, ToolError> write_tileset(ProjectContext& context, const TilesetFile& file) {
   auto text = save_tileset_canonical_json(file.tileset);
   if (!text) return std::unexpected(fail("VALUE_INVALID", text.error(), "", "", file.path));
@@ -208,7 +234,7 @@ Json tileset_json(const TilesetFile& file) {
   const Tileset& t = file.tileset;
   Json tiles = Json::array(), rules = Json::array();
   for (std::size_t i = 0; i < t.tiles.size(); ++i) {
-    tiles.push_back({{"id", i + 1}, {"solid", t.tiles[i].solid}, {"terrain", t.tiles[i].terrain}});
+    tiles.push_back({{"id", i + 1}, {"solid", t.tiles[i].solid}, {"terrain", t.tiles[i].terrain}, {"tags", t.tiles[i].tags}});
   }
   for (const auto& rule : t.terrains) rules.push_back(rule_json(rule));
   return {{"tileset", file.path}, {"texture", t.texture}, {"tile_width", t.tile_width}, {"tile_height", t.tile_height},
@@ -246,7 +272,8 @@ Json tileset_problems(const Tileset& t) {
 Json tile_state(const Tileset& t, int tile) {
   const bool has = tile <= static_cast<int>(t.tiles.size());
   return {{"solid", has ? t.tiles[static_cast<std::size_t>(tile - 1)].solid : false},
-          {"terrain", has ? t.tiles[static_cast<std::size_t>(tile - 1)].terrain : 0}};
+          {"terrain", has ? t.tiles[static_cast<std::size_t>(tile - 1)].terrain : 0},
+          {"tags", has ? t.tiles[static_cast<std::size_t>(tile - 1)].tags : std::vector<std::string>{}}};
 }
 
 const Json kTilesetArg = {{"type", "string"}};
@@ -527,19 +554,9 @@ void register_tilemap_commands(CommandRegistry& registry) {
         auto path = check_tileset_path(args["tileset"].get<std::string>());
         if (!path) return std::unexpected(path.error());
         TilesetFile file{*path, {}};
-        const Json& texture = args["texture"];
-        if (texture.is_number_unsigned()) {
-          file.tileset.texture = texture.get<AssetId>();
-        } else if (texture.is_string() && is_project_relative_path(texture.get<std::string>()) &&
-                   texture.get<std::string>().starts_with("assets/")) {
-          const std::string image = texture.get<std::string>().substr(7);
-          if (!std::filesystem::exists(context.project_dir() / texture.get<std::string>())) {
-            return std::unexpected(fail("IO_ERROR", "texture file " + texture.get<std::string>() + " does not exist", "/texture"));
-          }
-          file.tileset.texture = editor::asset_id_for_relative_path(image);
-        } else {
-          return std::unexpected(fail("ARGS_INVALID", "texture is an assets/ image path or an unsigned asset id", "/texture"));
-        }
+        auto texture = resolve_texture(context, args["texture"]);
+        if (!texture) return std::unexpected(texture.error());
+        file.tileset.texture = *texture;
         file.tileset.tile_width = args["tile_width"];
         file.tileset.tile_height = args["tile_height"];
         file.tileset.columns = args["columns"];
@@ -548,15 +565,17 @@ void register_tilemap_commands(CommandRegistry& registry) {
         if (std::filesystem::exists(context.project_dir() / file.path, ec) && !args.value("overwrite", false)) {
           return std::unexpected(fail("CONFLICT", file.path + " already exists", "/tileset", "Pass overwrite=true to replace it", file.path));
         }
+        const auto previous = tileset_text_on_disk(context, file.path);
         if (auto ok = write_tileset(context, file); !ok) return std::unexpected(ok.error());
-        return CommandResult{{{"tileset", file.path}, {"texture", file.tileset.texture}}, std::nullopt};
+        return CommandResult{{{"tileset", file.path}, {"texture", file.tileset.texture}}, tileset_restore_call(file.path, previous)};
       });
 
   registry.add(
       {"tileset.set_tile",
-       "Set the solid flag and/or terrain of tile `tile` (1-based id). Writes the file at once.",
+       "Set the solid flag, terrain and/or gameplay `tags` (e.g. hazard, pickup; a-z 0-9 _, replaces the list) of tile `tile` (1-based id). Writes the file at once.",
        schema({{"tileset", kTilesetArg}, {"tile", {{"type", "integer"}, {"minimum", 1}}}, {"solid", {{"type", "boolean"}}},
-               {"terrain", {{"type", "integer"}, {"minimum", 0}}}},
+               {"terrain", {{"type", "integer"}, {"minimum", 0}}},
+               {"tags", {{"type", "array"}, {"items", {{"type", "string"}}}}}},
               {"tileset", "tile"}),
        {{"type", "object"}}, false},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
@@ -572,10 +591,19 @@ void register_tilemap_commands(CommandRegistry& registry) {
         TileInfo& info = t.tiles[static_cast<std::size_t>(tile - 1)];
         if (args.contains("solid")) info.solid = args["solid"];
         if (args.contains("terrain")) info.terrain = args["terrain"];
+        if (args.contains("tags")) {
+          std::vector<std::string> tags = args["tags"].get<std::vector<std::string>>();
+          for (const std::string& tag : tags) {
+            if (!is_valid_tile_tag(tag)) return std::unexpected(fail("VALUE_INVALID", "tag '" + tag + "' must be 1-32 characters of a-z 0-9 _", "/tags"));
+          }
+          std::sort(tags.begin(), tags.end());
+          tags.erase(std::unique(tags.begin(), tags.end()), tags.end());
+          info.tags = std::move(tags);
+        }
         const Json now = tile_state(t, tile);
         if (now == previous) return CommandResult{{{"changed", false}, {"tile", tile}, {"state", now}}, std::nullopt};
         if (auto ok = write_tileset(context, *file); !ok) return std::unexpected(ok.error());
-        Json inverse_args = {{"tileset", file->path}, {"tile", tile}, {"solid", previous["solid"]}, {"terrain", previous["terrain"]}};
+        Json inverse_args = {{"tileset", file->path}, {"tile", tile}, {"solid", previous["solid"]}, {"terrain", previous["terrain"]}, {"tags", previous["tags"]}};
         return CommandResult{{{"changed", true}, {"tile", tile}, {"state", now}, {"previous", previous}},
                              Invocation{"tileset.set_tile", inverse_args}};
       });
@@ -635,6 +663,103 @@ void register_tilemap_commands(CommandRegistry& registry) {
         if (auto ok = write_tileset(context, *file); !ok) return std::unexpected(ok.error());
         return CommandResult{{{"removed", rule_json(removed)}},
                              Invocation{"tileset.set_rule", {{"tileset", file->path}, {"terrain", removed.terrain}, {"tiles", removed.tiles}}}};
+      });
+
+  registry.add(
+      {"tileset.replace",
+       "Write a whole tileset in one step (the editor's Save tileset): sheet layout like tileset.create, `tiles` "
+       "[{id, solid?, terrain?}] (1-based ids, others default) and `terrains` [{terrain, tiles[16]}]. Creates or overwrites the "
+       "file at once; the inverse is tileset.restore.",
+       schema({{"tileset", kTilesetArg}, {"texture", {{"cli_text", true}}}, {"tile_width", {{"type", "integer"}, {"minimum", 1}}},
+               {"tile_height", {{"type", "integer"}, {"minimum", 1}}}, {"columns", {{"type", "integer"}, {"minimum", 1}}},
+               {"tile_count", {{"type", "integer"}, {"minimum", 1}, {"maximum", 4096}}}, {"tiles", {{"type", "array"}}},
+               {"terrains", {{"type", "array"}}}},
+              {"tileset", "texture", "tile_width", "tile_height", "columns", "tile_count"}),
+       {{"type", "object"}}, false},
+      [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
+        auto path = check_tileset_path(args["tileset"].get<std::string>());
+        if (!path) return std::unexpected(path.error());
+        auto texture = resolve_texture(context, args["texture"]);
+        if (!texture) return std::unexpected(texture.error());
+        TilesetFile file{*path, {}};
+        Tileset& t = file.tileset;
+        t.texture = *texture;
+        t.tile_width = args["tile_width"];
+        t.tile_height = args["tile_height"];
+        t.columns = args["columns"];
+        t.tile_count = args["tile_count"];
+        t.tiles.resize(static_cast<std::size_t>(t.tile_count));
+        if (args.contains("tiles")) {
+          for (std::size_t i = 0; i < args["tiles"].size(); ++i) {
+            const Json& entry = args["tiles"][i];
+            const std::string where = "/tiles/" + std::to_string(i);
+            if (!entry.is_object() || !entry.contains("id") || !entry["id"].is_number_integer()) {
+              return std::unexpected(fail("ARGS_INVALID", "a tile entry is {id, solid?, terrain?}", where));
+            }
+            const int id = entry["id"];
+            if (id < 1 || id > t.tile_count) {
+              return std::unexpected(fail("VALUE_INVALID", "tile id must be in 1.." + std::to_string(t.tile_count), where + "/id"));
+            }
+            TileInfo& info = t.tiles[static_cast<std::size_t>(id - 1)];
+            if (entry.contains("solid")) info.solid = entry["solid"].get<bool>();
+            if (entry.contains("terrain")) info.terrain = entry["terrain"].get<int>();
+          }
+        }
+        // Trailing default entries are not written (the same bytes as create + set_tile would give).
+        while (!t.tiles.empty() && !t.tiles.back().solid && t.tiles.back().terrain == 0) t.tiles.pop_back();
+        if (args.contains("terrains")) {
+          for (std::size_t i = 0; i < args["terrains"].size(); ++i) {
+            const Json& entry = args["terrains"][i];
+            const std::string where = "/terrains/" + std::to_string(i);
+            if (!entry.is_object() || !entry.contains("terrain") || !entry.contains("tiles") || !entry["tiles"].is_array() ||
+                entry["tiles"].size() != 16) {
+              return std::unexpected(fail("ARGS_INVALID", "a terrain entry is {terrain, tiles[16]}", where));
+            }
+            TerrainRule rule;
+            rule.terrain = entry["terrain"];
+            for (std::size_t m = 0; m < 16; ++m) {
+              const Json& id = entry["tiles"][m];
+              if (!id.is_number_integer() || id.get<int>() < 0 || id.get<int>() > t.tile_count) {
+                return std::unexpected(fail("VALUE_INVALID", "entry must be an integer in 0.." + std::to_string(t.tile_count),
+                                            where + "/tiles/" + std::to_string(m)));
+              }
+              rule.tiles[m] = id;
+            }
+            t.terrains.push_back(rule);
+          }
+        }
+        const auto previous = tileset_text_on_disk(context, file.path);
+        if (auto ok = write_tileset(context, file); !ok) return std::unexpected(ok.error());
+        return CommandResult{{{"tileset", file.path}, {"tile_count", t.tile_count}, {"terrains", t.terrains.size()}},
+                             tileset_restore_call(file.path, previous)};
+      });
+
+  registry.add(
+      {"tileset.restore",
+       "Put a tileset file back to an earlier state: write `content` (the exact previous file text) or, with absent=true, delete "
+       "the file. Used as the inverse of the other tileset.* writes; not meant for authoring.",
+       schema({{"tileset", kTilesetArg}, {"content", {{"type", "string"}}}, {"absent", {{"type", "boolean"}}}}, {"tileset"}),
+       {{"type", "object"}}, false},
+      [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
+        auto path = check_tileset_path(args["tileset"].get<std::string>());
+        if (!path) return std::unexpected(path.error());
+        const bool absent = args.value("absent", false);
+        if (absent == args.contains("content")) {
+          return std::unexpected(fail("ARGS_INVALID", "give either content or absent=true", "/content"));
+        }
+        const auto previous = tileset_text_on_disk(context, *path);
+        const auto target = context.project_dir() / *path;
+        std::error_code ec;
+        if (absent) {
+          std::filesystem::remove(target, ec);
+          if (ec) return std::unexpected(fail("IO_ERROR", "cannot remove " + *path + ": " + ec.message(), "", "", *path));
+        } else {
+          std::filesystem::create_directories(target.parent_path(), ec);
+          if (auto ok = write_text_file_atomic(target, args["content"].get<std::string>()); !ok) {
+            return std::unexpected(fail("IO_ERROR", ok.error(), "", "", *path));
+          }
+        }
+        return CommandResult{{{"tileset", *path}, {"restored", absent ? "absent" : "content"}}, tileset_restore_call(*path, previous)};
       });
 }
 

@@ -122,6 +122,13 @@ class ARCANE_API Hud {
   bool clicked(std::string_view id) const;
   const std::vector<std::string>& clicks() const noexcept { return clicks_; }
 
+  // The element of that kind with this id, or null (ids are unique within a Hud, so a wrong kind finds nothing).
+  // Pointers stay valid until elements are added or removed.
+  HudText* find_text(std::string_view id) noexcept;
+  HudImage* find_image(std::string_view id) noexcept;
+  HudProgressBar* find_bar(std::string_view id) noexcept;
+  HudButton* find_button(std::string_view id) noexcept;
+
   // Gives every element with an empty or repeated id a fresh "<kind>_<n>" id
   // (text_1, image_1, bar_1, button_1, ... skipping ids in use), in order.
   void ensure_unique_ids();

@@ -42,8 +42,18 @@ Loading rejects a link whose `instance_id` is not an instance root with the same
 on a non-root node, unknown override properties and unknown link keys. Scenes without any `prefab`
 objects (all older scenes) load and save unchanged; no migration is needed.
 
-Not done: prefab edits do not propagate to existing instances (re-instantiate, or edit the
-instance), prefab nesting, and adding or removing nodes inside one instance while keeping the link.
+## Propagation
+
+When a project or scene is loaded (editor, `arcane`, player, scene switches) `refresh_prefab_instances`
+rewrites every node field and component property that the instance does **not** override with the
+prefab file's current value; `EntityId` properties are remapped to the instance's nodes. Nodes are
+matched by prefab-local ID, components by type and order. An unreadable prefab file leaves its
+instances as they are. In the editor the scene is marked modified when a value changed; the scene
+file on disk changes only on the next save. Undo of `prefab.remove` restores the scene snapshot, so
+node and component IDs are unchanged.
+
+Not done: nodes or components added to or removed from the prefab are not propagated to existing
+instances, prefab nesting, and adding or removing nodes inside one instance while keeping the link.
 
 ## Commands (`docs/commands.md`)
 

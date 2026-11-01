@@ -25,12 +25,12 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
         canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                                     "save", "debug"},
+                                     "save", "debug", "collision_layers"},
                                      "project");
       } else {
         canonical::require_only_keys(
             root, {"format_version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                         "save", "debug"},
+                         "save", "debug", "collision_layers"},
             "project");
       }
     }
@@ -95,6 +95,12 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
       }
       if (project.save.data_version < 1) canonical::fail("project 'save': data_version must be >= 1");
     }
+    if (root.contains("collision_layers")) {
+      const json& layers = root["collision_layers"];
+      if (!layers.is_array()) canonical::fail("project 'collision_layers' must be an array");
+      for (const json& name : layers) project.collision_layers.push_back(canonical::as_string(name, "collision_layers entry"));
+      if (auto ok = validate_collision_layers(project.collision_layers); !ok) canonical::fail("project: " + ok.error());
+    }
     return project;
   } catch (const canonical::SchemaError& ex) {
     return std::unexpected(std::string(ex.what()));
@@ -102,6 +108,44 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
 }
 
 }  // namespace
+
+bool is_valid_collision_layer_name(const std::string& name) noexcept {
+  if (name.empty() || name.size() > 32) return false;
+  for (char c : name) {
+    if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')) return false;
+  }
+  return true;
+}
+
+std::expected<void, std::string> validate_collision_layers(const std::vector<std::string>& names) {
+  if (names.size() > 31) return std::unexpected(std::string("collision_layers: at most 31 layers"));
+  for (std::size_t i = 0; i < names.size(); ++i) {
+    if (!is_valid_collision_layer_name(names[i])) {
+      return std::unexpected("collision_layers: '" + names[i] + "' must be 1-32 characters of a-z 0-9 _");
+    }
+    for (std::size_t j = 0; j < i; ++j) {
+      if (names[j] == names[i]) return std::unexpected("collision_layers: duplicate name '" + names[i] + "'");
+    }
+  }
+  return {};
+}
+
+int collision_layer_index(const ProjectFile& project, const std::string& name) noexcept {
+  for (std::size_t i = 0; i < project.collision_layers.size(); ++i) {
+    if (project.collision_layers[i] == name) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+bool collision_layer_mask(const ProjectFile& project, const std::vector<std::string>& names, int& mask) noexcept {
+  mask = 0;
+  for (const std::string& name : names) {
+    const int index = collision_layer_index(project, name);
+    if (index < 0) return false;
+    mask |= 1 << index;
+  }
+  return true;
+}
 
 bool is_valid_game_id(const std::string& id) noexcept {
   if (id.empty() || id.size() > 64 || id == "." || id == "..") return false;
@@ -157,6 +201,10 @@ std::expected<std::string, std::string> save_project_canonical_json(const Projec
     }
     if (project.save.data_version < 1) return std::unexpected(std::string("project save: data_version must be >= 1"));
     root["save"] = {{"game_id", project.save.game_id}, {"data_version", project.save.data_version}};
+  }
+  if (!project.collision_layers.empty()) {
+    if (auto ok = validate_collision_layers(project.collision_layers); !ok) return std::unexpected("project " + ok.error());
+    root["collision_layers"] = project.collision_layers;
   }
   return canonical::dump(root);
 }

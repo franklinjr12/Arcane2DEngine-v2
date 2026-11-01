@@ -9,6 +9,7 @@
 #include <stb_image_write.h>
 
 #include "arcane/builtin_components.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane_editor/asset_catalog.hpp"
 #include "arcane_editor/project_session.hpp"
 #include "arcane_tooling/command.hpp"
@@ -194,6 +195,24 @@ void test_terrain_and_tileset_rules() {
   tp(1, true);  // erase re-picks the neighbour
   ARCANE_ASSERT_TRUE(dump(registry, ctx) == "0,0,1,0,0\n");
   ARCANE_ASSERT_TRUE(code(registry, ctx, "tilemap.terrain_paint", {{"node", "path:/Map"}, {"x", 0}, {"y", 0}, {"terrain", 7}}) == "VALUE_INVALID");
+
+  // Gameplay tags: authored with tileset.set_tile (undoable), read back through GameContext::tile_at.
+  auto tagged = ok(registry, ctx, "tileset.set_tile", {{"tileset", "assets/set.json"}, {"tile", 1}, {"tags", Json::array({"pickup", "hazard", "hazard"})}});
+  ARCANE_ASSERT_TRUE(tagged.value["state"]["tags"] == Json::array({"hazard", "pickup"}));
+  ARCANE_ASSERT_TRUE(code(registry, ctx, "tileset.set_tile", {{"tileset", "assets/set.json"}, {"tile", 1}, {"tags", Json::array({"Bad Tag"})}}) == "VALUE_INVALID");
+  ARCANE_ASSERT_TRUE(slurp(project.dir / "assets/set.json").find("\"tags\"") != std::string::npos);
+  ARCANE_ASSERT_TRUE(ok(registry, ctx, "tileset.validate", {{"tileset", "assets/set.json"}}).value["ok"] == true);
+  GameContext game(ctx.project_dir(), ctx.registry());
+  auto hit = game.tile_at(ctx.session().scene(), {2 * 32 + 5.0f, 5.0f});  // painted cell (2, 0) holds tile 1
+  ARCANE_ASSERT_TRUE(hit.has_value() && hit->tile_id == 1 && hit->cx == 2 && hit->cy == 0);
+  ARCANE_ASSERT_TRUE(hit->has_tag("hazard") && hit->has_tag("pickup") && hit->solid);
+  ARCANE_ASSERT_TRUE(game.tagged_tile_at(ctx.session().scene(), {2 * 32 + 5.0f, 5.0f}, "hazard").has_value());
+  ARCANE_ASSERT_TRUE(!game.tagged_tile_at(ctx.session().scene(), {2 * 32 + 5.0f, 5.0f}, "water").has_value());
+  ARCANE_ASSERT_TRUE(!game.tile_at(ctx.session().scene(), {5.0f, 5.0f}).has_value());     // empty cell
+  ARCANE_ASSERT_TRUE(!game.tile_at(ctx.session().scene(), {-50.0f, 5.0f}).has_value());   // outside the grid
+  ok(registry, ctx, tagged.inverse->command.c_str(), tagged.inverse->args);
+  game = GameContext(ctx.project_dir(), ctx.registry());
+  ARCANE_ASSERT_TRUE(game.tile_at(ctx.session().scene(), {2 * 32 + 5.0f, 5.0f})->tags.empty());
 }
 
 void test_stroke_undo_redo() {

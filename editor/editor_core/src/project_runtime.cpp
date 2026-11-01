@@ -4,6 +4,7 @@
 #include <sstream>
 
 #include "arcane/animation.hpp"
+#include "arcane/animgraph.hpp"
 #include "arcane/tween.hpp"
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
@@ -21,6 +22,7 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
   register_builtin_components(runtime.registry_);
   register_physics_components(runtime.registry_);
   register_animation_components(runtime.registry_);
+  register_animgraph_components(runtime.registry_);
   register_tween_components(runtime.registry_);
   register_audio_components(runtime.registry_);
   register_tilemap_components(runtime.registry_);

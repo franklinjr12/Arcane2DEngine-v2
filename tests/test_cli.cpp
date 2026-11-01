@@ -8,6 +8,8 @@
 #endif
 #include <filesystem>
 #include <fstream>
+#include <regex>
+#include <set>
 #include <sstream>
 
 #include "arcane/canonical_json.hpp"
@@ -321,6 +323,42 @@ void test_validate_fmt_migrate() {
   fs::remove_all(dir, ec);
 }
 
+// docs/commands.md is hand-written: every registered or offline command must be mentioned, and it must not
+// name a command that does not exist.
+void test_commands_doc_coverage() {
+  const std::string doc = slurp(ARCANE_COMMANDS_DOC_PATH);
+  ARCANE_ASSERT_TRUE(!doc.empty());
+  CommandRegistry registry;
+  register_all_commands(registry);
+  std::set<std::string> names;
+  for (const CommandSpec* spec : registry.list()) names.insert(spec->name);
+  for (const auto& c : offline_commands()) names.insert(c.spec.name);
+  std::set<std::string> groups;
+  for (const auto& n : names) {
+    const auto dot = n.find('.');
+    if (dot != std::string::npos) groups.insert(n.substr(0, dot));
+  }
+  for (const auto& n : names) {
+    const bool found = n.find('.') != std::string::npos
+                           ? doc.find("`" + n + "`") != std::string::npos
+                           : doc.find("`" + n + "`") != std::string::npos || doc.find("`arcane " + n) != std::string::npos;
+    if (!found) {
+      std::fprintf(stderr, "docs/commands.md does not mention %s\n", n.c_str());
+      ARCANE_ASSERT_TRUE(false);
+    }
+  }
+  const std::regex token("`([a-z_]+)\\.([a-z_]+)`");
+  for (auto it = std::sregex_iterator(doc.begin(), doc.end(), token); it != std::sregex_iterator(); ++it) {
+    const std::string group = (*it)[1], full = (*it)[0].str().substr(1, (*it)[0].length() - 2);
+    const std::string ext = (*it)[2];
+    if (ext == "json" || ext == "png" || ext == "md") continue;  // file names
+    if (full == "save.data_version") continue;  // a project.json field, not a command
+    if (!groups.count(group) || names.count(full)) continue;
+    std::fprintf(stderr, "docs/commands.md names unknown command %s\n", full.c_str());
+    ARCANE_ASSERT_TRUE(false);
+  }
+}
+
 void test_schema_and_docs() {
   auto list = cli({"schema"});
   ARCANE_ASSERT_TRUE(list.code == 0 && list.raw.find("\"scene\"") != std::string::npos);
@@ -352,6 +390,75 @@ void test_schema_and_docs() {
   }
 }
 
+void test_run_and_test() {
+  Project p("arcane_cli_run");
+  ARCANE_ASSERT_TRUE(cli({"project", "new", p.dir.string()}).code == 0);
+  p.run({"node", "add", "--name", "Player"});
+  p.run({"component", "add", "--node", "id:1", "--type", "Spinner"});
+
+  auto a = p.run({"run", "--frames", "30"});
+  ARCANE_ASSERT_TRUE(a.code == 0 && a.json["frames"] == 30 && a.json["module"] == true && a.json["nodes"] == 1);
+  ARCANE_ASSERT_TRUE(p.run({"run", "--frames", "30"}).json["final_hash"] == a.json["final_hash"]);
+  ARCANE_ASSERT_TRUE(p.run({"run", "--frames", "0"}).code == 4 || p.run({"run", "--frames", "0"}).code == 2);
+
+  const std::string scene_before = slurp(p.scene());
+  ARCANE_ASSERT_TRUE(p.run({"--dry-run", "run", "--frames", "5", "--trace_out", "tests/x.trace.json"}).code == 0);
+  ARCANE_ASSERT_TRUE(!fs::exists(p.dir / "tests" / "x.trace.json"));
+
+  ARCANE_ASSERT_TRUE(p.run({"replay", "save", "--file", "tests/a.replay.json", "--frames", "20"}).code == 0);
+  ARCANE_ASSERT_TRUE(p.run({"run", "--replay", "tests/a.replay.json", "--frames", "5"}).code == 2);
+  auto traced = p.run({"run", "--replay", "tests/a.replay.json", "--trace_out", "out/a.trace.json"});
+  ARCANE_ASSERT_TRUE(traced.code == 0 && traced.json["frames"] == 20 && traced.json["trace_out"] == "out/a.trace.json");
+  ARCANE_ASSERT_TRUE(fs::is_regular_file(p.dir / "out" / "a.trace.json"));
+  ARCANE_ASSERT_TRUE(slurp(p.scene()) == scene_before);  // run never saves
+
+  auto missing = p.run({"test"});
+  ARCANE_ASSERT_TRUE(missing.code == 4 && missing.json["ok"] == false && missing.json["failed"] == 1);
+  ARCANE_ASSERT_TRUE(missing.json["cases"][0]["error"].get<std::string>().find("missing expected trace") == 0);
+
+  fs::copy_file(p.dir / "out" / "a.trace.json", p.dir / "tests" / "a.trace.json");
+  auto ok = p.run({"test"});
+  ARCANE_ASSERT_TRUE(ok.code == 0 && ok.json["ok"] == true && ok.json["passed"] == 1 && ok.json["smoke"]["frames"] == 60);
+  ARCANE_ASSERT_TRUE(p.run({"test", "--filter", "zzz"}).json["cases"].empty());
+
+  std::string trace = slurp(p.dir / "tests" / "a.trace.json");
+  const auto first = trace.find("\"hashes\"");
+  const auto digit = trace.find('"', trace.find('[', first)) + 1;
+  trace[digit] = trace[digit] == '0' ? '1' : '0';  // corrupt the first hash
+  spit(p.dir / "tests" / "a.trace.json", trace);
+  auto bad = p.run({"test"});
+  ARCANE_ASSERT_TRUE(bad.code == 4 && bad.json["ok"] == false && bad.json["cases"][0]["first_divergent_frame"] == 0);
+}
+
+void test_export() {
+  Project p("arcane_cli_export");
+  ARCANE_ASSERT_TRUE(cli({"project", "new", p.dir.string()}).code == 0);
+  p.run({"node", "add", "--name", "Player"});
+  fs::create_directories(p.dir / "tests");
+  spit(p.dir / "tests" / "x.txt", "not exported");
+  const std::string out = (p.dir.parent_path() / "arcane_cli_export_out").string();
+  fs::remove_all(out);
+
+  auto dry = p.run({"--dry-run", "export", "--out", out});
+  ARCANE_ASSERT_TRUE(dry.code == 0 && !fs::exists(out) && dry.json["module"] == fs::path(ARCANE_SAMPLE_GAME_PATH).filename().string() &&
+                      dry.json["runtime_files"] == 0);
+  auto done = p.run({"export", out});
+  ARCANE_ASSERT_TRUE(done.code == 0 && done.json["files"] == dry.json["files"]);
+  ARCANE_ASSERT_TRUE(fs::is_regular_file(out + "/game/project.json") && fs::is_regular_file(out + "/game/scenes/main.scene.json") &&
+                      fs::is_regular_file(fs::path(out) / "game" / fs::path(ARCANE_SAMPLE_GAME_PATH).filename()));
+  ARCANE_ASSERT_TRUE(!fs::exists(out + "/game/tests"));
+
+  spit(out + "/keep.txt", "x");
+  ARCANE_ASSERT_TRUE(p.run({"export", out}).code == 5 && fs::exists(out + "/keep.txt"));  // CONFLICT, untouched
+  ARCANE_ASSERT_TRUE(p.run({"export", out, "--overwrite"}).code == 0 && !fs::exists(out + "/keep.txt"));
+  ARCANE_ASSERT_TRUE(p.run({"export", p.dir.string(), "--overwrite"}).code == 2);  // out overlaps the project
+
+  const std::string missing = out + "_missing";
+  auto bad = cli({"--project", p.dir.string(), "--module", (p.dir / "nope.so").string(), "export", missing});
+  ARCANE_ASSERT_TRUE(bad.code != 0 && !fs::exists(missing));
+  fs::remove_all(out);
+}
+
 int exit_status(int raw) {
 #ifdef _WIN32
   return raw;
@@ -371,6 +478,17 @@ void test_executable() {
   ARCANE_ASSERT_TRUE(exit_status(std::system((exe + " --help" + quiet).c_str())) == 0);
   ARCANE_ASSERT_TRUE(exit_status(std::system((exe + " frobnicate" + quiet).c_str())) == 2);
   ARCANE_ASSERT_TRUE(exit_status(std::system((exe + " --project arcane_no_such_dir scene tree" + quiet).c_str())) == 3);
+#ifndef _WIN32
+  // run needs no display: succeeds with DISPLAY and WAYLAND_DISPLAY unset.
+  const fs::path dir = fs::temp_directory_path() / "arcane_cli_exe_run";
+  std::error_code ec;
+  fs::remove_all(dir, ec);
+  ARCANE_ASSERT_TRUE(exit_status(std::system((exe + " project new \"" + dir.string() + "\"" + quiet).c_str())) == 0);
+  unsetenv("DISPLAY");
+  unsetenv("WAYLAND_DISPLAY");
+  ARCANE_ASSERT_TRUE(exit_status(std::system((exe + " --project \"" + dir.string() + "\" run --frames 10" + quiet).c_str())) == 0);
+  fs::remove_all(dir, ec);
+#endif
 }
 
 }  // namespace
@@ -382,6 +500,9 @@ int main() {
   test_scenes_and_batch();
   test_validate_fmt_migrate();
   test_schema_and_docs();
+  test_commands_doc_coverage();
+  test_run_and_test();
+  test_export();
   test_executable();
   return 0;
 }

@@ -2,6 +2,7 @@
 
 #include "arcane/atlas.hpp"
 #include "arcane/canonical_json.hpp"
+#include "arcane/prefab.hpp"
 #include "arcane/project.hpp"
 
 namespace arcane::tooling {
@@ -60,6 +61,7 @@ std::expected<std::unique_ptr<ProjectContext>, ToolError> ProjectContext::open(
       return std::unexpected(ToolError{"SCHEMA_INVALID", scene.error(), scene_file, "",
                                        "Fix the file or migrate it to format v2 (unknown data is never dropped)"});
     }
+    refresh_prefab_instances(*scene, project_dir, runtime->registry());
     runtime->session().scene() = std::move(*scene);
   }
   auto project_text = read_text_file(project_dir / "project.json");

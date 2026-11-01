@@ -72,6 +72,10 @@ class ARCANE_API Node {
   // per-frame transform propagation yet.
   WorldTransform2D world_transform() const noexcept;
 
+  // The scene that owns this node (kept up to date when the Scene is moved). Lets components spawn and destroy
+  // nodes from their hooks: scene()->destroy_node(id) is deferred to the end of the tick.
+  Scene* scene() const noexcept { return scene_; }
+
   Node* parent() const noexcept { return parent_; }
   const std::vector<std::unique_ptr<Node>>& children() const noexcept { return children_; }
 
@@ -81,9 +85,23 @@ class ARCANE_API Node {
   const std::optional<PrefabLink>& prefab_link() const noexcept { return prefab_link_; }
   void set_prefab_link(std::optional<PrefabLink> link) { prefab_link_ = std::move(link); }
 
+  // Authored flag on a root node: SceneManager carries it over scene switches
+  // (docs/formats/scene.md "persistent"). Not copied by duplicate or prefab
+  // instancing; ignored on non-root nodes.
+  bool persistent() const noexcept { return persistent_; }
+  void set_persistent(bool persistent) noexcept { persistent_ = persistent; }
+
   // True once Scene::destroy_node has marked this node (or an ancestor) for
   // destruction; the node still physically exists until the next flush.
   bool pending_destroy() const noexcept { return pending_destroy_; }
+
+  // Runtime-only enable flag (never serialized, true for new nodes). An inactive node and its subtree get no
+  // on_start/on_update, are not drawn, and their physics bodies are disabled (no contacts, triggers or query
+  // hits). Used by object pools (Spawner2D) to park instances.
+  bool active() const noexcept { return active_; }
+  void set_active(bool active) noexcept { active_ = active; }
+  // False if this node or any ancestor is inactive.
+  bool active_in_hierarchy() const noexcept;
 
  private:
   friend class Scene;
@@ -96,11 +114,14 @@ class ARCANE_API Node {
   NodeId id_;
   std::string name_;
   Node* parent_ = nullptr;
+  Scene* scene_ = nullptr;
   std::vector<std::unique_ptr<Node>> children_;
   Transform2D local_{};
   std::vector<std::unique_ptr<Component>> components_;
   std::optional<PrefabLink> prefab_link_;
+  bool persistent_ = false;
   bool pending_destroy_ = false;
+  bool active_ = true;
 };
 
 }  // namespace arcane

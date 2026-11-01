@@ -40,6 +40,19 @@
             "code": 32
           }
         ]
+      },
+      {
+        "name": "pause",
+        "bindings": [
+          {
+            "device": "keyboard",
+            "code": 80
+          },
+          {
+            "device": "keyboard",
+            "code": 256
+          }
+        ]
       }
     ]
   },
@@ -48,6 +61,7 @@
     "elements": [
       {
         "type": "text",
+        "id": "score",
         "text": "SCORE 0",
         "anchor": "top_left",
         "offset": [
@@ -64,6 +78,7 @@
       },
       {
         "type": "progress_bar",
+        "id": "health",
         "anchor": "top_right",
         "offset": [
           -16,
@@ -89,6 +104,7 @@
       },
       {
         "type": "text",
+        "id": "banner",
         "text": "",
         "anchor": "center",
         "offset": [

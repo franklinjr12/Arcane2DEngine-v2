@@ -1,0 +1,16 @@
+{
+  "format_version": 1,
+  "name": "hurt",
+  "loop": true,
+  "frames": [
+    {
+      "uv": [
+        0.8571428571428571,
+        0.0,
+        1.0,
+        1.0
+      ],
+      "duration_seconds": 0.1
+    }
+  ]
+}

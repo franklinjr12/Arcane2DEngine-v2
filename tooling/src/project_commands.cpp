@@ -18,7 +18,8 @@ Json schema(Json properties) {
 }
 
 Json project_json(const ProjectFile& project) {
-  return {{"name", project.name}, {"main_scene", project.main_scene}, {"module", project.module}};
+  return {{"name", project.name}, {"main_scene", project.main_scene}, {"module", project.module},
+          {"collision_layers", project.collision_layers}};
 }
 
 }  // namespace
@@ -34,12 +35,15 @@ void register_project_commands(CommandRegistry& registry) {
   registry.add(
       {"project.set",
        "Set project-level properties in project.json: `name` (non-empty), `main_scene` (project-relative .json path), "
-       "`module` (project-relative path, empty for none). At least one is required. main_scene and module take "
+       "`module` (project-relative path, empty for none), `collision_layers` (array of layer names, index = layer number "
+       "used by Collider2D layer/mask; a-z 0-9 _, max 31, replaces the list). At least one is required. main_scene and module take "
        "effect the next time the project is opened; nothing is reloaded now.",
-       schema({{"name", kString}, {"main_scene", kString}, {"module", kString}}), Json{{"type", "object"}}, true},
+       schema({{"name", kString}, {"main_scene", kString}, {"module", kString},
+               {"collision_layers", {{"type", "array"}, {"items", kString}}}}), Json{{"type", "object"}}, true},
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
-        if (!args.contains("name") && !args.contains("main_scene") && !args.contains("module")) {
-          return std::unexpected(fail("give at least one of name, main_scene, module", "", "project.get shows the current values"));
+        if (!args.contains("name") && !args.contains("main_scene") && !args.contains("module") &&
+            !args.contains("collision_layers")) {
+          return std::unexpected(fail("give at least one of name, main_scene, module, collision_layers", "", "project.get shows the current values"));
         }
         if (args.contains("name") && args["name"].get<std::string>().empty()) {
           return std::unexpected(fail("name must not be empty", "/name"));
@@ -58,8 +62,17 @@ void register_project_commands(CommandRegistry& registry) {
                                         "Use a '/' path without '..'"));
           }
         }
+        std::vector<std::string> layers;
+        if (args.contains("collision_layers")) {
+          layers = args["collision_layers"].get<std::vector<std::string>>();
+          if (auto ok = validate_collision_layers(layers); !ok) return std::unexpected(fail(ok.error(), "/collision_layers"));
+        }
         ProjectFile& project = context.session().mutable_project();
         Json previous = Json::object();
+        if (args.contains("collision_layers") && project.collision_layers != layers) {
+          previous["collision_layers"] = project.collision_layers;
+          project.collision_layers = layers;
+        }
         for (const char* key : {"name", "main_scene", "module"}) {
           if (!args.contains(key)) continue;
           std::string& field = std::string(key) == "name" ? project.name

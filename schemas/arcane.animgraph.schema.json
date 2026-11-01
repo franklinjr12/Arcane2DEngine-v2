@@ -1,0 +1,154 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.animgraph.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.animgraph"
+    },
+    "initial": {
+      "description": "Name of the state entered first.",
+      "type": "string"
+    },
+    "parameters": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "default": {
+            "type": "number"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "bool",
+              "float",
+              "trigger"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "type"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "states": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "clip": {
+            "description": "Clip asset id (0 = none).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "events": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "frame": {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "frame",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "speed": {
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "transitions": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "conditions": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "op": {
+                  "enum": [
+                    "is_true",
+                    "is_false",
+                    "lt",
+                    "le",
+                    "gt",
+                    "ge",
+                    "eq",
+                    "ne",
+                    "fired"
+                  ]
+                },
+                "param": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "value": {
+                  "type": "number"
+                }
+              },
+              "required": [
+                "param",
+                "op"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "from": {
+            "description": "A state name or \"*\" for any state.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "priority": {
+            "type": "integer"
+          },
+          "to": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "from",
+          "to"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version"
+  ],
+  "title": "Arcane animation graph (v2)",
+  "type": "object"
+}

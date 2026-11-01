@@ -86,11 +86,48 @@ std::expected<ImageRgba, std::string> read_png(const std::filesystem::path& path
   return image;
 }
 
+std::expected<ImageRgba, std::string> render_offscreen(int width, int height, const std::function<void()>& draw) {
+  if (width <= 0 || height <= 0 || width > 8192 || height > 8192) {
+    return std::unexpected(std::string("render: size must be 1..8192 per side"));
+  }
+  GLint previous = 0;
+  glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
+  GLuint fbo = 0, color = 0;
+  glGenFramebuffers(1, &fbo);
+  glGenRenderbuffers(1, &color);
+  glBindRenderbuffer(GL_RENDERBUFFER, color);
+  glRenderbufferStorage(GL_RENDERBUFFER, GL_RGBA8, width, height);
+  glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+  glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_RENDERBUFFER, color);
+  std::expected<ImageRgba, std::string> result;
+  if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+    result = std::unexpected(std::string("render: offscreen framebuffer is incomplete"));
+  } else {
+    draw();
+    result = capture_framebuffer(width, height);
+  }
+  glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previous));
+  glDeleteFramebuffers(1, &fbo);
+  glDeleteRenderbuffers(1, &color);
+  return result;
+}
+
 ImageDiff compare_images(const ImageRgba& a, const ImageRgba& b, int channel_tolerance) {
+  return compare_images(a, b, channel_tolerance, {});
+}
+
+ImageDiff compare_images(const ImageRgba& a, const ImageRgba& b, int channel_tolerance,
+                         const std::vector<ImageMaskRect>& masks) {
   ImageDiff diff;
   diff.same_size = a.width == b.width && a.height == b.height && a.pixels.size() == b.pixels.size();
   if (!diff.same_size) return diff;
   for (std::size_t p = 0; p + 3 < a.pixels.size(); p += 4) {
+    const int px = static_cast<int>((p / 4) % static_cast<std::size_t>(a.width));
+    const int py = static_cast<int>((p / 4) / static_cast<std::size_t>(a.width));
+    const bool masked = std::any_of(masks.begin(), masks.end(), [&](const ImageMaskRect& m) {
+      return px >= m.x && px < m.x + m.width && py >= m.y && py < m.y + m.height;
+    });
+    if (masked) continue;
     int worst = 0;
     for (std::size_t c = 0; c < 4; ++c) worst = std::max(worst, std::abs(int(a.pixels[p + c]) - int(b.pixels[p + c])));
     diff.max_channel_delta = std::max(diff.max_channel_delta, worst);

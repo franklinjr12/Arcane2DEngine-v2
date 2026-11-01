@@ -4,6 +4,7 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "arcane/component_registry.hpp"
 #include "arcane/export.hpp"
@@ -80,6 +81,22 @@ ARCANE_API bool clear_prefab_override(Node& instance_root, NodeId local_id, cons
 // Turns the instance into plain nodes: all links and overrides are removed,
 // node IDs and values stay. False if `node` is not part of an instance.
 ARCANE_API bool break_prefab_link(Node& node);
+
+// Result of refresh_prefab_instances.
+struct PrefabRefresh {
+  std::size_t values_updated = 0;       // properties rewritten from the prefab
+  std::vector<std::string> warnings;    // unreadable prefab files, one per asset
+};
+
+// Propagates prefab edits to the instances in `scene`: every node field and
+// component property that the instance does not override takes the prefab's
+// current value (EntityId properties are remapped to the instance's nodes).
+// Matches nodes by prefab-local ID and components by type and order. Nodes or
+// components added to or removed from the prefab are not propagated, and
+// instances whose prefab file cannot be read stay as they are (a warning).
+// `project_dir` is the directory the assets are relative to.
+ARCANE_API PrefabRefresh refresh_prefab_instances(Scene& scene, const std::filesystem::path& project_dir,
+                                                  const ComponentRegistry& registry);
 
 // The type of an overridable property: node fields have fixed types,
 // components use their registered descriptors.

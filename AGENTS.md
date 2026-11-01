@@ -20,7 +20,7 @@ This builds and tests GCC Debug and Clang ASan/UBSan with Xvfb when available,
 and cross-builds with MinGW if installed. Inspect its summary: the script
 reports MinGW failure as a warning. GL-labeled tests require a display or Xvfb;
 other tests do not require a window or audio device. Hidden player/editor runs
-still create a GL context and are not display-free simulation. On Windows:
+still create a GL context; for display-free fixed-frame runs use `arcane_player --headless` (or `arcane run`). On Windows:
 
 ```powershell
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64
@@ -53,9 +53,8 @@ arcane --project game prop set --node id:1 --component Sprite --name width --val
 arcane --project game validate && arcane --project game fmt --check
 ```
 
-Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
-Not covered by commands yet: the tileset panel's draft editing in the GUI (its Save is `tileset.*`), `run`/`export`/`render`/`test`,
-and the tileset/clip draft editing. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
+`arcane run`, `arcane test` and `arcane export` (AF10B) run display-free fixed frames on scene copies (no save), run `tests/NAME.replay.json` cases, and write a structured game folder; `arcane_player --headless` runs the same stepping without a window. `arcane render --output out/x.png --frames N [--camera SEL] [--compare golden.png --tolerance 2 --mask [[x,y,w,h]]]` renders the scene through an offscreen GL framebuffer, so an agent can look at the PNG (or compare it with a golden); it needs a display or `xvfb-run -a`, otherwise exit 8 `RENDER_UNAVAILABLE`. Pass `--module PATH` to load a native game module from a build tree. Tilemap cells and tileset files are covered (`tilemap.*`, `tileset.*`, `docs/commands.md`).
+Not covered by commands yet: the tileset and clip panels' draft editing plus New tileset and Open clip (their Saves are `tileset.*`/`clip.create`). The current GUI/CLI coverage table is `docs/editor-command-inventory.md`. Project name, main_scene and module are covered by `project.get`/`project.set`. HUD, input map (`hud.*`, `input.*`: in-memory edits with undo, written by File > Save) and clip Save
 (`clip.create`, an immediate file write) are command-backed in the editor and CLI (`test_edit_session` checks parity); the editor still
 mutates some data directly (`docs/editor-command-inventory.md`), so do not claim GUI/CLI parity beyond that or
 invent commands. The contract remains registry-backed GUI and CLI authoring and JSONL batches, with no MCP or
@@ -71,7 +70,8 @@ function (called from `register_all_commands`), take a `ProjectContext&`, valida
 before mutating, and return the inverse invocation; commands that write files
 outside the scene are listed in `register_all_commands` (no `--dry-run`). File-level
 commands that must work without an openable project live in `tooling/src/offline.cpp`.
-Regenerate `docs/cli-reference.md` in the same commit. Do not keep `Node*`/`Component*`/descriptors past the
+Regenerate `docs/cli-reference.md` in the same commit. Also add a row for each new command to `docs/commands.md` (`test_cli` checks that every
+registered command is mentioned there and that it names no unknown command). Do not keep `Node*`/`Component*`/descriptors past the
 `ProjectContext` that produced them: the module is unloaded with the context.
 
 Editor and player can be run from `build-gcc/bin` with `--project` pointing to a
@@ -95,6 +95,7 @@ unknown fields and properties, while compatible loading can accept legacy data.
 Editor save rejects detected unknown data and external edits, but is not a
 multi-file transaction or a lock. Keep sample projects readable without requiring
 manual migration; verify stable IDs, semantic round trips and canonical output.
+Schema changes must keep `test_schema_examples` passing; its examples live in `tests/golden/schema_examples/`.
 
 For changes, run the relevant tests and `scripts/build-and-test.sh` before
 committing. Do not mistake a MinGW cross-build for native Windows testing.

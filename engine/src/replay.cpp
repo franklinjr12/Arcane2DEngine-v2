@@ -1,4 +1,5 @@
 #include "arcane/replay.hpp"
+#include "arcane/game_context.hpp"
 
 #include <algorithm>
 #include <bit>
@@ -323,27 +324,59 @@ std::uint64_t hash_scene_state(const Scene& scene, const ComponentRegistry& regi
   return h.value();
 }
 
-std::expected<std::vector<std::uint64_t>, std::string> run_replay(Scene& scene, const ComponentRegistry& registry,
-                                                                 InputActionMap& actions,
-                                                                 const ReplayRecording& recording) {
-  if (auto ok = validate_recording(recording); !ok) return std::unexpected(ok.error());
-  apply_replay_seed(scene, registry, recording.seed);
-  const float dt = static_cast<float>(1.0 / recording.fixed_hz);
+std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& scene, const ComponentRegistry& registry,
+                                                                       InputActionMap& actions,
+                                                                       const FixedRunOptions& options) {
+  int frames = options.frames, fixed_hz = options.fixed_hz, seed = options.seed;
+  if (options.recording) {
+    if (auto ok = validate_recording(*options.recording); !ok) return std::unexpected(ok.error());
+    frames = options.recording->frames;
+    fixed_hz = options.recording->fixed_hz;
+    seed = options.recording->seed;
+  }
+  if (fixed_hz < 1 || fixed_hz > 1000) return std::unexpected(std::string("run: fixed_hz must be 1..1000"));
+  if (frames < 1 || frames > 1000000) return std::unexpected(std::string("run: frames must be 1..1000000"));
+  if (seed < 0) return std::unexpected(std::string("run: seed must be >= 0"));
+  apply_replay_seed(scene, registry, seed);
+  const float dt = static_cast<float>(1.0 / fixed_hz);
   PhysicsWorld physics;
   physics.rebuild(scene);
-  ReplayInput input(recording);
+  struct PhysicsLink {  // gameplay reaches the world through the context only while this run lasts
+    GameContext* context;
+    ~PhysicsLink() { if (context) context->set_physics(nullptr); }
+  } physics_link{active_game_context()};
+  if (physics_link.context) physics_link.context->set_physics(&physics);
+  std::optional<ReplayInput> input;
+  if (options.recording) input.emplace(*options.recording);
+  FakeInputBackend idle;
   InputActionMap* previous = active_input_map();
   set_active_input_map(&actions);
   std::vector<std::uint64_t> hashes;
-  hashes.reserve(static_cast<std::size_t>(recording.frames));
-  while (!input.finished()) {
-    actions.update(input.advance());
+  hashes.reserve(static_cast<std::size_t>(frames));
+  for (int frame = 0; frame < frames; ++frame) {
+    actions.update(input ? input->advance() : idle);
+    if (options.before_step) options.before_step(dt);
     scene.update(dt);
     physics.step(scene, dt);
+    GameContext* context = active_game_context();
+    if (context && context->take_restart_request() && !options.restart_scene_json.empty()) {
+      auto fresh = Scene::load_from_json(options.restart_scene_json, registry);
+      if (!fresh) return std::unexpected(fresh.error());
+      scene = std::move(*fresh);
+      physics.rebuild(scene);
+    }
     hashes.push_back(hash_scene_state(scene, registry));
   }
   set_active_input_map(previous);
   return hashes;
+}
+
+std::expected<std::vector<std::uint64_t>, std::string> run_replay(Scene& scene, const ComponentRegistry& registry,
+                                                                 InputActionMap& actions,
+                                                                 const ReplayRecording& recording) {
+  FixedRunOptions options;
+  options.recording = &recording;
+  return run_fixed_frames(scene, registry, actions, options);
 }
 
 std::optional<int> first_divergent_frame(const std::vector<std::uint64_t>& a, const std::vector<std::uint64_t>& b) {

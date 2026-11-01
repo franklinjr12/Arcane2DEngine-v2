@@ -127,7 +127,96 @@ bool same_key(const PrefabOverride& o, NodeId local_id, const std::string& compo
   return o.local_id == local_id && o.component == component && o.property == property;
 }
 
+bool is_overridden(const std::vector<PrefabOverride>& overrides, NodeId local_id, const std::string& component,
+                   const std::string& property) {
+  return std::ranges::any_of(overrides, [&](const PrefabOverride& o) { return same_key(o, local_id, component, property); });
+}
+
+void collect_instance_nodes(Node& node, NodeId instance_id, std::unordered_map<NodeId, Node*>& out) {
+  const auto& link = node.prefab_link();
+  if (link && link->instance_id == instance_id) out[link->local_id] = &node;
+  for (const auto& child : node.children()) collect_instance_nodes(*child, instance_id, out);
+}
+
+// Copies non-overridden values of `source` (a prefab node) onto `target`.
+std::size_t refresh_node(Node& target, const Node& source, const std::vector<PrefabOverride>& overrides,
+                         const std::unordered_map<NodeId, Node*>& by_local, const ComponentRegistry& registry) {
+  std::size_t updated = 0;
+  const NodeId local = source.id();
+  const auto sync_field = [&](const char* name, const PropertyValue& value) {
+    if (is_overridden(overrides, local, "", name)) return;
+    const auto current = read_value(target, "", name, registry);
+    if (current && *current != value) {
+      write_value(target, "", name, value, registry);
+      ++updated;
+    }
+  };
+  const Transform2D& t = source.local_transform();
+  sync_field("name", PropertyValue{source.name()});
+  sync_field("position", PropertyValue{t.position});
+  sync_field("rotation_radians", PropertyValue{t.rotation_radians});
+  sync_field("scale", PropertyValue{t.scale});
+
+  std::unordered_map<std::string, std::size_t> seen;  // components are matched by type and order
+  for (const auto& src : source.components()) {
+    const std::string& type = src->type_name();
+    const std::size_t index = seen[type]++;
+    Component* dst = nullptr;
+    std::size_t n = 0;
+    for (const auto& c : target.components()) {
+      if (c->type_name() == type && n++ == index) dst = c.get();
+    }
+    const auto* descriptors = registry.properties_of(type);
+    if (!dst || !descriptors) continue;
+    for (const PropertyDescriptor& d : *descriptors) {
+      if (!prefab_override_type(registry, type, d.name) || is_overridden(overrides, local, type, d.name)) continue;
+      PropertyValue value = d.get(*src);
+      if (d.type == PropertyType::EntityId) {
+        const auto id = std::get<AssetId>(value);
+        const auto it = by_local.find(id);
+        value = PropertyValue{static_cast<AssetId>(id == 0 || it == by_local.end() ? 0 : it->second->id())};
+      }
+      if (d.get(*dst) != value) {
+        d.set(*dst, value);
+        ++updated;
+      }
+    }
+  }
+  return updated;
+}
+
+void collect_instance_roots(Node& node, std::vector<Node*>& out) {
+  if (node.prefab_link() && node.prefab_link()->instance_id == node.id()) out.push_back(&node);
+  for (const auto& child : node.children()) collect_instance_roots(*child, out);
+}
+
 }  // namespace
+
+PrefabRefresh refresh_prefab_instances(Scene& scene, const std::filesystem::path& project_dir,
+                                       const ComponentRegistry& registry) {
+  PrefabRefresh result;
+  std::vector<Node*> roots;
+  for (const auto& root : scene.roots()) collect_instance_roots(*root, roots);
+  std::unordered_map<std::string, std::optional<Prefab>> cache;
+  for (Node* instance : roots) {
+    const PrefabLink link = *instance->prefab_link();
+    auto it = cache.find(link.asset);
+    if (it == cache.end()) {
+      auto loaded = load_prefab_file(project_dir, link.asset, registry);
+      if (!loaded) result.warnings.push_back(loaded.error());
+      it = cache.emplace(link.asset, loaded ? std::optional<Prefab>(std::move(*loaded)) : std::nullopt).first;
+    }
+    if (!it->second) continue;
+    std::unordered_map<NodeId, Node*> by_local;
+    collect_instance_nodes(*instance, instance->id(), by_local);
+    for (const auto& [local, node] : by_local) {
+      if (const Node* source = it->second->scene().find_node(local)) {
+        result.values_updated += refresh_node(*node, *source, link.overrides, by_local, registry);
+      }
+    }
+  }
+  return result;
+}
 
 std::optional<PropertyType> prefab_override_type(const ComponentRegistry& registry, const std::string& component,
                                                  const std::string& property) {

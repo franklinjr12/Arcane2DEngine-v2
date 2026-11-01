@@ -93,7 +93,14 @@ class ARCANE_API AudioSource : public Component {
   float volume = 1.0f;
   bool loop = false;
   bool play_on_start = false;
+
+  // Plays `clip` now through the active GameContext (file resolved against the project root, so the working
+  // directory does not matter). False without a context/audio system or if the asset is missing.
+  bool play() const;
 };
+
+// Fire-and-forget sound by asset id (volume 1, SFX bus): sugar over GameContext::play_sound.
+ARCANE_API bool play_one_shot(AssetId clip, float volume = 1.0f);
 
 ARCANE_API void register_audio_components(ComponentRegistry& registry);
 

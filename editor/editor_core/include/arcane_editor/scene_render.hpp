@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "arcane/animation.hpp"
+#include "arcane/atlas.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/particles.hpp"
 #include "arcane/renderer.hpp"
@@ -128,6 +129,39 @@ class AnimationClipCache {
   std::map<AssetId, std::filesystem::file_time_type> stamps_;
 };
 
+// Same shape as AnimationClipCache, for Atlas assets (*.atlas.json files); failures are cached as absent.
+class AtlasCache {
+ public:
+  void set_assets(std::vector<AssetEntry> assets) { assets_ = std::move(assets); }
+
+  // Polls file mtimes; entries changed on disk reload on their next get().
+  std::size_t refresh() { return drop_stale(atlases_, stamps_, assets_); }
+
+  const Atlas* get(AssetId id) {
+    if (id == 0) return nullptr;
+    auto it = atlases_.find(id);
+    if (it != atlases_.end()) return it->second ? &*it->second : nullptr;
+
+    for (const auto& entry : assets_) {
+      if (entry.id != id) continue;
+      std::ifstream in(entry.absolute_path);
+      std::ostringstream ss;
+      ss << in.rdbuf();
+      auto loaded = load_atlas_from_json(ss.str());
+      stamps_.insert_or_assign(id, file_stamp(entry.absolute_path));
+      auto [inserted, _] = atlases_.emplace(id, loaded ? std::optional(*loaded) : std::nullopt);
+      return inserted->second ? &*inserted->second : nullptr;
+    }
+    atlases_.emplace(id, std::nullopt);
+    return nullptr;
+  }
+
+ private:
+  std::vector<AssetEntry> assets_;
+  std::map<AssetId, std::optional<Atlas>> atlases_;
+  std::map<AssetId, std::filesystem::file_time_type> stamps_;
+};
+
 // Same shape as AnimationClipCache, for Tileset assets (.json files).
 class TilesetCache {
  public:
@@ -196,6 +230,9 @@ void restart_particles(Scene& scene);
 // used) and draws the UV rect of whichever frame select_frame_index picks
 // for that AnimatedSprite's current elapsed_seconds().
 //
+// A Sprite with `atlas` and `region` set that resolve through `atlases` draws that region of the atlas image
+// (an AnimatedSprite with a valid clip still wins); otherwise Sprite::texture with the full UV is used.
+//
 // Every Tilemap node is drawn layer by layer (only the cells inside the
 // camera view) using the tileset from `tilesets`; skipped if `tilesets` is
 // null or the tileset or its texture doesn't resolve.
@@ -207,6 +244,7 @@ void restart_particles(Scene& scene);
 // space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
-                   const Hud* hud = nullptr, TilesetCache* tilesets = nullptr, bool runtime_camera = true);
+                   const Hud* hud = nullptr, TilesetCache* tilesets = nullptr, bool runtime_camera = true,
+                   AtlasCache* atlases = nullptr);
 
 }  // namespace arcane::editor

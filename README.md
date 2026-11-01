@@ -130,7 +130,7 @@ Add a `RigidBody2D`(+ optional `Collider2D`) component pair to a node (via
 the Inspector's "Add Component", or directly in scene JSON) to give it
 Box2D-backed simulation while Play is running: `PhysicsWorld` steps the
 world every fixed tick, syncs the node's `Transform2D` back, and calls
-`Component::on_contact_begin`/`on_contact_end` on shapes that start/stop
+`Component::on_collision_enter`/`on_collision_exit` on shapes that start/stop
 touching. All fields stay in pixels (32 px = 1 m internally, see
 `docs/decisions.md`); the editor's authored scene in Edit mode is never
 simulated.

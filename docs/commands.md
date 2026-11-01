@@ -67,6 +67,7 @@ Component: an integer component id, or a type name attached exactly once.
 | `node.rename` (mutating) | `node`, `name` | `{changed, previous, name}`; names must not contain `/` |
 | `node.reparent` (mutating) | `node`, `parent?` | moves the subtree to the end of the new parent (root if omitted); refuses cycles |
 | `node.duplicate` (mutating) | `node`, `name?` (default `<name>_copy`), `parent?` | deep copy with new ids and remapped internal `entity_id` references |
+| `node.set_persistent` (mutating) | `node`, `value` | authored root flag, `{changed, previous, persistent}`; non-root refused |
 | `node.set_transform` (mutating) | `node`, `position?`, `rotation_radians?`, `scale?` | `{changed, previous, transform}` |
 | `component.types` | none | registered types with property names |
 | `component.list` | `node` | `{node, components:[{id,type}]}` |
@@ -76,14 +77,14 @@ Component: an integer component id, or a type name attached exactly once.
 | `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
 | `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |
 | `transition.get` | none | `{fade_out_seconds, fade_in_seconds, color}` from `project.json` |
-| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `transition.set` with the previous values |
+| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; edits the project in memory like `project.set` (the CLI persists `project.json`, the editor undoes it and File > Save writes it); inverse is `transition.set` with the previous values |
 | `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
-| `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; writes `project.json` at once (ignores `persist`/`dry_run`); inverse is `debug.set` with the previous values |
+| `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; edits the project in memory like `project.set`; inverse is `debug.set` with the previous values |
 | `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
 | `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
 | `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |
 | `save.config_get` | none | `{game_id, data_version, directory}` |
-| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; writes `project.json` at once; inverse restores the previous values |
+| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; edits the project in memory like `project.set`; inverse restores the previous values |
 | `save.list` | `dir?` | `{directory, slots:[{slot, data_version, valid}]}` |
 | `save.get` | `slot`, `key?`, `dir?` | `{data_version, values}` or `{key, value, data_version}` |
 | `save.set` | `slot`, `key`, `value`, `create?`, `dir?` | `{slot, key, value, previous}`; atomic write; `create` makes a missing slot at the project's `data_version` |
@@ -92,7 +93,7 @@ Component: an integer component id, or a type name attached exactly once.
 | `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
 | `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
 | `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
-| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo re-instantiates with new IDs and the same overrides |
+| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo restores the scene snapshot (`scene.restore`), so node and component IDs are unchanged |
 | `prefab.override` (mutating) | `node`, `component?`, `property`, `value` | `{instance_id, local_id, property, value, overridden, changed}` |
 | `prefab.revert` (mutating) | `node`, `component?`, `property` | `{reverted, ...}`; no-op if not overridden |
 | `prefab.break_link` (mutating) | `node` | `{instance_id, nodes}`; inverse is `prefab.relink` |
@@ -106,8 +107,7 @@ Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in
 `node` selectors for override/revert/break_link/remove/info may name any node of an instance.
 `overrides` entries are `{local_id, component?, property, value}` with prefab-local IDs; `name` and
 `position` on `prefab.instantiate` are shortcuts for root overrides. The root's `name`/`position`
-differing from the prefab are ordinary overrides. A stale redo of `prefab.instantiate` creates new
-IDs, so a history entry recorded before an undo/redo cycle may not find the old instance.
+differing from the prefab are ordinary overrides. Undo of `prefab.remove` and redo of `prefab.instantiate` keep the same IDs (snapshot restore; redo resets the ID counter).
 
 Transitions and saves (`docs/formats/project.md`, `docs/formats/save.md`): without `dir` the save commands use
 `save_directory(save.game_id)` and fail with `VALUE_INVALID` if no `game_id` is set. They touch only `project.json`
@@ -141,6 +141,27 @@ integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or
 `validate` (rule tiles inside `tile_count`, rule tiles marked with their terrain, duplicate/empty rules; `ok:false` lists
 problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
 `tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `tilemap.info` | `node` | size, cell size, layers and the tileset the map points at |
+| `tilemap.get` | `node`, `x`, `y`, `layer?` | the tile id at the cell (0 = empty) |
+| `tilemap.paint` (mutating) | `node`, `x`, `y`, `tile`, `layer?` | changed cells; inverse `tilemap.set_cells` |
+| `tilemap.erase` (mutating) | `node`, `x`, `y`, `layer?` | changed cells; clears the cell (tile 0) |
+| `tilemap.fill_rect` (mutating) | `node`, `x0`, `y0`, `x1`, `y1`, `tile`, `layer?` | changed cells; inclusive rectangle, corners in any order |
+| `tilemap.terrain_paint` (mutating) | `node`, `x`, `y`, `terrain`, `erase?`, `layer?` | changed cells including re-picked neighbours |
+| `tilemap.import_csv` (mutating) | `node`, `csv` or `file`, `x?`, `y?`, `layer?` | changed cells |
+| `tilemap.dump_csv` | `node`, `layer?`, `file?` | the CSV text; with `file` writes it at once (refuses `--dry-run`) |
+| `tilemap.set_cells` (mutating) | `node`, `cells` (`[{layer,x,y,tile}]`) | changed cells; the inverse of every cell edit |
+| `tilemap.add_layer` (mutating) | `node` | index of the new empty layer |
+| `tileset.create` | `tileset`, `texture`, `tile_width`, `tile_height`, `columns`, `tile_count`, `overwrite?` | writes the tileset file at once |
+| `tileset.info` | `tileset` | sheet layout, per-tile solid/terrain flags and terrain rules |
+| `tileset.replace` | `tileset`, sheet layout as `tileset.create`, `tiles?` `[{id, solid?, terrain?}]`, `terrains?` `[{terrain, tiles[16]}]` | writes the whole file at once (the editor's Save tileset); inverse `tileset.restore` |
+| `tileset.restore` | `tileset`, `content` or `absent=true` | puts the file back; only used as an inverse |
+| `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?`, `tags?` (array of `a-z0-9_` gameplay labels such as `hazard`, `pickup`; replaces the list) | writes the file at once |
+| `tileset.set_rule` | `tileset`, `terrain`, `tiles` (16 ids by neighbour mask) | adds or replaces the rule; writes the file at once |
+| `tileset.remove_rule` | `tileset`, `terrain` | removes the rule; writes the file at once |
+| `tileset.validate` | `tileset` | `ok:false` (exit 4) lists problems; never changes the file |
 
 ## HUD commands
 
@@ -221,6 +242,28 @@ you pass: clip files do not store their grid, so every frame must be exactly one
 and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
 undo restores the exact bytes.
 
+## Animation graph commands
+
+`animgraph.*` edit animation state machine files (`arcane.animgraph`, `docs/formats/animgraph.md`). Like `clip.*` they
+read and write the graph file only and write it at once (not through `--dry-run` / persist); every edit returns
+`animgraph.restore` with the previous file bytes as its inverse, and an edit that changes nothing writes nothing and has
+no inverse. `clip` arguments are project-relative files under `assets/` that must exist.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `animgraph.create` | `graph`, `overwrite?` | `{graph}`; an empty graph, `CONFLICT` if the file exists |
+| `animgraph.info` | `graph` | `{graph, initial, parameters, states, transitions}` |
+| `animgraph.add_param` | `graph`, `name`, `type` (bool/float/trigger), `default?` | `{graph, name, changed}` |
+| `animgraph.remove_param` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if a condition uses it |
+| `animgraph.add_state` | `graph`, `name`, `clip`, `speed?` (1) | `{graph, name, clip_id, changed}`; the first state is `initial` |
+| `animgraph.set_state` | `graph`, `name`, `clip?`, `speed?`, `initial?` | `{graph, name, changed}` |
+| `animgraph.remove_state` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if initial or in a transition |
+| `animgraph.add_event` | `graph`, `state`, `frame`, `name` | `{graph, index, changed}` |
+| `animgraph.remove_event` | `graph`, `state`, `index` | `{graph, index, changed}` |
+| `animgraph.add_transition` | `graph`, `from` (or `*`), `to`, `priority?` (0), `conditions?` [{param, op, value?}], `index?` | `{graph, index, changed}` |
+| `animgraph.remove_transition` | `graph`, `index` | `{graph, index, changed}` |
+| `animgraph.restore` | `graph`, `content` or `absent=true` | `{graph, restored}`; only used as the inverse of the others |
+
 ## Project commands
 
 `project.get` / `project.set` read and edit the project-level properties in `project.json` (`name`, `main_scene`,
@@ -231,7 +274,11 @@ Registered by `register_project_commands`; see `tooling/src/project_commands.cpp
 | Command | Arguments | Result |
 | --- | --- | --- |
 | `project.get` | none | `{name, main_scene, module}` |
-| `project.set` (mutating) | `name?`, `main_scene?`, `module?` (at least one) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+| `project.set` (mutating) | `name?`, `main_scene?`, `module?`, `collision_layers?` (array of layer names, index = layer number; at least one argument) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+| `project.new` | `path`, `name?` | creates a project folder with `project.json`, an empty main scene and `assets/` (file-level, works without an openable project) |
+| `project.info` | none | name, main scene, module, format, scene count, transition/save/debug settings |
+| `project.settings_get` | none | `{name, main_scene, module}` read from `project.json` |
+| `project.settings_set` | `name?`, `main_scene?` (must exist), `module?` (empty clears) | writes `project.json` at once |
 
 `name` must be non-empty. `main_scene` must be a project-relative `/` path without `..` that ends in `.json`.
 `module` may be empty (no native module) or a project-relative path. Anything else is `VALUE_INVALID` (file
@@ -264,6 +311,55 @@ Hot reload: a write is an atomic rename (`write_text_file_atomic`), so a running
 written file. Their caches notice the change on the next file-time poll (about twice a second in the editor and the player; the player
 skips it during `--replay`) and reload the asset. The id stays the same, so scene references keep resolving.
 Registered by `tooling/src/asset_commands.cpp`; tested by `test_asset_commands`.
+
+## Run and test
+
+`run` and `test` (`tooling/src/run_commands.cpp`) step a fresh copy of the main (or `--scene`) scene with the
+engine's `run_fixed_frames`, calling the game module's `on_update` before each step. They need no window, GL
+context or audio device, and the context scene is never advanced or saved. The trace equals
+`arcane_player --headless` for the same inputs.
+
+- `arcane run [--frames N] [--fixed_hz N] [--seed N] [--replay FILE] [--trace_out FILE]`: result
+  `{frames, fixed_hz, final_hash, nodes, module, trace_out}`. `--replay` supplies frames/fixed_hz/seed (passing
+  `--frames`/`--fixed_hz` as well is `ARGS_INVALID`). `--trace_out` writes an `arcane.replay_trace`; `--dry-run` skips it.
+- `arcane test [--filter TEXT] [--frames N]`: replays every `tests/NAME.replay.json` against `tests/NAME.trace.json`
+  and also smoke-runs `frames` frames. Result `{ok, passed, failed, cases, smoke}`; exit 4 when `ok` is false
+  (a mismatch reports `first_divergent_frame`; a missing trace fails the case).
+
+## Render
+
+`arcane render --output FILE.png` (`tooling/src/render_commands.cpp`) steps a scene copy like `run` (default `--frames 0`, module
+`on_update` included), then draws it with the editor/player scene renderer and the HUD into an offscreen GL framebuffer
+(`render_offscreen`, `arcane/screenshot.hpp`) and writes the PNG. Arguments: `output` (project-relative, required), `size` `WxH`
+(default `320x180`, max 4096), `frames`, `fixed_hz`, `seed`, `camera` (selector of a Camera/Camera2D node, made the only primary one on
+the copy), `compare` (golden PNG, project-relative), `tolerance` (per RGBA channel, default 2) and `mask` (array of `[x,y,w,h]` pixel
+rectangles ignored by the comparison). The scene file is never changed. Result `{output, scene, frame, fixed_hz, size, scene_hash, camera,
+backend:{api,renderer}, module, compare}`; a failed comparison (size mismatch or differing pixels) is `ok:false`, exit 4. A GL context needs a
+display or Xvfb: without one the error is `RENDER_UNAVAILABLE`, exit 8, nothing is written. Tests: `test_render_cli` (label `gl`, golden
+`tests/golden/render/platformer_slice_f30.png`, Mesa llvmpipe) and `test_render_cli_nodisplay` (exit 8, no display needed).
+
+## Export
+
+`arcane export OUT [--runtime_dir DIR] [--overwrite] [--validate false]` (`tooling/src/export_commands.cpp`; offline
+command, writes files, honors `--dry-run`) produces the layout of decision 30:
+`OUT/<runtime files>` + `OUT/game/{project.json,scenes,assets,<module file>}`.
+
+- `runtime_dir`: its regular files are copied flat into `OUT` (for example the result of
+  `cmake --install BUILD --prefix DIR --component game`: `arcane_player` and the engine libraries).
+- `validate` (default true) first opens the project strictly with `--module` honored and returns that error
+  (for example `MODULE_LOAD_FAILED`) if it does not open. `scripts/export-game.sh --mingw` passes `false` because a
+  native process cannot load a Windows `.dll`.
+- The module file is `--module` if given, else the project's `module` resolved against the project folder; a missing
+  file is `MODULE_LOAD_FAILED`. It is copied under its own file name and `project.json` is loaded strictly, given
+  that name as `module` (empty when there is none) and written with the canonical project writer. Only `scenes/` and
+  `assets/` are copied (never `tests/`, build output or the source-tree module copy); the main scene must be inside them.
+- A non-empty `OUT` is `CONFLICT` unless `overwrite`; an `OUT` that is, contains or lies inside the copied project
+  folders is `ARGS_INVALID`. The export is built in the sibling `OUT.tmp-*` and renamed into place (an old `OUT` is
+  renamed aside and removed afterwards), and a failure removes the temp folder and leaves `OUT` as it was.
+- Result `{out, game_dir, module, files, runtime_files}`: `files` are sorted OUT-relative `/` paths, `module` is the
+  file name or null. `--dry-run` returns the same manifest and writes nothing.
+
+Tested by `test_cli` (unit) and `test_cli_e2e` (author, run, test, export, reopen, run the export headless).
 
 ## Errors
 

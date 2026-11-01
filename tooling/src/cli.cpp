@@ -462,7 +462,8 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "`COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED`; `validate` with problems; `fmt --check` with differences |\n"
         "| 5 | Conflict, ambiguous selector, concurrent edit | `CONFLICT`, `SELECTOR_AMBIGUOUS` |\n"
         "| 6 | Module load or execution failure | `MODULE_LOAD_FAILED`, `MODULE_FAILURE` |\n"
-        "| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |\n\n"
+        "| 7 | Unsupported version or feature | `UNSUPPORTED_VERSION`, `DRY_RUN_UNSUPPORTED`, `TRANSACTION_UNSUPPORTED` |\n"
+        "| 8 | Render environment failure (no display, GL context or offscreen framebuffer) | `RENDER_UNAVAILABLE` |\n\n"
         "## Selectors\n\n"
         "Node: `id:42` (preferred, stable) or `path:/Root/Player` (names must be unique at each level, otherwise\n"
         "`SELECTOR_AMBIGUOUS`). Component: its integer id, or a type name attached to the node exactly once.\n\n"
@@ -490,9 +491,9 @@ std::string generate_cli_reference(const CommandRegistry& registry) {
         "changed. With `--dry-run` the commands run cumulatively in memory and nothing is saved.\n\n"
         "## Coverage\n\n"
         "Covered: project, scene files, nodes, components, typed properties, prefabs, atlases, transitions, saves,\n"
-        "replay, bench, audio probe, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
+        "replay, bench, audio probe, run, test, export, validate, fmt, migrate, schema, docs, batch. Not available (no command yet):\n"
         "tilemap/tileset editing, HUD, input maps, animation clip authoring beyond `atlas make-clip`, physics\n"
-        "authoring beyond properties, `run`, `export`, `render`, `test`. The editor does not use\n"
+        "authoring beyond properties, `render`. The editor does not use\n"
         "these commands for its edits yet (docs/editor-command-inventory.md).\n\n"
         "## Commands\n\n";
   std::map<std::string, const CommandSpec*> all;

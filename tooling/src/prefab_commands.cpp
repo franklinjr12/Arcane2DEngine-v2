@@ -263,7 +263,7 @@ void register_prefab_commands(CommandRegistry& registry) {
 
   registry.add(
       {"prefab.remove",
-       "Delete a whole prefab instance (any node of it selects it). Undo recreates it with new IDs and the same overrides.",
+       "Delete a whole prefab instance (any node of it selects it). Undo restores the scene as it was, with the same IDs.",
        {{"type", "object"},
         {"properties", {{"node", {{"type", "string"}}}}},
         {"required", Json::array({"node"})},
@@ -273,12 +273,12 @@ void register_prefab_commands(CommandRegistry& registry) {
       [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
         auto root = resolve_instance_root(context, args["node"].get<std::string>());
         if (!root) return std::unexpected(root.error());
-        Json inverse_args = {{"asset", (*root)->prefab_link()->asset},
-                             {"overrides", overrides_to_json(**root, context.registry())}};
-        if ((*root)->parent()) inverse_args["parent"] = "id:" + std::to_string((*root)->parent()->id());
+        // Undo restores the whole scene text so node and component IDs come back unchanged.
+        auto before = context.scene().save_canonical_json(context.registry());
+        if (!before) return std::unexpected(fail("VALUE_INVALID", before.error(), context));
         const std::size_t removed = count_nodes(**root);
         remove_subtree(context.scene(), **root);
-        return CommandResult{{{"removed", removed}}, Invocation{"prefab.instantiate", inverse_args}};
+        return CommandResult{{{"removed", removed}}, Invocation{"scene.restore", {{"text", std::move(*before)}}}};
       });
 
   registry.add(

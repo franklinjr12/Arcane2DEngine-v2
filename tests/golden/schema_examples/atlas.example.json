@@ -1,0 +1,24 @@
+{
+  "format": "arcane.atlas",
+  "height": 64,
+  "image": "assets/art.atlas.png",
+  "padding": 2,
+  "regions": [
+    {
+      "h": 8,
+      "name": "coin",
+      "w": 8,
+      "x": 2,
+      "y": 2
+    },
+    {
+      "h": 24,
+      "name": "hero/idle_0",
+      "w": 16,
+      "x": 12,
+      "y": 2
+    }
+  ],
+  "version": 2,
+  "width": 64
+}

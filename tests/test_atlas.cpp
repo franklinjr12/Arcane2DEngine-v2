@@ -194,12 +194,37 @@ void test_commands() {
   ARCANE_ASSERT_TRUE(!registry.execute(ctx, {"atlas.pack", {{"folder", "art"}, {"atlas", "x.json"}, {"max_size", 8}}}).has_value());
 }
 
+// Sprite.atlas / Sprite.region are registered, settable through prop.set and survive a save.
+void test_sprite_region_property() {
+  TempProject project;
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = ProjectContext::open(project.dir);
+  ARCANE_ASSERT_TRUE(context.has_value());
+  ProjectContext& ctx = **context;
+
+  auto node = registry.execute(ctx, {"node.add", {{"name", "Hero"}}});
+  ARCANE_ASSERT_TRUE(node.has_value());
+  const std::string sel = "id:" + std::to_string(node->value["id"].get<long long>());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"component.add", {{"node", sel}, {"type", "Sprite"}}}).has_value());
+  auto set = registry.execute(ctx, {"prop.set", {{"node", sel}, {"component", "Sprite"}, {"name", "region"},
+                                                  {"value", "hero/idle_0"}}});
+  ARCANE_ASSERT_TRUE(set.has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(ctx, {"prop.set", {{"node", sel}, {"component", "Sprite"}, {"name", "atlas"},
+                                                          {"value", 7}}}).has_value());
+  ARCANE_ASSERT_TRUE(ctx.save().has_value());
+  const std::string text = slurp(project.dir / "scenes/main.scene.json");
+  ARCANE_ASSERT_TRUE(text.find("\"region\": \"hero/idle_0\"") != std::string::npos);
+  ARCANE_ASSERT_TRUE(text.find("\"atlas\": 7") != std::string::npos);
+}
+
 }  // namespace
 
 int main() {
   test_layout_invariants();
   test_json_and_uv();
   test_commands();
+  test_sprite_region_property();
   std::puts("test_atlas OK");
   return 0;
 }

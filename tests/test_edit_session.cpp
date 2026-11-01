@@ -6,9 +6,15 @@
 // no direct scene or project writes left on the routed paths (lint). AF8B adds
 // parity/undo for audio, physics, particle and module properties, module
 // edits surviving a reopen, and selection/Play/Stop staying out of the history.
+// AF8C adds the Project Settings transition/save/debug widgets, the tileset and
+// clip panels' Save as one undoable command, and Open clip as a registry read.
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <vector>
+
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 #include "arcane/audio.hpp"
 #include "arcane/builtin_components.hpp"
@@ -49,6 +55,9 @@ struct TempProject {
       session->scene().add_component(node, type, registry);
     }
     ARCANE_ASSERT_TRUE(session->save(registry).has_value());
+    std::vector<unsigned char> px(64 * 32 * 4, 255);  // 4x2 grid of 16x16 cells
+    fs::create_directories(dir / "assets");
+    ARCANE_ASSERT_TRUE(stbi_write_png((dir / "assets/sheet.png").string().c_str(), 64, 32, 4, px.data(), 64 * 4) != 0);
   }
   ~TempProject() {
     std::error_code ec;
@@ -472,6 +481,150 @@ void test_view_state_is_not_authored() {
   ARCANE_ASSERT_TRUE(!edits.modified());
 }
 
+std::string slurp(const fs::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::stringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
+}
+
+// The Project Settings transition/save/debug widgets run transition.set, save.config_set and debug.set through the
+// EditSession: same project data as the CLI, one undo step per edit, File > Save writes them with the scene.
+void test_gui_flow_settings_match_cli_model() {
+  TempProject gui_project("arcane_edit_session_flow_gui");
+  TempProject cli_project("arcane_edit_session_flow_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+  const auto snapshot = [&](ProjectContext& context) {
+    Json all = Json::object();
+    for (const char* get : {"transition.get", "debug.get"}) all[get] = registry.execute(context, {get, Json::object()}, {})->value;
+    all["save"] = registry.execute(context, {"save.config_get", Json::object()}, {})->value;
+    return all;
+  };
+  const Json original = snapshot(*gui);
+  const std::string original_file = slurp(gui_project.dir / "project.json");
+  ARCANE_ASSERT_TRUE(!edits.modified());
+
+  const std::vector<Invocation> calls = {
+      {"transition.set", {{"fade_out_seconds", 0.7}}},
+      {"transition.set", {{"color", Json::array({0.5, 0.25, 0.0, 1.0})}}},
+      {"save.config_set", {{"game_id", "gui.test"}}},
+      {"save.config_set", {{"data_version", 4}}},
+      {"debug.set", {{"overlay_visible", true}}},
+      {"debug.set", {{"overlay_font_scale", 2.0}}}};
+  for (const Invocation& call : calls) {
+    ARCANE_ASSERT_TRUE(ok(edits.run(call)));
+    ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, call, {.persist = true})));
+  }
+  ARCANE_ASSERT_TRUE(edits.modified());
+  // Nothing hit the disk behind the editor's back, so File > Save does not conflict.
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "project.json") == original_file);
+  ARCANE_ASSERT_TRUE(snapshot(*gui) == snapshot(*cli));
+  ARCANE_ASSERT_TRUE(snapshot(*gui)["save"]["game_id"] == "gui.test" && snapshot(*gui)["debug.get"]["overlay_visible"] == true);
+  ARCANE_ASSERT_TRUE(ok(gui->save()));
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "project.json") == slurp(cli_project.dir / "project.json"));
+  edits.mark_saved();
+
+  for (std::size_t i = 0; i < calls.size(); ++i) ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(snapshot(*gui) == original);
+  for (std::size_t i = 0; i < calls.size(); ++i) ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(snapshot(*gui) == snapshot(*cli));
+
+  // A slider drag (same coalesce key) is one undo step.
+  for (double v : {0.1, 0.2, 0.3}) ARCANE_ASSERT_TRUE(ok(edits.run({"transition.set", {{"fade_in_seconds", v}}}, "transition.fade_in")));
+  edits.end_gesture();
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(registry.execute(*gui, {"transition.get", Json::object()}, {})->value["fade_in_seconds"] ==
+                     snapshot(*cli)["transition.get"]["fade_in_seconds"]);
+}
+
+const Json kTilesetCall = {{"tileset", "assets/tiles.json"}, {"texture", "assets/sheet.png"}, {"tile_width", 16}, {"tile_height", 16},
+                           {"columns", 4}, {"tile_count", 8}};
+
+// Save tileset is one tileset.replace: same file as the CLI's create + set_tile + set_rule, one undo step back to the
+// previous bytes (or to no file at all).
+void test_tileset_save_is_one_undoable_command() {
+  TempProject gui_project("arcane_edit_session_tileset_gui");
+  TempProject cli_project("arcane_edit_session_tileset_cli");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto gui = open(gui_project);
+  auto cli = open(cli_project);
+  EditSession edits(*gui, registry);
+
+  Json replace = kTilesetCall;
+  replace["tiles"] = Json::array({{{"id", 2}, {"solid", true}, {"terrain", 1}}, {{"id", 3}, {"solid", false}, {"terrain", 1}}});
+  replace["terrains"] = Json::array({{{"terrain", 1}, {"tiles", Json::array({0, 2, 2, 3, 2, 3, 3, 2, 2, 3, 3, 2, 3, 2, 2, 3})}}});
+  ARCANE_ASSERT_TRUE(ok(edits.run({"tileset.replace", replace})));
+  edits.end_gesture();
+
+  ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, {"tileset.create", kTilesetCall}, {})));
+  ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, {"tileset.set_tile", {{"tileset", "assets/tiles.json"}, {"tile", 2}, {"solid", true}, {"terrain", 1}}}, {})));
+  ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, {"tileset.set_tile", {{"tileset", "assets/tiles.json"}, {"tile", 3}, {"terrain", 1}}}, {})));
+  ARCANE_ASSERT_TRUE(ok(registry.execute(*cli, {"tileset.set_rule", {{"tileset", "assets/tiles.json"}, {"terrain", 1}, {"tiles", replace["terrains"][0]["tiles"]}}}, {})));
+  const std::string first = slurp(gui_project.dir / "assets/tiles.json");
+  ARCANE_ASSERT_TRUE(!first.empty() && first == slurp(cli_project.dir / "assets/tiles.json"));
+
+  // Overwrite: still one step, and undo brings back the first bytes.
+  Json second = kTilesetCall;
+  second["tile_count"] = 4;
+  ARCANE_ASSERT_TRUE(ok(edits.run({"tileset.replace", second})));
+  edits.end_gesture();
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "assets/tiles.json") != first);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "assets/tiles.json") == first);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(!fs::exists(gui_project.dir / "assets/tiles.json"));
+  ARCANE_ASSERT_TRUE(ok(edits.redo()));
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "assets/tiles.json") == first);
+
+  // Bad input changes nothing and records nothing.
+  Json bad = kTilesetCall;
+  bad["tiles"] = Json::array({{{"id", 99}}});
+  ARCANE_ASSERT_TRUE(!edits.run({"tileset.replace", bad}));
+  ARCANE_ASSERT_TRUE(slurp(gui_project.dir / "assets/tiles.json") == first);
+}
+
+// Open clip is clip.info on the panel's grid; Save clip is clip.create (overwrite) through the EditSession.
+void test_clip_open_and_save_through_commands() {
+  TempProject project("arcane_edit_session_clip");
+  CommandRegistry registry;
+  register_all_commands(registry);
+  auto context = open(project);
+  EditSession edits(*context, registry);
+  const Json grid = {{"sheet", "assets/sheet.png"}, {"columns", 4}, {"rows", 2}};
+  Json create = grid;
+  create.update({{"clip", "assets/run.json"}, {"cells", Json::array({0, 1, 2})}, {"fps", 10.0}, {"durations", Json::array({0.0, 0.2, 0.0})},
+                 {"loop", true}, {"name", "run"}, {"overwrite", true}});
+  ARCANE_ASSERT_TRUE(ok(edits.run({"clip.create", create})));
+  edits.end_gesture();
+  const std::string first = slurp(project.dir / "assets/run.json");
+
+  Json info = grid;
+  info["clip"] = "assets/run.json";
+  auto opened = registry.execute(*context, {"clip.info", info}, {});
+  ARCANE_ASSERT_TRUE(ok(opened));
+  ARCANE_ASSERT_TRUE(opened->value["cells"] == Json::array({0, 1, 2}) && opened->value["name"] == "run" && opened->value["loop"] == true);
+  ARCANE_ASSERT_TRUE(opened->value["durations"].size() == 3 && opened->value["fps"].is_number());
+  // A grid the frames do not fit is an error, not a draft.
+  Json other = info;
+  other["columns"] = 3;
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"clip.info", other}, {}));
+
+  create["cells"] = Json::array({4, 5});
+  create["durations"] = Json::array({0.0, 0.0});
+  ARCANE_ASSERT_TRUE(ok(edits.run({"clip.create", create})));
+  edits.end_gesture();
+  ARCANE_ASSERT_TRUE(slurp(project.dir / "assets/run.json") != first);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(slurp(project.dir / "assets/run.json") == first);
+  ARCANE_ASSERT_TRUE(ok(edits.undo()));
+  ARCANE_ASSERT_TRUE(!fs::exists(project.dir / "assets/run.json"));
+}
+
 void test_editor_source_has_no_direct_scene_writes() {
   std::ifstream in(ARCANE_EDITOR_SOURCE_PATH);
   ARCANE_ASSERT_TRUE(in.good());
@@ -481,7 +634,8 @@ void test_editor_source_has_no_direct_scene_writes() {
   for (const char* forbidden : {"->set_name(", "create_node(", "destroy_node(", "flush_destroyed(", "->reparent(",
                                  "add_component(", "descriptor.set(", "local_transform() =", "auto& transform = ", "sprite->texture",
                                  "->texture =", "->clip =", "->tileset =", "mutable_project()", "hud.add(", ".set_action(",
-                                 ".remove_action(", "save_clip_file(", "elements.erase(", ".main_scene =", ".module =", "project().name ="}) {
+                                 ".remove_action(", "save_clip_file(", "elements.erase(", ".main_scene =", ".module =", "project().name =", "load_clip_file(", "load_tileset_from_json(",
+                                 "std::ifstream", "std::ofstream", "mutable_project"}) {
     if (source.find(forbidden) != std::string::npos) {
       std::fprintf(stderr, "editor_main.cpp writes the scene directly: %s\n", forbidden);
       ARCANE_ASSERT_TRUE(false);
@@ -504,6 +658,9 @@ int main() {
   test_audio_physics_particle_props_match_cli();
   test_module_property_undo_after_reopen();
   test_view_state_is_not_authored();
+  test_gui_flow_settings_match_cli_model();
+  test_tileset_save_is_one_undoable_command();
+  test_clip_open_and_save_through_commands();
   test_editor_source_has_no_direct_scene_writes();
   return 0;
 }

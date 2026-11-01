@@ -241,6 +241,7 @@ void serialize_node(const Node& node, const ComponentRegistry& registry, json& o
     components.push_back(std::move(c));
   }
   entry["components"] = std::move(components);
+  if (node.persistent() && !node.parent()) entry["persistent"] = true;
   if (node.prefab_link()) entry["prefab"] = prefab_link_to_json(*node.prefab_link(), registry);
   out_nodes.push_back(std::move(entry));
 
@@ -320,7 +321,9 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
       const std::string where = std::format("node {}", id);
       if (strict) {
         canonical::require_only_keys(
-            entry, {"id", "name", "parent_id", "position", "rotation_radians", "scale", "components", "prefab"}, where);
+            entry, {"id", "name", "parent_id", "position", "rotation_radians", "scale", "components", "prefab",
+                     "persistent"},
+            where);
       }
       Node* node = scene.create_node_with_id(id, canonical::as_string(entry["name"], where + " 'name'"), nullptr);
       max_id = std::max(max_id, id);
@@ -332,6 +335,10 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
       }
       if (entry.contains("scale")) transform.scale = canonical::as_vec2(entry["scale"], where + " 'scale'");
       node->local_transform() = transform;
+      if (entry.contains("persistent")) {
+        if (!entry["persistent"].is_boolean()) return std::unexpected(where + ": 'persistent' must be a boolean");
+        node->set_persistent(entry["persistent"].get<bool>());
+      }
       if (entry.contains("prefab")) node->set_prefab_link(prefab_link_from_json(entry["prefab"], registry, where));
 
       if (!entry.contains("components")) continue;
@@ -401,6 +408,10 @@ std::expected<Scene, std::string> Scene::load_scene(const std::string& text, con
           entry.contains("parent_id") ? canonical::as_uint(entry["parent_id"], "node 'parent_id'") : kInvalidNodeId;
       if (parent_id == kInvalidNodeId) {
         continue;
+      }
+      if (Node* child = scene.find_node(id); child && child->persistent()) {
+        if (strict) return std::unexpected(std::format("node {}: 'persistent' is only allowed on a root node", id));
+        child->set_persistent(false);  // compatible load: ignored on non-root nodes
       }
       Node* parent = scene.find_node(parent_id);
       if (!parent) {

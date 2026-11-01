@@ -6,6 +6,7 @@
 #include <string>
 
 #include "arcane/component_registry.hpp"
+#include "arcane/game_api.hpp"
 #include "arcane/scene.hpp"
 #include "arcane_editor/project_runtime.hpp"
 #include "arcane_tooling/error.hpp"
@@ -50,6 +51,8 @@ class ProjectContext {
   Scene& scene() noexcept;
   // The editor's session for the same project (project.json data, assets dir, whole-project save).
   editor::ProjectSession& session() noexcept { return runtime_.session(); }
+  // The loaded game module's entry points, or nullptr when the project has no module.
+  const GameApi* module_api() const noexcept { return runtime_.module_api(); }
   // Project-relative path of the scene the commands edit.
   const std::string& scene_file() const noexcept { return scene_file_; }
 

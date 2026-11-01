@@ -273,6 +273,21 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
 }
 }  // namespace
 
+namespace {
+template <typename T>
+T* find_by_id(std::vector<HudElement>& elements, std::string_view id) {
+  for (HudElement& element : elements) {
+    if (auto* found = std::get_if<T>(&element); found && found->id == id) return found;
+  }
+  return nullptr;
+}
+}  // namespace
+
+HudText* Hud::find_text(std::string_view id) noexcept { return find_by_id<HudText>(elements_, id); }
+HudImage* Hud::find_image(std::string_view id) noexcept { return find_by_id<HudImage>(elements_, id); }
+HudProgressBar* Hud::find_bar(std::string_view id) noexcept { return find_by_id<HudProgressBar>(elements_, id); }
+HudButton* Hud::find_button(std::string_view id) noexcept { return find_by_id<HudButton>(elements_, id); }
+
 void Hud::ensure_unique_ids() {
   std::unordered_set<std::string> used;
   std::vector<bool> needs_id(elements_.size(), false);

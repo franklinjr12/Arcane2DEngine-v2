@@ -185,11 +185,50 @@ void test_commands() {
 
 }  // namespace
 
+void test_fixed_frames() {
+  ComponentRegistry registry;
+  register_all(registry);
+  const auto run = [&](const FixedRunOptions& o) {
+    Scene scene;
+    build_scene(scene, registry);
+    InputActionMap actions = make_actions();
+    return run_fixed_frames(scene, registry, actions, o);
+  };
+  FixedRunOptions plain;
+  plain.frames = 30;
+  plain.fixed_hz = 30;
+  int calls = 0;
+  bool dt_ok = true;
+  plain.before_step = [&](float dt) { ++calls; dt_ok = dt_ok && dt == static_cast<float>(1.0 / 30); };
+  auto a = run(plain);
+  auto b = run(plain);
+  ARCANE_ASSERT_TRUE(a.has_value() && b.has_value() && a->size() == 30 && *a == *b);
+  ARCANE_ASSERT_TRUE(calls == 60 && dt_ok);
+
+  const ReplayRecording rec = make_recording();
+  FixedRunOptions with_rec;
+  with_rec.recording = &rec;
+  auto c = run(with_rec);
+  ARCANE_ASSERT_TRUE(c.has_value() && *c == replay(rec));
+
+  FixedRunOptions bad;
+  bad.frames = 0;
+  ARCANE_ASSERT_TRUE(!run(bad).has_value());
+  bad.frames = 1000001;
+  ARCANE_ASSERT_TRUE(!run(bad).has_value());
+  bad.frames = 1;
+  bad.fixed_hz = 1001;
+  ARCANE_ASSERT_TRUE(!run(bad).has_value());
+  bad.fixed_hz = 0;
+  ARCANE_ASSERT_TRUE(!run(bad).has_value());
+}
+
 int main() {
   test_format();
   test_determinism_and_divergence();
   test_recorder();
   test_commands();
+  test_fixed_frames();
   std::puts("test_replay OK");
   return 0;
 }
