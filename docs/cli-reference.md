@@ -1513,7 +1513,7 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 
 ### `arcane validate`
 
-Open the project strictly (module, scenes, tilesets, clips, prefabs, atlases) and report problems; exit 4 if any.
+Open the project strictly (module, scenes, tilesets, clips, prefabs, atlases, materials) and report problems; exit 4 if any.
 
 Read only.
 
