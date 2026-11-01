@@ -65,3 +65,16 @@ Reading fails (and `validate` reports) when:
 - a param value is not an array of 1 to 4 finite numbers.
 
 `validate` also reports a `shader` file that does not exist in the project.
+
+## Runtime (sprites)
+
+A node with a `SpriteMaterial` component (`scene.md`) names a material asset. `MaterialShader::compile(frag_body, material)`
+(`arcane/renderer.hpp`) prepends `material_shader_preamble(material)` to the `.frag` text, links it with the sprite vertex
+shader and returns the GLSL info log on error. The editor, player and `arcane render` keep a `MaterialCache` that loads the
+`.json`, reads the `.frag` relative to the project directory, compiles once and reloads when either file changes; a failure
+is cached as "no material" and logged once.
+
+`SpriteRenderer::set_material` switches shader (flushing the batch); while a material is active the renderer sets
+`u_view_projection`, `u_texture` (unit 0), `u_time` (`SpriteRenderer::set_time`; the player passes frame count / 60),
+`u_resolution` (logical view size) and the param uniforms, and the blend function: alpha `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`,
+additive `SRC_ALPHA, ONE`, opaque with blending off. State returns to the default after each draw.

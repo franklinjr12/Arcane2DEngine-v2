@@ -139,6 +139,11 @@ void register_builtin_components(ComponentRegistry& registry) {
           make_property<RenderOrder>("y_sort_offset", PropertyType::Float, &RenderOrder::y_sort_offset),
       });
   registry.register_component(
+      "SpriteMaterial", [] { return std::make_unique<SpriteMaterial>(); },
+      {
+          make_property<SpriteMaterial>("material", PropertyType::AssetId, &SpriteMaterial::material),
+      });
+  registry.register_component(
       "Camera", [] { return std::make_unique<Camera>(); },
       {
           make_property<Camera>("zoom", PropertyType::Float, &Camera::zoom),

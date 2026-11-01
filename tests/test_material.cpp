@@ -2,6 +2,7 @@
 #include <string>
 
 #include "arcane/material.hpp"
+#include "arcane/renderer.hpp"
 #include "test_assert.hpp"
 
 namespace {
@@ -25,6 +26,12 @@ int main() {
   ARCANE_ASSERT_TRUE(loaded.has_value());
   ARCANE_ASSERT_TRUE(loaded->blend == MaterialBlend::Additive);
   ARCANE_ASSERT_TRUE(loaded->params.size() == 2 && loaded->params[0].name == "glow");
+
+  const std::string preamble = material_shader_preamble(*loaded);
+  ARCANE_ASSERT_TRUE(preamble.starts_with("#version 330 core\n"));
+  ARCANE_ASSERT_TRUE(preamble.find("uniform vec3 glow;\n") != std::string::npos);
+  ARCANE_ASSERT_TRUE(preamble.find("uniform float strength;\n") != std::string::npos);
+  ARCANE_ASSERT_TRUE(preamble.find("uniform vec2 u_resolution;\n") != std::string::npos);
 
   auto saved = save_material_canonical_json(*loaded);
   ARCANE_ASSERT_TRUE(saved.has_value());

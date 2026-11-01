@@ -102,6 +102,14 @@ class ARCANE_API RenderOrder : public Component {
   float y_sort_offset = 0.0f;
 };
 
+// Draws the node's Sprite with an arcane.material asset (docs/formats/material.md) instead of the built-in shader.
+// 0 or an asset that fails to load/compile draws the plain sprite. One material per node; a change of material
+// between consecutive sprites breaks the draw batch.
+class ARCANE_API SpriteMaterial : public Component {
+ public:
+  AssetId material = 0;
+};
+
 // Registers Sprite and Camera into `registry` under the type names "Sprite"
 // and "Camera". Call this once per ComponentRegistry before loading any
 // scene JSON or calling a game module's register_types, so both built-in

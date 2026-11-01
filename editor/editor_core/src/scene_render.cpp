@@ -170,7 +170,7 @@ void restart_particles(Scene& scene) {
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera,
-                   AtlasCache* atlases, const DisplayViewport* viewport) {
+                   AtlasCache* atlases, const DisplayViewport* viewport, MaterialCache* materials) {
   const int fb_width = width, fb_height = height;
   if (viewport) {
     width = viewport->logical_width;
@@ -249,6 +249,12 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         .uv = uv,
     };
     const auto* parallax = static_cast<ParallaxLayer*>(node->find_component("ParallaxLayer"));
+    const auto* sprite_material = materials ? static_cast<SpriteMaterial*>(node->find_component("SpriteMaterial")) : nullptr;
+    renderer.set_material(sprite_material ? materials->get(sprite_material->material) : nullptr);
+    struct ResetMaterial {
+      SpriteRenderer& renderer;
+      ~ResetMaterial() { renderer.set_material(nullptr); }
+    } reset{renderer};
     if (!parallax) {
       renderer.draw(draw);
       return;

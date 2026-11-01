@@ -11,6 +11,8 @@
 #include "arcane/atlas.hpp"
 #include "arcane/display.hpp"
 #include "arcane/hud.hpp"
+#include "arcane/log.hpp"
+#include "arcane/material.hpp"
 #include "arcane/particles.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
@@ -197,6 +199,71 @@ class TilesetCache {
   std::map<AssetId, std::filesystem::file_time_type> stamps_;
 };
 
+// Resolves arcane.material assets (*.material.json) to compiled MaterialShaders for SpriteMaterial::material.
+// The .frag path is resolved against the project directory. A material that fails to load or compile is cached as
+// absent (nullptr) and logged once. Needs a GL context for get(). Entries reload when the .json or the .frag changes.
+class MaterialCache {
+ public:
+  void set_assets(std::vector<AssetEntry> assets) { assets_ = std::move(assets); }
+  void set_project_dir(std::filesystem::path dir) { project_dir_ = std::move(dir); }
+
+  // Polls the mtimes of both files; changed entries reload on their next get().
+  std::size_t refresh() {
+    std::size_t dropped = drop_stale(shaders_, stamps_, assets_);
+    for (auto it = frag_stamps_.begin(); it != frag_stamps_.end();) {
+      if (stamps_.contains(it->first) && file_stamp(it->second.first) == it->second.second) {
+        ++it;
+        continue;
+      }
+      if (shaders_.erase(it->first) != 0) {
+        stamps_.erase(it->first);
+        ++dropped;
+      }
+      it = frag_stamps_.erase(it);
+    }
+    return dropped;
+  }
+
+  const MaterialShader* get(AssetId id) {
+    if (id == 0) return nullptr;
+    auto it = shaders_.find(id);
+    if (it != shaders_.end()) return it->second ? &*it->second : nullptr;
+
+    for (const auto& entry : assets_) {
+      if (entry.id != id) continue;
+      stamps_.insert_or_assign(id, file_stamp(entry.absolute_path));
+      auto shader = build(id, entry);
+      if (!shader) ARCANE_LOG_ERROR("material", "{}: {}", entry.relative_path, shader.error());
+      auto [inserted, _] = shaders_.insert_or_assign(id, shader ? std::optional(std::move(*shader)) : std::nullopt);
+      return inserted->second ? &*inserted->second : nullptr;
+    }
+    shaders_.insert_or_assign(id, std::nullopt);
+    return nullptr;
+  }
+
+ private:
+  std::expected<MaterialShader, std::string> build(AssetId id, const AssetEntry& entry) {
+    std::ifstream in(entry.absolute_path);
+    std::ostringstream json;
+    json << in.rdbuf();
+    auto material = load_material_from_json(json.str());
+    if (!material) return std::unexpected(material.error());
+    const std::filesystem::path frag_path = project_dir_ / material->shader;
+    frag_stamps_.insert_or_assign(id, std::make_pair(frag_path, file_stamp(frag_path)));
+    std::ifstream frag(frag_path);
+    if (!frag) return std::unexpected("cannot read shader " + material->shader);
+    std::ostringstream body;
+    body << frag.rdbuf();
+    return MaterialShader::compile(body.str(), *material);
+  }
+
+  std::vector<AssetEntry> assets_;
+  std::filesystem::path project_dir_;
+  std::map<AssetId, std::optional<MaterialShader>> shaders_;
+  std::map<AssetId, std::filesystem::file_time_type> stamps_;
+  std::map<AssetId, std::pair<std::filesystem::path, std::filesystem::file_time_type>> frag_stamps_;
+};
+
 // World-space center and zoom of the scene's primary Camera (origin, zoom 1 if none).
 struct CameraView {
   float x = 0.0f, y = 0.0f, zoom = 1.0f;
@@ -252,11 +319,15 @@ std::vector<Node*> collect_render_order(Scene& scene);
 // framebuffer (`width` x `height` are then the framebuffer size, the camera and
 // HUD use the viewport's logical size); null = the whole `width` x `height`.
 //
+// A node with a SpriteMaterial that resolves through `materials` draws its Sprite with that shader (the batch breaks
+// at the material change); otherwise, or if `materials` is null, the built-in shader is used.
+//
 // If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
 // space after the world, in the same frame.
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
                    AnimationClipCache* clips = nullptr, HudRenderer* hud_renderer = nullptr,
                    const Hud* hud = nullptr, TilesetCache* tilesets = nullptr, bool runtime_camera = true,
-                   AtlasCache* atlases = nullptr, const DisplayViewport* viewport = nullptr);
+                   AtlasCache* atlases = nullptr, const DisplayViewport* viewport = nullptr,
+                   MaterialCache* materials = nullptr);
 
 }  // namespace arcane::editor

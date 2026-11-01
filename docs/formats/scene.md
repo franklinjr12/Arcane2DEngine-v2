@@ -80,6 +80,10 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 
 `RenderOrder` is an opt-in draw-order component for a node's Tilemap, ParticleEmitter and Sprite: `layer` (Int, default 0), `order` (Int, default 0), `y_sort` (Bool, default false) and `y_sort_offset` (Float, default 0). Nodes draw by `layer` ascending, then `order` ascending; inside one (layer, order) nodes without `y_sort` come first in scene order, then `y_sort` nodes by `world y + y_sort_offset` ascending (y grows down, so the lower node draws later and covers the others). Ties keep scene order, and a node without `RenderOrder` is layer 0, order 0, not y-sorted, so scenes without it draw exactly in scene order.
 
+## SpriteMaterial
+
+`SpriteMaterial` sits on a node with a `Sprite` and draws it with a GLSL shader instead of the built-in one: `material` (AssetId of a `*.material.json`, `docs/formats/material.md`; 0 = none, the default). If the material is missing, invalid or its shader does not compile, the sprite draws plainly and the error is logged once. One material per node; the renderer breaks its draw batch whenever the material changes between two sprites.
+
 ## ParallaxLayer
 
 `ParallaxLayer` sits on a node with a `Sprite` and draws it shifted by `camera * (1 - factor)` per axis (`factor` Vec2, default `[0.5, 0.5]`): 1 moves with the world, 0 stays fixed on screen. `repeat_x` / `repeat_y` tile the sprite (its scaled width/height is the period) across the whole visible rectangle, so it works with any `Camera2D.zoom` and viewport size. Layers draw in scene order like any Sprite (or by `RenderOrder`): put background nodes before the level. Modules can read the view size with `GameContext::viewport_size()`.

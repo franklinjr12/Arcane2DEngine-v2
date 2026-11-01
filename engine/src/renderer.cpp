@@ -221,8 +221,89 @@ Texture::~Texture() {
   }
 }
 
+struct MaterialShader::Impl {
+  struct Param {
+    GLint location = -1;
+    std::vector<float> value;
+  };
+  GLuint program = 0;
+  MaterialBlend blend = MaterialBlend::Alpha;
+  std::vector<Param> params;
+  ~Impl() {
+    if (program) glDeleteProgram(program);
+  }
+};
+
+std::string material_shader_preamble(const Material& material) {
+  std::string out =
+      "#version 330 core\n"
+      "in vec2 v_uv;\n"
+      "in vec4 v_color;\n"
+      "out vec4 frag_color;\n"
+      "uniform sampler2D u_texture;\n"
+      "uniform float u_time;\n"
+      "uniform vec2 u_resolution;\n";
+  static constexpr const char* kTypes[] = {"float", "vec2", "vec3", "vec4"};
+  for (const MaterialParam& param : material.params) {
+    if (param.value.empty() || param.value.size() > 4) continue;
+    out += std::format("uniform {} {};\n", kTypes[param.value.size() - 1], param.name);
+  }
+  return out;
+}
+
+MaterialShader::MaterialShader() = default;
+MaterialShader::MaterialShader(MaterialShader&& other) noexcept = default;
+MaterialShader& MaterialShader::operator=(MaterialShader&& other) noexcept = default;
+MaterialShader::~MaterialShader() = default;
+
+std::expected<MaterialShader, std::string> MaterialShader::compile(const std::string& frag_body,
+                                                                    const Material& material) {
+  auto vertex_shader = compile_shader(GL_VERTEX_SHADER, kVertexShaderSource);
+  if (!vertex_shader) return std::unexpected(vertex_shader.error());
+  const std::string source = material_shader_preamble(material) + "#line 1\n" + frag_body;
+  auto fragment_shader = compile_shader(GL_FRAGMENT_SHADER, source.c_str());
+  if (!fragment_shader) {
+    glDeleteShader(*vertex_shader);
+    return std::unexpected(fragment_shader.error());
+  }
+  auto program = link_program(*vertex_shader, *fragment_shader);
+  glDeleteShader(*vertex_shader);
+  glDeleteShader(*fragment_shader);
+  if (!program) return std::unexpected(program.error());
+
+  MaterialShader shader;
+  shader.impl_ = std::make_unique<Impl>();
+  shader.impl_->program = *program;
+  shader.impl_->blend = material.blend;
+  for (const MaterialParam& param : material.params) {
+    shader.impl_->params.push_back({glGetUniformLocation(*program, param.name.c_str()), param.value});
+  }
+  return shader;
+}
+
+MaterialBlend MaterialShader::blend() const noexcept { return impl_->blend; }
+std::uint32_t MaterialShader::native_program() const noexcept { return impl_->program; }
+
+int MaterialShader::uniform_location(const char* name) const { return glGetUniformLocation(impl_->program, name); }
+
+void MaterialShader::apply_params() const {
+  for (const auto& param : impl_->params) {
+    if (param.location < 0) continue;  // optimized out by the GLSL compiler
+    const float* v = param.value.data();
+    switch (param.value.size()) {
+      case 1: glUniform1fv(param.location, 1, v); break;
+      case 2: glUniform2fv(param.location, 1, v); break;
+      case 3: glUniform3fv(param.location, 1, v); break;
+      case 4: glUniform4fv(param.location, 1, v); break;
+      default: break;
+    }
+  }
+}
+
 struct SpriteRenderer::Impl {
   GLuint program = 0;
+  const MaterialShader* material = nullptr;
+  float time = 0.0f;
   GLint view_projection_location = -1;
   GLuint vao = 0, vbo = 0, ebo = 0;
   std::vector<Vertex> vertices;
@@ -277,14 +358,34 @@ struct SpriteRenderer::Impl {
     glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(vbo_capacity), nullptr, GL_DYNAMIC_DRAW);
     glBufferSubData(GL_ARRAY_BUFFER, 0, static_cast<GLsizeiptr>(bytes), vertices.data());
 
-    glUseProgram(program);
     auto vp = make_view_projection(cam_x, cam_y, cam_zoom, static_cast<float>(fb_width),
                                     static_cast<float>(fb_height));
-    glUniformMatrix4fv(view_projection_location, 1, GL_FALSE, vp.data());
+    if (material) {
+      glUseProgram(material->native_program());
+      glUniformMatrix4fv(material->uniform_location("u_view_projection"), 1, GL_FALSE, vp.data());
+      glUniform1i(material->uniform_location("u_texture"), 0);
+      glUniform1f(material->uniform_location("u_time"), time);
+      glUniform2f(material->uniform_location("u_resolution"), static_cast<float>(fb_width),
+                  static_cast<float>(fb_height));
+      material->apply_params();
+      switch (material->blend()) {
+        case MaterialBlend::Alpha: break;  // the default state
+        case MaterialBlend::Additive: glBlendFunc(GL_SRC_ALPHA, GL_ONE); break;
+        case MaterialBlend::Opaque: glDisable(GL_BLEND); break;
+      }
+    } else {
+      glUseProgram(program);
+      glUniformMatrix4fv(view_projection_location, 1, GL_FALSE, vp.data());
+    }
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, batch_texture->native_id());
     glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(quads * 6), GL_UNSIGNED_INT, nullptr);
     ++stats.draw_calls;
+    if (material) {  // restore the default state
+      glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+      glEnable(GL_BLEND);
+      glUseProgram(program);
+    }
 
     vertices.clear();
   }
@@ -353,6 +454,7 @@ void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, 
   impl_->fb_height = framebuffer_height;
   impl_->stats = RenderStats{};
   impl_->batch_texture = nullptr;
+  impl_->material = nullptr;
   impl_->vertices.clear();
   glDisable(GL_SCISSOR_TEST);
   glViewport(0, 0, framebuffer_width, framebuffer_height);
@@ -366,6 +468,7 @@ void SpriteRenderer::begin_frame(int framebuffer_width, int framebuffer_height, 
   impl_->fb_height = viewport.logical_height;
   impl_->stats = RenderStats{};
   impl_->batch_texture = nullptr;
+  impl_->material = nullptr;
   impl_->vertices.clear();
   glDisable(GL_SCISSOR_TEST);
   glViewport(0, 0, framebuffer_width, framebuffer_height);
@@ -429,13 +532,24 @@ void SpriteRenderer::draw(const SpriteDraw& sprite) {
   }
 }
 
+void SpriteRenderer::set_material(const MaterialShader* shader) {
+  if (shader == impl_->material) return;
+  impl_->flush();
+  impl_->material = shader;
+}
+
+void SpriteRenderer::set_time(float seconds) { impl_->time = seconds; }
+
 void SpriteRenderer::set_culling(bool enabled) { impl_->culling = enabled; }
 
 void SpriteRenderer::flush() { impl_->flush(); }
 
 const RenderStats& SpriteRenderer::stats() const noexcept { return impl_->stats; }
 
-void SpriteRenderer::end_frame() { impl_->flush(); }
+void SpriteRenderer::end_frame() {
+  impl_->flush();
+  impl_->material = nullptr;
+}
 
 Color SpriteRenderer::read_pixel(int x, int y) const {
   float rgba[4] = {0, 0, 0, 0};

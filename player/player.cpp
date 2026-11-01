@@ -157,6 +157,9 @@ int run_project(const Args& args) {
   atlases.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
   arcane::editor::TilesetCache tilesets;
   tilesets.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
+  arcane::editor::MaterialCache materials;
+  materials.set_project_dir(runtime->session().project_dir());
+  materials.set_assets(arcane::editor::list_animation_clip_assets(runtime->session().assets_dir()));
 
   std::string audio_diagnostic;
   auto audio = arcane::AudioSystem::create_preferred(args.hidden, audio_diagnostic);
@@ -245,10 +248,12 @@ int run_project(const Args& args) {
       clips.set_assets(clip_assets);
       tilesets.set_assets(clip_assets);
       atlases.set_assets(clip_assets);
+      materials.set_assets(clip_assets);
       textures.refresh();
       clips.refresh();
       tilesets.refresh();
       atlases.refresh();
+      materials.refresh();
     }
     const bool overlay_key_down = input_backend.is_down(arcane::InputDevice::Keyboard, arcane::kDebugOverlayKey);
     if (overlay_key_down && !overlay_key_was_down) overlay_visible = !overlay_visible;
@@ -302,8 +307,9 @@ int run_project(const Args& args) {
       ++frame_count;
       continue;
     }
+    renderer->set_time(static_cast<float>(frame_count) / 60.0f);  // frame-based, so replays stay deterministic
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
-                                &tilesets, true, &atlases, &viewport);
+                                &tilesets, true, &atlases, &viewport, &materials);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     if (overlay_visible) {

@@ -8,6 +8,7 @@
 #include <string>
 
 #include "arcane/export.hpp"
+#include "arcane/material.hpp"
 
 namespace arcane {
 
@@ -83,6 +84,36 @@ inline constexpr int kSpriteMaxBatchQuads = 16384;
 ARCANE_API bool sprite_in_view(const SpriteDraw& sprite, float cam_x, float cam_y, float zoom, float view_width,
                                float view_height) noexcept;
 
+// The GLSL preamble the engine prepends to a material's .frag body (docs/formats/material.md): version, varyings,
+// engine uniforms and one uniform per param (float/vec2/vec3/vec4 by value count). Pure text, needs no GL context.
+ARCANE_API std::string material_shader_preamble(const Material& material);
+
+// A linked GL program built from a material's fragment body and the sprite vertex shader, plus its blend mode and
+// param uniform values. Needs a current GL context to compile and to destroy.
+class ARCANE_API MaterialShader {
+ public:
+  // Returns the GLSL info log on a compile or link error.
+  static std::expected<MaterialShader, std::string> compile(const std::string& frag_body, const Material& material);
+
+  MaterialShader(MaterialShader&& other) noexcept;
+  MaterialShader& operator=(MaterialShader&& other) noexcept;
+  MaterialShader(const MaterialShader&) = delete;
+  MaterialShader& operator=(const MaterialShader&) = delete;
+  ~MaterialShader();
+
+  MaterialBlend blend() const noexcept;
+  std::uint32_t native_program() const noexcept;
+  // Uploads the param values; the program must be in use.
+  void apply_params() const;
+  // Uniform location of an engine uniform such as "u_time" (-1 if the shader does not use it).
+  int uniform_location(const char* name) const;
+
+ private:
+  MaterialShader();
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
 // Small batched 2D sprite renderer: shader-based textured quads with an
 // orthographic camera. Draw calls are batched per contiguous run of the
 // same texture and flushed on texture change or end_frame().
@@ -107,6 +138,11 @@ class ARCANE_API SpriteRenderer {
   void begin_frame(int framebuffer_width, int framebuffer_height, const DisplayViewport& viewport,
                    const Color& clear_color);
   void draw(const SpriteDraw& sprite);
+  // Draws following sprites with `shader` (nullptr = the built-in shader). A change flushes the current batch like a
+  // texture change. The shader must outlive its use; begin_frame and end_frame reset to the built-in shader.
+  void set_material(const MaterialShader* shader);
+  // Game time in seconds for the u_time uniform of material shaders; kept across frames.
+  void set_time(float seconds);
   // Draws everything batched so far (using the current camera). Lets callers
   // change the camera mid-frame, e.g. world pass then screen-space HUD pass.
   void flush();

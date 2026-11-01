@@ -5,12 +5,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <functional>
 #include <string>
 #include <vector>
 
 #include "arcane/builtin_components.hpp"
+#include "arcane/assets.hpp"
 #include "arcane/component_registry.hpp"
+#include "arcane/material.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/screenshot.hpp"
@@ -29,6 +32,8 @@ struct Env {
   arcane::SpriteRenderer& renderer;
   arcane::editor::TextureCache& textures;
   arcane::ComponentRegistry registry;
+  arcane::editor::MaterialCache materials;
+  std::filesystem::path project_dir;  // temporary project holding the material files
 };
 
 arcane::Node* add_sprite(arcane::Scene& scene, Env& env, const char* name, float x, float y, float size, arcane::Color tint) {
@@ -63,13 +68,62 @@ void build_layers(arcane::Scene& scene, Env& env) {
   set_order(scene, env, add_sprite(scene, env, "y_high", 70, -20, 36, Color{1, 0, 1, 1}), 0, 0, true);
 }
 
+void write_file(const std::filesystem::path& path, const std::string& text) {
+  std::filesystem::create_directories(path.parent_path());
+  std::ofstream(path, std::ios::binary) << text;
+}
+
+arcane::AssetId write_material(Env& env, const char* name, const std::string& frag, arcane::Material material) {
+  material.shader = std::string("assets/") + name + ".frag";
+  write_file(env.project_dir / material.shader, frag);
+  auto json = arcane::save_material_canonical_json(material);
+  ARCANE_ASSERT_TRUE(json.has_value());
+  const std::string relative = std::string(name) + ".material.json";
+  write_file(env.project_dir / "assets" / relative, *json);
+  return arcane::asset_id_for_relative_path(relative);
+}
+
+void use_material(arcane::Scene& scene, Env& env, arcane::Node* node, arcane::AssetId id) {
+  static_cast<arcane::SpriteMaterial*>(scene.add_component(node, "SpriteMaterial", env.registry))->material = id;
+}
+
+// Top row: plain gray, white with a vec4 'stripe_color' stripe material, plain gray again (the material must not
+// leak into the next sprite). Bottom row: a blue square with a half-covering sprite on top using an additive
+// material, next to the same two sprites with the built-in shader for comparison.
+void build_material(arcane::Scene& scene, Env& env) {
+  using arcane::Color;
+  const arcane::AssetId stripes = write_material(env, "stripes", R"(
+void main() {
+  vec4 base = texture(u_texture, v_uv) * v_color;
+  float s = step(0.5, fract(v_uv.x * 4.0));
+  frag_color = mix(base, stripe_color, s);
+}
+)", arcane::Material{.params = {{"stripe_color", {1.0f, 0.2f, 0.1f, 1.0f}}}});
+  const arcane::AssetId glow = write_material(env, "glow", R"(
+void main() {
+  frag_color = vec4(glow_color, 1.0) * texture(u_texture, v_uv).a;
+}
+)", arcane::Material{.blend = arcane::MaterialBlend::Additive, .params = {{"glow_color", {0.0f, 0.5f, 0.0f}}}});
+  env.materials.set_project_dir(env.project_dir);
+  env.materials.set_assets(arcane::list_animation_clip_assets(env.project_dir / "assets"));
+
+  add_sprite(scene, env, "plain", -50, -30, 36, Color{0.6f, 0.6f, 0.6f, 1});
+  use_material(scene, env, add_sprite(scene, env, "striped", 0, -30, 36, Color{1, 1, 1, 1}), stripes);
+  add_sprite(scene, env, "plain_after", 50, -30, 36, Color{0.6f, 0.6f, 0.6f, 1});
+
+  add_sprite(scene, env, "blue", -30, 30, 36, Color{0, 0, 1, 1});
+  use_material(scene, env, add_sprite(scene, env, "additive", -15, 40, 36, Color{1, 1, 1, 1}), glow);
+  add_sprite(scene, env, "blue_ref", 40, 30, 36, Color{0, 0, 1, 1});
+  add_sprite(scene, env, "plain_ref", 55, 40, 36, Color{0, 0.5f, 0, 1});
+}
+
 struct Case {
   const char* name;
   std::function<void(arcane::Scene&, Env&)> build;
 };
 
 const std::vector<Case>& cases() {
-  static const std::vector<Case> list = {{"layers", build_layers}};
+  static const std::vector<Case> list = {{"layers", build_layers}, {"material", build_material}};
   return list;
 }
 }  // namespace
@@ -88,15 +142,24 @@ int main() {
   ARCANE_ASSERT_TRUE(white_texture.has_value());
   textures.put(kWhite, std::move(*white_texture));
 
-  Env env{*renderer, textures, {}};
+  Env env{*renderer, textures, {}, {}, std::filesystem::temp_directory_path() / "arcane_test_render_gp7"};
+  std::filesystem::remove_all(env.project_dir);
   arcane::register_builtin_components(env.registry);
+
+  // A fragment body with a syntax error reports the GLSL log instead of a shader.
+  auto broken = arcane::MaterialShader::compile("void main( {", arcane::Material{});
+  ARCANE_ASSERT_TRUE(!broken.has_value());
+  ARCANE_ASSERT_TRUE(!broken.error().empty());
+  auto missing_param = arcane::MaterialShader::compile("void main() { frag_color = vec4(nope); }", arcane::Material{});
+  ARCANE_ASSERT_TRUE(!missing_param.has_value());
 
   const bool update = std::getenv("ARCANE_UPDATE_GOLDEN") != nullptr;
   for (const Case& c : cases()) {
     arcane::Scene scene;
     c.build(scene, env);
     auto image = arcane::render_offscreen(kWidth, kHeight, [&] {
-      arcane::editor::render_scene(scene, env.renderer, env.textures, kWidth, kHeight);
+      arcane::editor::render_scene(scene, env.renderer, env.textures, kWidth, kHeight, nullptr, nullptr, nullptr, nullptr, true,
+                                        nullptr, nullptr, &env.materials);
     });
     ARCANE_ASSERT_TRUE(image.has_value());
     const auto golden = std::filesystem::path(ARCANE_GOLDEN_DIR) / "render" / (std::string(c.name) + ".png");
@@ -116,5 +179,6 @@ int main() {
     ARCANE_ASSERT_TRUE(diff.same_size);
     ARCANE_ASSERT_TRUE(static_cast<double>(diff.differing_pixels) <= kMaxDifferingFraction * kWidth * kHeight);
   }
+  std::filesystem::remove_all(env.project_dir);
   return 0;
 }
