@@ -10,6 +10,7 @@
 #include "arcane/animation.hpp"
 #include "arcane/animgraph.hpp"
 #include "arcane/canonical_json.hpp"
+#include "arcane/material.hpp"
 #include "arcane/migration.hpp"
 #include "arcane/prefab.hpp"
 #include "arcane/project.hpp"
@@ -252,6 +253,15 @@ std::string check_file(const OfflineEnv& env, const ComponentRegistry& registry,
   if (format == "arcane.clip") return problem(load_clip_from_json_strict(text));
   if (format == "arcane.animgraph") return problem(load_animgraph_from_json(text));
   if (format == "arcane.atlas") return problem(load_atlas_from_json(text));
+  if (format == "arcane.material") {
+    auto material = load_material_from_json(text);
+    if (!material) return material.error();
+    std::error_code ec;
+    if (!env.project_dir.empty() && !std::filesystem::is_regular_file(env.project_dir / material->shader, ec)) {
+      return "material: shader file not found: " + material->shader;
+    }
+    return {};
+  }
   if (format == "arcane.prefab") return problem(load_prefab_file(env.project_dir, rel, registry));
   return {};  // other documents: well-formed JSON only
 }
@@ -419,7 +429,7 @@ std::vector<OfflineCommand> make_commands() {
                 object_schema({{"path", kStringArg}, {"overwrite", kBoolArg}}, {"path"}, {"path"}), {{"type", "object"}}, true},
                scene_new});
   c.push_back({{"scene.list", "List the scene files of the project with their format.", object_schema({}), {{"type", "object"}}, false}, scene_list});
-  c.push_back({{"validate", "Open the project strictly (module, scenes, tilesets, clips, prefabs, atlases) and report problems; exit 4 if any.",
+  c.push_back({{"validate", "Open the project strictly (module, scenes, tilesets, clips, prefabs, atlases, materials) and report problems; exit 4 if any.",
                 object_schema({{"file", kStringArg}}), {{"type", "object"}}, false},
                validate});
   c.push_back({{"fmt", "Rewrite canonical-format JSON files (format header present) in canonical form; --check only reports (exit 4 if a file differs).",

@@ -131,6 +131,7 @@ add_library(arcane_runtime SHARED
   engine/src/animgraph.cpp
   engine/src/tween.cpp
   engine/src/atlas.cpp
+  engine/src/material.cpp
   engine/src/save_game.cpp
   engine/src/scene_flow.cpp
   engine/src/audio.cpp

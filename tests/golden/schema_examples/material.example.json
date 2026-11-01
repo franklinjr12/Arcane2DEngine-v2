@@ -1,0 +1,22 @@
+{
+  "blend": "additive",
+  "format": "arcane.material",
+  "params": [
+    {
+      "name": "glow",
+      "value": [
+        1.0,
+        0.5,
+        0.25
+      ]
+    },
+    {
+      "name": "strength",
+      "value": [
+        0.75
+      ]
+    }
+  ],
+  "shader": "assets/glow.frag",
+  "version": 2
+}

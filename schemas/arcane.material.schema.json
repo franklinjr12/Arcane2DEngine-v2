@@ -1,0 +1,56 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.material.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "blend": {
+      "enum": [
+        "alpha",
+        "additive",
+        "opaque"
+      ]
+    },
+    "format": {
+      "const": "arcane.material"
+    },
+    "params": {
+      "items": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_]*$",
+            "type": "string"
+          },
+          "value": {
+            "items": {
+              "type": "number"
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ],
+        "type": "object"
+      },
+      "type": "array"
+    },
+    "shader": {
+      "pattern": "\\.frag$",
+      "type": "string"
+    },
+    "version": {
+      "const": 2
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "shader"
+  ],
+  "title": "Arcane material (v2)",
+  "type": "object"
+}

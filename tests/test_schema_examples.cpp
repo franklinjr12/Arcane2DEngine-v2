@@ -10,6 +10,7 @@
 
 #include "arcane/animgraph.hpp"
 #include "arcane/atlas.hpp"
+#include "arcane/material.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/component_registry.hpp"
@@ -221,6 +222,12 @@ void check_readers(const fs::path& dir) {
     ARCANE_ASSERT_TRUE(atlas->regions.size() == 2);
   }
   {
+    auto material = arcane::load_material_from_json(read(dir / "material.example.json"));
+    ARCANE_ASSERT_TRUE(material.has_value());
+    ARCANE_ASSERT_TRUE(material->shader == "assets/glow.frag" && material->blend == arcane::MaterialBlend::Additive);
+    ARCANE_ASSERT_TRUE(material->params.size() == 2 && material->params[0].value.size() == 3);
+  }
+  {
     auto graph = arcane::load_animgraph_from_json(read(dir / "animgraph.example.json"));
     if (!graph) std::fprintf(stderr, "animgraph example rejected: %s\n", graph.error().c_str());
     ARCANE_ASSERT_TRUE(graph.has_value());
@@ -282,7 +289,7 @@ int main() {
   }
   for (const auto& p : problems) std::fprintf(stderr, "%s\n", p.c_str());
   ARCANE_ASSERT_TRUE(problems.empty());
-  ARCANE_ASSERT_TRUE(schemas.size() == 12);
+  ARCANE_ASSERT_TRUE(schemas.size() == 13);
 
   // 2. Real files: every canonical-version file with an `arcane.*` format must validate.
   check_readers(examples_dir);
