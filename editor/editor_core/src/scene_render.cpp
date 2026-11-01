@@ -88,6 +88,36 @@ void draw_particles(const ParticleEmitter& emitter, const WorldTransform2D& worl
 
 }  // namespace
 
+std::vector<Node*> collect_render_order(Scene& scene) {
+  struct Entry {
+    Node* node;
+    int layer, order;
+    bool y_sort;
+    float y;
+  };
+  std::vector<Entry> entries;
+  visit_scene_preorder(scene, [&](Node* node) {
+    Entry e{node, 0, 0, false, 0.0f};
+    if (const auto* ro = static_cast<RenderOrder*>(node->find_component("RenderOrder"))) {
+      e.layer = ro->layer;
+      e.order = ro->order;
+      e.y_sort = ro->y_sort;
+      if (ro->y_sort) e.y = node->world_transform().position.y + ro->y_sort_offset;
+    }
+    entries.push_back(e);
+  });
+  std::stable_sort(entries.begin(), entries.end(), [](const Entry& a, const Entry& b) {
+    if (a.layer != b.layer) return a.layer < b.layer;
+    if (a.order != b.order) return a.order < b.order;
+    if (a.y_sort != b.y_sort) return !a.y_sort;
+    return a.y_sort && a.y < b.y;
+  });
+  std::vector<Node*> nodes;
+  nodes.reserve(entries.size());
+  for (const Entry& e : entries) nodes.push_back(e.node);
+  return nodes;
+}
+
 CameraView find_primary_camera(Scene& scene) {
   CameraView view;
   visit_scene_preorder(scene, [&](Node* node) {
@@ -163,7 +193,7 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
   if (viewport) renderer.begin_frame(fb_width, fb_height, *viewport, clear);
   else renderer.begin_frame(width, height, clear);
 
-  visit_scene_preorder(scene, [&](Node* node) {
+  const auto draw_node = [&](Node* node) {
     if (tilesets) {
       auto* map = static_cast<Tilemap*>(node->find_component("Tilemap"));
       const Tileset* tileset = map ? tilesets->get(map->tileset) : nullptr;
@@ -247,7 +277,8 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         renderer.draw(draw);
       }
     }
-  });
+  };
+  for (Node* node : collect_render_order(scene)) draw_node(node);
 
   if (hud_renderer && hud) hud_renderer->draw(*hud, renderer, width, height);
 

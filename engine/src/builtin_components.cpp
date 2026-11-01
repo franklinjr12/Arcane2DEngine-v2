@@ -131,6 +131,14 @@ void register_builtin_components(ComponentRegistry& registry) {
           make_property<ParallaxLayer>("repeat_y", PropertyType::Bool, &ParallaxLayer::repeat_y),
       });
   registry.register_component(
+      "RenderOrder", [] { return std::make_unique<RenderOrder>(); },
+      {
+          make_property<RenderOrder>("layer", PropertyType::Int, &RenderOrder::layer),
+          make_property<RenderOrder>("order", PropertyType::Int, &RenderOrder::order),
+          make_property<RenderOrder>("y_sort", PropertyType::Bool, &RenderOrder::y_sort),
+          make_property<RenderOrder>("y_sort_offset", PropertyType::Float, &RenderOrder::y_sort_offset),
+      });
+  registry.register_component(
       "Camera", [] { return std::make_unique<Camera>(); },
       {
           make_property<Camera>("zoom", PropertyType::Float, &Camera::zoom),

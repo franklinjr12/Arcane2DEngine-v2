@@ -223,6 +223,13 @@ void preview_particles(Scene& scene, float dt);
 // Clears and restarts every emitter, e.g. when the preview is toggled on or Play ends.
 void restart_particles(Scene& scene);
 
+// Nodes in the order render_scene draws them: the nodes visited in scene preorder (inactive subtrees skipped),
+// stable-sorted by (a) RenderOrder::layer ascending, (b) RenderOrder::order ascending, (c) within the same
+// (layer, order) nodes without y_sort first in preorder, then y_sort nodes by world position.y + y_sort_offset
+// ascending (y grows down, so a lower node draws later and covers the others), (d) preorder index.
+// A node without RenderOrder is layer 0, order 0, not y-sorted. Pure: needs no GL context.
+std::vector<Node*> collect_render_order(Scene& scene);
+
 // Finds the primary Camera in the scene (if any) and renders every Sprite
 // via `renderer`, using `textures` to resolve each Sprite::texture asset id
 // to a GPU texture (sprites whose texture doesn't resolve are skipped). A

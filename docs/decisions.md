@@ -275,8 +275,17 @@ added for MSVC: the engine DLL and its clients always share one toolchain/CRT, s
 ### PF1: rendering and entity performance (ENG-027)
 
 - Culling is on by default in `SpriteRenderer` and conservative; `RenderStats::culled` is not shown in the overlay. `arcane_bench --render 1` is the only GL benchmark mode, so `bench.run` stays display-free. Numbers (llvmpipe under Xvfb, Linux only) are in `docs/perf.md`; Windows and real GPUs were not measured.
+
 ## IN3 — Module unload safety
 
 | # | Topic | Decision |
 |---|---|---|
 | 88 | Module unload with live instances | Policy is **refuse**. `GameModule::register_types(registry)` tags every registry entry with a lifetime token (`shared_ptr<const void>`) owned by the module, and `ComponentRegistry::create` copies that token into each component built from a module factory (`Component::module_owner_`); builtins carry no token. `GameModule::live_references()` is the token's `use_count() - 1`. `GameModule::unload()` returns an error naming the count and leaves the library loaded while any entry or component still holds the token. The destructor and move assignment log an error and intentionally skip `dlclose`/`FreeLibrary` in that case, so the module's vtables, factories and deleting destructors stay mapped; this only keeps a mapping alive and is not a heap leak, so ASan/LSan stay clean. Components deliberately do not own the library handle (a base destructor that unloaded the library would return into unmapped code). No hot reload exists (row 8 still applies) and row 22's declaration order (module declared first, destroyed last) is still the expected teardown; the token now turns a violation into a logged error instead of a segfault. `ProjectRuntime` registers through `register_types` so editor and player entries are tagged. Verified: `test_module_load` and the full suite pass under the Clang ASan/UBSan build (`scripts/build-and-test.sh`) with no sanitizer reports. Test: `test_module_load` (live references, refused unload, successful unload after teardown, registry outliving the module, builtin registry unaffected). |
+
+
+### GP7: render layers and y-sort (ENG-028)
+
+- Draw order is a separate opt-in `RenderOrder` component (`layer`, `order`, `y_sort`, `y_sort_offset`), not Sprite fields, so existing scene files keep the same canonical text and no sample or golden scene is regenerated. No RenderOrder means layer 0, order 0, no y-sort.
+- `collect_render_order(scene)` (`scene_render.hpp`, GL-free) takes the preorder nodes (inactive subtrees still skipped) and stable-sorts by layer, order, then non-y-sort nodes before y-sort nodes, y-sort nodes by world y + offset ascending, then preorder index. `render_scene` iterates it; with no RenderOrder the order is identical to the old preorder, so the existing goldens are unchanged.
+- The key applies per node: a node's Tilemap, particles and Sprite still draw together in that order, so a Tilemap and a Sprite on different nodes can be interleaved by layer but one node cannot be split.
+- `test_render_layers` covers the ordering without GL; `test_render_gp7` is a list of named golden cases (`tests/golden/render/<case>.png`, llvmpipe under Xvfb only).

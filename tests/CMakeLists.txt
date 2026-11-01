@@ -180,6 +180,10 @@ add_executable(test_editor_tilemap test_editor_tilemap.cpp)
 target_link_libraries(test_editor_tilemap PRIVATE arcane_editor_core)
 add_test(NAME test_editor_tilemap COMMAND test_editor_tilemap)
 
+add_executable(test_render_layers test_render_layers.cpp)
+target_link_libraries(test_render_layers PRIVATE arcane_editor_core)
+add_test(NAME test_render_layers COMMAND test_render_layers)
+
 add_executable(test_tile_paint test_tile_paint.cpp)
 target_link_libraries(test_tile_paint PRIVATE arcane_editor_core)
 add_test(NAME test_tile_paint COMMAND test_tile_paint)
@@ -412,6 +416,13 @@ target_link_libraries(test_render_golden PRIVATE arcane_runtime)
 target_compile_definitions(test_render_golden PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
 add_test(NAME test_render_golden COMMAND test_render_golden)
 set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+
+add_executable(test_render_gp7 test_render_gp7.cpp)
+target_link_libraries(test_render_gp7 PRIVATE arcane_editor_core)
+target_compile_definitions(test_render_gp7 PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
+add_test(NAME test_render_gp7 COMMAND test_render_gp7)
+set_tests_properties(test_render_gp7 PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
 add_executable(test_physics_events test_physics_events.cpp)

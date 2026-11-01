@@ -91,6 +91,17 @@ class ARCANE_API ParallaxLayer : public Component {
   bool repeat_y = false;
 };
 
+// Opt-in draw order for a node (Sprite, Tilemap, ParticleEmitter): lower `layer` draws first, then lower `order`;
+// with `y_sort` the node is sorted among the y-sorted nodes of its (layer, order) by world y + y_sort_offset, after
+// the nodes that are not y-sorted. A node without RenderOrder is layer 0, order 0, not y-sorted.
+class ARCANE_API RenderOrder : public Component {
+ public:
+  int layer = 0;
+  int order = 0;
+  bool y_sort = false;
+  float y_sort_offset = 0.0f;
+};
+
 // Registers Sprite and Camera into `registry` under the type names "Sprite"
 // and "Camera". Call this once per ComponentRegistry before loading any
 // scene JSON or calling a game module's register_types, so both built-in
