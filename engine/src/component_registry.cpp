@@ -4,7 +4,7 @@ namespace arcane {
 
 void ComponentRegistry::register_component(std::string type_name, Factory factory,
                                              std::vector<PropertyDescriptor> properties) {
-  entries_[std::move(type_name)] = Entry{std::move(factory), std::move(properties)};
+  entries_[std::move(type_name)] = Entry{std::move(factory), std::move(properties), registration_owner_};
 }
 
 bool ComponentRegistry::contains(const std::string& type_name) const noexcept {
@@ -16,7 +16,11 @@ std::unique_ptr<Component> ComponentRegistry::create(const std::string& type_nam
   if (it == entries_.end()) {
     return nullptr;
   }
-  return it->second.factory();
+  std::unique_ptr<Component> component = it->second.factory();
+  if (component) {
+    component->module_owner_ = it->second.owner;
+  }
+  return component;
 }
 
 const std::vector<PropertyDescriptor>* ComponentRegistry::properties_of(const std::string& type_name) const noexcept {

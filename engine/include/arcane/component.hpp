@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <string>
 
 #include "arcane/export.hpp"
@@ -12,6 +13,7 @@ inline constexpr ComponentId kInvalidComponentId = 0;
 
 class Node;
 class Scene;
+class ComponentRegistry;
 
 // Base class for data/behaviour attached to a Node. Owned by the Node it is
 // attached to (destroyed when the node is destroyed). Lifecycle hooks are
@@ -57,11 +59,15 @@ class ARCANE_API Component {
  private:
   friend class Node;
   friend class Scene;
+  friend class ComponentRegistry;
 
   ComponentId id_ = kInvalidComponentId;
   Node* node_ = nullptr;
   std::string type_name_;
   bool started_ = false;
+  // Lifetime token of the game module whose factory created this component
+  // (null for builtins). Only counts references; it never unloads anything.
+  std::shared_ptr<const void> module_owner_;
 };
 
 }  // namespace arcane

@@ -47,9 +47,7 @@ std::expected<ProjectRuntime, std::string> ProjectRuntime::open(const std::files
       return std::unexpected("failed to load project module '" + module_path->string() + "': " + loaded.error());
     }
     runtime.module_ = std::move(*loaded);
-    if (runtime.module_->api()->register_types) {
-      runtime.module_->api()->register_types(runtime.registry_);
-    }
+    runtime.module_->register_types(runtime.registry_);
     runtime.module_->api()->on_load();
   }
 
