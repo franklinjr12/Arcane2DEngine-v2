@@ -117,6 +117,7 @@ add_library(arcane_runtime SHARED
   engine/src/property.cpp
   engine/src/project.cpp
   engine/src/canonical_json.cpp
+  engine/src/atomic_save.cpp
   engine/src/migration.cpp
   engine/src/builtin_components.cpp
   engine/src/physics.cpp

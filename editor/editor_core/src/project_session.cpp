@@ -1,5 +1,6 @@
 #include "arcane_editor/project_session.hpp"
 
+#include "arcane/atomic_save.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/prefab.hpp"
 
@@ -8,6 +9,9 @@ namespace arcane::editor {
 std::expected<ProjectSession, std::string> ProjectSession::open(const std::filesystem::path& project_dir,
                                                                   const ComponentRegistry& registry,
                                                                   SceneLoadPolicy policy) {
+  if (auto recovered = recover_pending_commit(project_dir); !recovered) {
+    return std::unexpected(recovered.error());
+  }
   auto project_text = read_text_file(project_dir / "project.json");
   if (!project_text) {
     return std::unexpected(project_text.error());
@@ -106,10 +110,10 @@ std::expected<void, std::string> ProjectSession::save(const ComponentRegistry& r
   if (auto checked = check_revision(project_dir_ / "project.json", project_revision_); !checked) return checked;
   if (auto checked = check_revision(main_scene_path(), scene_revision_); !checked) return checked;
 
-  FileTransactionOptions options;
+  AtomicSaveOptions options;
   options.fail_commit_index = fail_commit_index_;
-  auto wrote = write_text_files_transactional(
-      {{project_dir_ / "project.json", *project_text}, {main_scene_path(), *scene_text}}, options);
+  auto wrote = commit_files_atomic(
+      project_dir_, {{project_dir_ / "project.json", *project_text}, {main_scene_path(), *scene_text}}, options);
   if (!wrote) {
     return std::unexpected(wrote.error());
   }

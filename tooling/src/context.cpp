@@ -1,6 +1,7 @@
 #include "arcane_tooling/context.hpp"
 
 #include "arcane/atlas.hpp"
+#include "arcane/atomic_save.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/prefab.hpp"
 #include "arcane/project.hpp"
@@ -117,9 +118,9 @@ std::expected<void, ToolError> ProjectContext::save() {
   std::vector<FileWrite> writes;
   if (project_dirty_) writes.push_back({project_path, project_text});
   writes.push_back({path, *text});
-  FileTransactionOptions options;
+  AtomicSaveOptions options;
   options.fail_commit_index = fail_commit_index_;
-  if (auto written = write_text_files_transactional(writes, options); !written) {
+  if (auto written = commit_files_atomic(project_dir(), writes, options); !written) {
     return std::unexpected(ToolError{"IO_ERROR", written.error(), project_dirty_ ? "project.json and " + scene_file() : scene_file(), "", ""});
   }
   if (project_dirty_) {
