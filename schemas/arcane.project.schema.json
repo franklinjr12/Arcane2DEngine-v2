@@ -31,6 +31,28 @@
       },
       "type": "object"
     },
+    "display": {
+      "additionalProperties": false,
+      "properties": {
+        "design_height": {
+          "maximum": 8192,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "design_width": {
+          "maximum": 8192,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "scale_mode": {
+          "enum": [
+            "letterbox",
+            "stretch"
+          ]
+        }
+      },
+      "type": "object"
+    },
     "format": {
       "const": "arcane.project"
     },

@@ -547,6 +547,26 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 | `--overlay-font-scale` | number | no |  |
 | `--overlay-visible` | boolean | no |  |
 
+### `arcane display get`
+
+Read the display settings (design resolution, scale mode) from project.json. 0x0 = no design resolution.
+
+Read only.
+
+No arguments.
+
+### `arcane display set`
+
+Change the display settings in project.json; omitted fields keep their value. design_width and design_height are both 0 (none) or both 16..8192. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.
+
+Edits the open scene (hud.* edit project.json) and saves each file atomically; `--dry-run` shows the result and saves nothing.
+
+| Argument | Type | Required | Positional |
+| --- | --- | --- | --- |
+| `--design-height` | integer | no |  |
+| `--design-width` | integer | no |  |
+| `--scale-mode` | json | no |  |
+
 ### `arcane docs`
 
 Print the generated command reference (md, the default) or a command list (json).
@@ -1031,7 +1051,7 @@ Edits the open scene (hud.* edit project.json) and saves each file atomically; `
 
 ### `arcane render`
 
-Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
+Render the main (or --scene) scene to a PNG through an offscreen GL framebuffer: advance --frames fixed steps on a scene copy (module on_update included, default 0), draw it with the scene renderer and HUD, write output. camera selects a Camera/Camera2D node, size is WxH (default: the project's display design resolution, else 320x180). With compare the image is checked against a golden PNG (per-channel tolerance, default 2; mask lists [x,y,w,h] pixel rectangles to ignore); a mismatch is ok=false (exit 4). Needs a display or Xvfb, else RENDER_UNAVAILABLE (exit 8). The result has the frame, size, scene_hash and backend. --dry-run renders but writes nothing.
 
 Writes files; honors `--dry-run`.
 

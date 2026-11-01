@@ -490,7 +490,33 @@ void test_node_set_persistent() {
   ARCANE_ASSERT_TRUE(!context->scene().find_node(1)->persistent());
 }
 
+void test_display_get_set_undo() {
+  TempProject project;
+  CommandRegistry registry;
+  register_debug_commands(registry);
+  const fs::path file = project.dir / "project.json";
+  const std::string original = slurp(file);
+  ARCANE_ASSERT_TRUE(original.find("\"display\"") == std::string::npos);
+  auto context = open(project);
+  auto got = registry.execute(*context, {"display.get", Json::object()});
+  ARCANE_ASSERT_TRUE(got.has_value() && got->value["design_width"] == 0 && got->value["scale_mode"] == "letterbox");
+  // Half-set sizes and out-of-range values change nothing.
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"design_width", 640}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"design_width", 4}, {"design_height", 4}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"scale_mode", "zoom"}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(slurp(file) == original);
+  auto set = registry.execute(*context, {"display.set", {{"design_width", 640}, {"design_height", 360}, {"scale_mode", "stretch"}}},
+                              {.persist = true});
+  ARCANE_ASSERT_TRUE(set.has_value() && set->value["changed"] == true && set->inverse.has_value());
+  ARCANE_ASSERT_TRUE(slurp(file).find("\"stretch\"") != std::string::npos);
+  auto same = registry.execute(*context, {"display.set", {{"design_width", 640}}}, {.persist = true});
+  ARCANE_ASSERT_TRUE(same.has_value() && same->value["changed"] == false && !same->inverse);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, *set->inverse, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(slurp(file) == original);
+}
+
 int main() {
+  test_display_get_set_undo();
   test_node_set_persistent();
   test_module_property_set_persist_undo_redo();
   test_builtin_types_and_value_kinds();

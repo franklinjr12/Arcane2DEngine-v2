@@ -8,6 +8,7 @@
 #include "arcane/audio.hpp"
 #include "arcane/game_context.hpp"
 #include "arcane/debug.hpp"
+#include "arcane/display.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
 #include "arcane/log.hpp"
@@ -110,20 +111,24 @@ std::vector<unsigned char> make_checkerboard_pixels(int size) {
 // with arcane_editor so project loading and scene rendering behave
 // identically in both.
 int run_project(const Args& args) {
-  auto window = arcane::Window::create(
-      {.width = 1280, .height = 800, .title = "Arcane2D Player", .hidden = args.hidden});
+  // Opened first: the window is created at the project's design resolution, if it has one.
+  auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.project_module_override);
+  if (!runtime) {
+    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
+    return 1;
+  }
+  const arcane::DisplayConfig display = runtime->session().project().display;
+  const bool has_design = display.design_width > 0 && display.design_height > 0;
+  auto window = arcane::Window::create({.width = has_design ? display.design_width : 1280,
+                                        .height = has_design ? display.design_height : 800,
+                                        .title = "Arcane2D Player",
+                                        .hidden = args.hidden});
   if (!window) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to create window: {}", window.error());
     return 77;  // no GL-capable display; CTest SKIP convention, see test_renderer_gl.
   }
   if (!arcane::load_gl_functions()) {
     ARCANE_LOG_ERROR(kLogCategory, "failed to load OpenGL functions");
-    return 1;
-  }
-
-  auto runtime = arcane::editor::ProjectRuntime::open(args.project_dir, args.project_module_override);
-  if (!runtime) {
-    ARCANE_LOG_ERROR(kLogCategory, "failed to open project '{}': {}", args.project_dir, runtime.error());
     return 1;
   }
 
@@ -198,11 +203,13 @@ int run_project(const Args& args) {
   physics.rebuild(*manager.scene());
   manager.set_on_switched([&](arcane::Scene& next) {
     physics.rebuild(next);
+    game_context.set_time_scale(1.0f);  // a new scene never starts paused
     arcane::editor::start_play_on_start_sounds(next, *audio, audio_assets);
   });
   arcane::set_active_scene_manager(&manager);
   game_context.set_physics(&physics);
   game_context.set_collision_layers(runtime->session().project().collision_layers);
+  game_context.set_save_config(runtime->session().project().save, !replay);  // replays never write saves
 
   arcane::InputActionMap input_map = runtime->session().project().input_actions;
   arcane::GlfwInputBackend input_backend(*window);
@@ -248,8 +255,12 @@ int run_project(const Args& args) {
     overlay_key_was_down = overlay_key_down;
 
     // HUD sees pointer/confirm input first; what it consumes is hidden from gameplay actions.
-    int fb_width = 0, fb_height = 0;
+    int fb_width = 0, fb_height = 0, win_width = 0, win_height = 0;
     window->framebuffer_size(fb_width, fb_height);
+    window->window_size(win_width, win_height);
+    // Resize handling: the viewport follows the current framebuffer, so the game is always letterboxed/stretched to fit.
+    const arcane::DisplayViewport viewport = arcane::compute_display_viewport(fb_width, fb_height, display);
+    const int logical_width = viewport.logical_width, logical_height = viewport.logical_height;
     int steps = 0;
     float step_dt = static_cast<float>(timestep.fixed_delta_seconds());
     if (replay) {
@@ -257,20 +268,27 @@ int run_project(const Args& args) {
       steps = 1;
       step_dt = static_cast<float>(1.0 / replay->recording().fixed_hz);
     } else {
-      hud_input.update(hud, input_backend, fb_width, fb_height);
+      const arcane::PointerMapping pointer = arcane::pointer_mapping(
+          viewport, fb_height,
+          {win_width > 0 ? static_cast<float>(fb_width) / static_cast<float>(win_width) : 1.0f,
+           win_height > 0 ? static_cast<float>(fb_height) / static_cast<float>(win_height) : 1.0f});
+      hud_input.update(hud, input_backend, logical_width, logical_height, pointer.origin, pointer.scale);
       input_map.update(hud_input.gameplay_backend());
       steps = timestep.advance(delta_seconds);
     }
-    game_context.set_viewport_size(fb_width, fb_height);
+    game_context.set_viewport_size(logical_width, logical_height);
     for (int i = 0; i < steps; ++i) {
+      game_context.set_unscaled_delta(step_dt);
       if (runtime->module_api()) runtime->module_api()->on_update(step_dt);
       arcane::Scene& step_scene = *manager.scene();  // a switch replaces the scene: fetch per step
-      step_scene.update(step_dt);
-      physics.step(step_scene, step_dt);
+      const float scaled_dt = step_dt * game_context.time_scale();  // x1.0f is exact
+      step_scene.update(scaled_dt);
+      if (scaled_dt > 0.0f) physics.step(step_scene, scaled_dt);
       manager.update(step_dt);  // fixed step dt keeps replays deterministic
       if (game_context.take_restart_request()) {
         arcane::Scene& current = *manager.scene();
         auto reloaded = arcane::reload_scene_file(current, runtime->session().main_scene_path(), runtime->registry());
+        game_context.set_time_scale(1.0f);
         if (reloaded) physics.rebuild(current);
         else ARCANE_LOG_ERROR(kLogCategory, "scene restart failed: {}", reloaded.error());
       }
@@ -278,8 +296,14 @@ int run_project(const Args& args) {
     arcane::Scene& scene = *manager.scene();
     if (replay) trace.push_back(arcane::hash_scene_state(scene, runtime->registry()));
 
+    if (fb_width <= 0 || fb_height <= 0) {  // minimised: nothing to draw into
+      window->swap_buffers();
+      window->poll_events();
+      ++frame_count;
+      continue;
+    }
     arcane::editor::render_scene(scene, *renderer, textures, fb_width, fb_height, &clips, &*hud_renderer, &hud,
-                                &tilesets, true, &atlases);
+                                &tilesets, true, &atlases, &viewport);
     if (runtime->module_api()) runtime->module_api()->on_render();
 
     if (overlay_visible) {
@@ -287,7 +311,7 @@ int run_project(const Args& args) {
       arcane::FrameStats stats{frame_timer.fps(), frame_timer.frame_ms(), render_stats.draw_calls,
                                render_stats.sprites, physics.body_count(), arcane::count_particles(scene)};
       arcane::fill_debug_overlay_hud(overlay_hud, stats, debug_config);
-      hud_renderer->draw(overlay_hud, *renderer, fb_width, fb_height);
+      hud_renderer->draw(overlay_hud, *renderer, logical_width, logical_height);
       renderer->flush();
     }
 
@@ -350,6 +374,10 @@ int run_project_headless(const Args& args) {
   }
   arcane::set_active_audio_system(&*audio);
   arcane::GameContext game_context(runtime->session().project_dir(), runtime->registry());
+  const arcane::DisplayConfig& display = runtime->session().project().display;
+  if (display.design_width > 0 && display.design_height > 0) {
+    game_context.set_viewport_size(display.design_width, display.design_height);  // the logical view, no window
+  }
   arcane::set_active_game_context(&game_context);
   arcane::Hud hud = runtime->session().project().hud;  // authored layout; gameplay may add more, never drawn
   arcane::set_active_hud(&hud);

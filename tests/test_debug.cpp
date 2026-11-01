@@ -56,6 +56,17 @@ void test_benchmark() {
   ARCANE_ASSERT_TRUE(!run_benchmark(config).has_value());
 }
 
+void test_benchmark_pf1_scene() {
+  // The PF1 scene (docs/perf.md), 3 frames; counts only, no wall-clock assertions (sanitizer builds are slow).
+  BenchConfig defaults;
+  ARCANE_ASSERT_TRUE(defaults.sprites == 5000 && defaults.emitters == 20 && defaults.particles_per_emitter == 100);
+  ARCANE_ASSERT_TRUE(defaults.bodies == 500 && defaults.frames == 120);
+  auto result = run_benchmark({.sprites = 5000, .emitters = 20, .particles_per_emitter = 100, .bodies = 500, .frames = 3});
+  ARCANE_ASSERT_TRUE(result.has_value());
+  ARCANE_ASSERT_TRUE(result->live_particles == 2000);
+  ARCANE_ASSERT_TRUE(result->physics_bodies == 501);
+}
+
 void test_bench_json() {
   auto doc = run_bench_json({{"sprites", 10}, {"emitters", 1}, {"particles_per_emitter", 4}, {"bodies", 2}, {"frames", 3}});
   ARCANE_ASSERT_TRUE(doc.has_value());
@@ -124,6 +135,7 @@ void test_commands() {
 int main() {
   test_overlay_data();
   test_benchmark();
+  test_benchmark_pf1_scene();
   test_bench_json();
   test_commands();
   std::puts("test_debug OK");

@@ -5,6 +5,11 @@
     "enemy",
     "pickup"
   ],
+  "display": {
+    "design_height": 360,
+    "design_width": 640,
+    "scale_mode": "stretch"
+  },
   "format": "arcane.project",
   "hud": {
     "elements": [],

@@ -80,6 +80,8 @@ Component: an integer component id, or a type name attached exactly once.
 | `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; edits the project in memory like `project.set` (the CLI persists `project.json`, the editor undoes it and File > Save writes it); inverse is `transition.set` with the previous values |
 | `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
 | `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; edits the project in memory like `project.set`; inverse is `debug.set` with the previous values |
+| `display.get` | none | `{design_width, design_height, scale_mode}` from `project.json` |
+| `display.set` | `design_width?`, `design_height?` (both 0 or both 16..8192), `scale_mode?` (`letterbox`\|`stretch`) | `{changed, previous, display}`; edits the project in memory like `project.set`; inverse is `display.set` with the previous values |
 | `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
 | `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
 | `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |
@@ -331,7 +333,7 @@ context or audio device, and the context scene is never advanced or saved. The t
 `arcane render --output FILE.png` (`tooling/src/render_commands.cpp`) steps a scene copy like `run` (default `--frames 0`, module
 `on_update` included), then draws it with the editor/player scene renderer and the HUD into an offscreen GL framebuffer
 (`render_offscreen`, `arcane/screenshot.hpp`) and writes the PNG. Arguments: `output` (project-relative, required), `size` `WxH`
-(default `320x180`, max 4096), `frames`, `fixed_hz`, `seed`, `camera` (selector of a Camera/Camera2D node, made the only primary one on
+(default: the project's `display` design resolution, else `320x180`; max 4096), `frames`, `fixed_hz`, `seed`, `camera` (selector of a Camera/Camera2D node, made the only primary one on
 the copy), `compare` (golden PNG, project-relative), `tolerance` (per RGBA channel, default 2) and `mask` (array of `[x,y,w,h]` pixel
 rectangles ignored by the comparison). The scene file is never changed. Result `{output, scene, frame, fixed_hz, size, scene_hash, camera,
 backend:{api,renderer}, module, compare}`; a failed comparison (size mismatch or differing pixels) is `ok:false`, exit 4. A GL context needs a

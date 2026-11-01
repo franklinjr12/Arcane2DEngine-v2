@@ -25,12 +25,12 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
         canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                                     "save", "debug", "collision_layers"},
+                                     "save", "debug", "display", "collision_layers"},
                                      "project");
       } else {
         canonical::require_only_keys(
             root, {"format_version", "name", "main_scene", "module", "input_actions", "hud", "transition",
-                         "save", "debug", "collision_layers"},
+                         "save", "debug", "display", "collision_layers"},
             "project");
       }
     }
@@ -82,6 +82,23 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
       if (d.contains("overlay_font_scale")) project.debug.overlay_font_scale = canonical::as_float(d["overlay_font_scale"], "debug 'overlay_font_scale'");
       if (!(project.debug.overlay_font_scale > 0.0f && project.debug.overlay_font_scale <= 8.0f)) {
         canonical::fail("project 'debug': overlay_font_scale must be within (0, 8]");
+      }
+    }
+    if (root.contains("display")) {
+      const json& d = root["display"];
+      canonical::require_object(d, "project 'display'");
+      canonical::require_only_keys(d, {"design_width", "design_height", "scale_mode"}, "project 'display'");
+      DisplayConfig& c = project.display;
+      if (d.contains("design_width")) c.design_width = canonical::as_int(d["design_width"], "display 'design_width'");
+      if (d.contains("design_height")) c.design_height = canonical::as_int(d["design_height"], "display 'design_height'");
+      if (d.contains("scale_mode")) {
+        const std::string mode = canonical::as_string(d["scale_mode"], "display 'scale_mode'");
+        if (mode == "letterbox") c.scale_mode = DisplayScaleMode::Letterbox;
+        else if (mode == "stretch") c.scale_mode = DisplayScaleMode::Stretch;
+        else canonical::fail("project 'display': scale_mode must be \"letterbox\" or \"stretch\"");
+      }
+      if (!is_valid_design_size(c.design_width, c.design_height)) {
+        canonical::fail("project 'display': design_width and design_height must both be 0 or both within 16..8192");
       }
     }
     if (root.contains("save")) {
@@ -147,6 +164,11 @@ bool collision_layer_mask(const ProjectFile& project, const std::vector<std::str
   return true;
 }
 
+bool is_valid_design_size(int width, int height) noexcept {
+  if (width == 0 && height == 0) return true;
+  return width >= 16 && width <= 8192 && height >= 16 && height <= 8192;
+}
+
 bool is_valid_game_id(const std::string& id) noexcept {
   if (id.empty() || id.size() > 64 || id == "." || id == "..") return false;
   for (const char c : id) {
@@ -194,6 +216,17 @@ std::expected<std::string, std::string> save_project_canonical_json(const Projec
     }
     root["debug"] = {{"overlay_visible", project.debug.overlay_visible},
                      {"overlay_font_scale", project.debug.overlay_font_scale}};
+  }
+  const DisplayConfig default_display;
+  if (project.display.design_width != default_display.design_width ||
+      project.display.design_height != default_display.design_height ||
+      project.display.scale_mode != default_display.scale_mode) {
+    if (!is_valid_design_size(project.display.design_width, project.display.design_height)) {
+      return std::unexpected(std::string("project display: design_width and design_height must both be 0 or both within 16..8192"));
+    }
+    root["display"] = {{"design_width", project.display.design_width},
+                       {"design_height", project.display.design_height},
+                       {"scale_mode", project.display.scale_mode == DisplayScaleMode::Stretch ? "stretch" : "letterbox"}};
   }
   if (!project.save.game_id.empty() || project.save.data_version != 1) {
     if (!project.save.game_id.empty() && !is_valid_game_id(project.save.game_id)) {

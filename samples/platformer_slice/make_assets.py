@@ -207,15 +207,26 @@ build_level("scenes/level2.scene.json", 1560.0, "", 50, {12, 13, 30, 31, 32}, (5
             [(200, 372), (330, 372), (540, 250), (600, 250), (760, 372), (1200, 372)], (860, 384), [330, 930, 1250],
             [(600.0, 570.0, 680.0, 60.0), (1100.0, 1060.0, 1150.0, 45.0), (1400.0, 1360.0, 1450.0, 50.0)], 1520)
 
-def action(n, codes):
-    return {"name": n, "bindings": [{"device": "keyboard", "code": c} for c in codes]}
+# Gamepad Start is GLFW_GAMEPAD_BUTTON_START (arcane::GamepadButtons has no constant for it); A = 0, D-pad left/right = 14/12,
+# left stick X = axis 0.
+def action(n, codes, pad_buttons=(), stick=0):
+    bindings = [{"device": "keyboard", "code": c} for c in codes]
+    bindings += [{"device": "gamepad_button", "code": b} for b in pad_buttons]
+    if stick:
+        bindings.append({"device": "gamepad_axis", "code": 0, "axis_sign": stick, "deadzone": 0.2, "threshold": 0.5})
+    return {"name": n, "bindings": bindings}
 project = {"format_version": 1, "name": "platformer_slice", "main_scene": "scenes/main.scene.json",
            "module": "platformer_slice_game.so",
+           "display": {"design_width": 640, "design_height": 360, "scale_mode": "letterbox"},
+           "save": {"game_id": "arcane_platformer_slice", "data_version": 1},
            "input_actions": {"format_version": 1, "actions": [
-               action("move_left", [65, 263]), action("move_right", [68, 262]), action("jump", [32]), action("pause", [80, 256])]},
+               action("move_left", [65, 263], [14], -1), action("move_right", [68, 262], [12], 1),
+               action("jump", [32], [0]), action("pause", [80, 256], [7])]},
            "hud": {"format_version": 1, "elements": [
                {"type": "text", "id": "score", "text": "SCORE 0", "anchor": "top_left", "offset": [16, 16], "font_scale": 3.0,
                 "color": [1, 1, 1, 1]},
+               {"type": "text", "id": "best", "text": "", "anchor": "top_left", "offset": [16, 52], "font_scale": 2.0,
+                "color": [1, 0.9, 0.3, 1]},
                {"type": "progress_bar", "id": "health", "anchor": "top_right", "offset": [-16, 16], "size": [220, 20], "fraction": 1.0,
                 "fill": [0.85, 0.2, 0.2, 1], "background": [0, 0, 0, 0.6]},
                {"type": "text", "id": "banner", "text": "", "anchor": "center", "offset": [0, -60], "font_scale": 5.0,
@@ -223,3 +234,20 @@ project = {"format_version": 1, "name": "platformer_slice", "main_scene": "scene
                {"type": "button", "id": "restart", "label": "RESTART", "anchor": "bottom_right",
                 "offset": [-16, -16], "size": [160, 40]}]}}
 json.dump(project, open("project.json", "w"), indent=2)
+
+# The menu scene (not the startup scene, see docs/slice_platformer_gaps.md): a camera, the sky and the MenuController, which
+# adds the title, best score and PLAY button to the HUD.
+json.dump({"format_version": 1, "next_id": 8, "nodes": [
+    {"id": 1, "name": "Menu", "parent_id": 0, "position": [0, 0], "rotation_radians": 0.0, "scale": [1.0, 1.0],
+     "components": [{"id": 2, "type": "MenuController", "properties": {
+         "title": "PLATFORMER SLICE", "play_scene": "scenes/main.scene.json"}}]},
+    {"id": 3, "name": "Sky", "parent_id": 1, "position": [400, 300], "rotation_radians": 0.0, "scale": [1.0, 1.0],
+     "components": [
+         {"id": 4, "type": "Sprite", "properties": {"texture": fnv1a("sky.png"), "width": 128.0, "height": 600.0, "tint": white}},
+         {"id": 5, "type": "ParallaxLayer", "properties": {"factor": [0.3, 1.0], "repeat_x": True, "repeat_y": False}}]},
+    {"id": 6, "name": "MenuCamera", "parent_id": 1, "position": [400, 300], "rotation_radians": 0.0, "scale": [1.0, 1.0],
+     "components": [{"id": 7, "type": "Camera2D", "properties": {
+         "primary": True, "zoom": 1.0, "target": 0, "smoothing": 0.0, "deadzone": [0.0, 0.0], "look_ahead": [0.0, 0.0],
+         "bounds_tilemap": 0, "bounds_enabled": False, "bounds_min": [0.0, 0.0], "bounds_max": [0.0, 0.0],
+         "pixel_snap": False, "shake_amplitude": 0.0, "shake_duration": 0.0, "shake_seed": 1}}]}]},
+    open("scenes/menu.scene.json", "w"), indent=2)

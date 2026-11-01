@@ -316,6 +316,31 @@ void test_project_nested() {
     "input_actions":{"format_version":3,"actions":[]}})").has_value());
 }
 
+void test_project_display() {
+  const std::string head = R"({"format":"arcane.project","version":2,"name":"p","main_scene":"s.scene.json","module":"")";
+  auto ok = arcane::load_project_from_json_strict(head + R"(,"display":{"design_width":640,"design_height":360,"scale_mode":"stretch"}})");
+  ARCANE_ASSERT_TRUE(ok.has_value() && ok->display.design_width == 640 && ok->display.design_height == 360 &&
+                     ok->display.scale_mode == arcane::DisplayScaleMode::Stretch);
+  auto text = arcane::save_project_canonical_json(*ok);
+  ARCANE_ASSERT_TRUE(text.has_value() && contains(*text, "\"display\"") && contains(*text, "\"stretch\""));
+  auto again = arcane::load_project_from_json_strict(*text);
+  ARCANE_ASSERT_TRUE(again.has_value() && again->display.design_width == 640);
+  // Defaults are not written.
+  arcane::ProjectFile plain;
+  plain.name = "p";
+  plain.main_scene = "s.scene.json";
+  ARCANE_ASSERT_TRUE(!contains(arcane::save_project_canonical_json(plain).value(), "display"));
+  // Rejections.
+  for (const char* bad : {R"(,"display":{"design_width":640,"design_height":0}})", R"(,"display":{"design_width":8,"design_height":8}})",
+                          R"(,"display":{"design_width":9000,"design_height":360}})", R"(,"display":{"scale_mode":"zoom"}})",
+                          R"(,"display":{"blur":1}})", R"(,"display":[]})"}) {
+    ARCANE_ASSERT_TRUE(!arcane::load_project_from_json_strict(head + bad).has_value());
+  }
+  arcane::ProjectFile broken = plain;
+  broken.display.design_width = 640;
+  ARCANE_ASSERT_TRUE(!arcane::save_project_canonical_json(broken).has_value());
+}
+
 }  // namespace
 
 int main() {
@@ -325,5 +350,6 @@ int main() {
   test_hud();
   test_input();
   test_project_nested();
+  test_project_display();
   return 0;
 }

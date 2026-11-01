@@ -356,10 +356,13 @@ std::expected<std::vector<std::uint64_t>, std::string> run_fixed_frames(Scene& s
   for (int frame = 0; frame < frames; ++frame) {
     actions.update(input ? input->advance() : idle);
     if (options.before_step) options.before_step(dt);
-    scene.update(dt);
-    physics.step(scene, dt);
     GameContext* context = active_game_context();
+    if (context) context->set_unscaled_delta(dt);
+    const float scaled_dt = dt * (context ? context->time_scale() : 1.0f);  // x1.0f is exact: traces unchanged
+    scene.update(scaled_dt);
+    if (scaled_dt > 0.0f) physics.step(scene, scaled_dt);
     if (context && context->take_restart_request() && !options.restart_scene_json.empty()) {
+      context->set_time_scale(1.0f);
       auto fresh = Scene::load_from_json(options.restart_scene_json, registry);
       if (!fresh) return std::unexpected(fresh.error());
       scene = std::move(*fresh);

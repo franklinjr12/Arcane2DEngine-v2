@@ -364,6 +364,12 @@ void register_flow_commands(CommandRegistry& registry) {
       });
 }
 
+Json display_json(const DisplayConfig& d) {
+  return {{"design_width", d.design_width},
+          {"design_height", d.design_height},
+          {"scale_mode", d.scale_mode == DisplayScaleMode::Stretch ? "stretch" : "letterbox"}};
+}
+
 void register_debug_commands(CommandRegistry& registry) {
   registry.add({"debug.get",
                 "Read the debug overlay settings (shown at startup, font scale) from project.json. F3 toggles the overlay in the player and editor.",
@@ -398,6 +404,49 @@ void register_debug_commands(CommandRegistry& registry) {
         }
         return CommandResult{{{"changed", now != previous}, {"previous", previous}, {"debug", now}},
                              now != previous ? std::optional<Invocation>(Invocation{"debug.set", previous})
+                                             : std::nullopt};
+      });
+
+  registry.add({"display.get",
+                "Read the display settings (design resolution, scale mode) from project.json. 0x0 = no design resolution.",
+                {{"type", "object"}, {"additionalProperties", false}},
+                {{"type", "object"}},
+                false},
+               [](ProjectContext& context, const Json&) -> std::expected<CommandResult, ToolError> {
+                 auto project = load_project_file(context);
+                 if (!project) return std::unexpected(project.error());
+                 return CommandResult{display_json(project->display), std::nullopt};
+               });
+
+  registry.add(
+      {"display.set",
+       "Change the display settings in project.json; omitted fields keep their value. design_width and design_height are both 0 (none) or both 16..8192. Edits the project in memory; the CLI saves it, the editor's File > Save writes it.",
+       {{"type", "object"},
+        {"properties",
+         {{"design_width", {{"type", "integer"}, {"minimum", 0}, {"maximum", 8192}}},
+          {"design_height", {{"type", "integer"}, {"minimum", 0}, {"maximum", 8192}}},
+          {"scale_mode", {{"enum", {"letterbox", "stretch"}}}}}},
+        {"additionalProperties", false}},
+       {{"type", "object"}},
+       true},
+      [](ProjectContext& context, const Json& args) -> std::expected<CommandResult, ToolError> {
+        const Json previous = display_json(context.session().project().display);
+        DisplayConfig d = context.session().project().display;
+        if (args.contains("design_width")) d.design_width = args["design_width"].get<int>();
+        if (args.contains("design_height")) d.design_height = args["design_height"].get<int>();
+        if (args.contains("scale_mode")) {
+          d.scale_mode = args["scale_mode"].get<std::string>() == "stretch" ? DisplayScaleMode::Stretch : DisplayScaleMode::Letterbox;
+        }
+        if (!is_valid_design_size(d.design_width, d.design_height)) {
+          return std::unexpected(args_error("design_width and design_height must both be 0 or both within 16..8192", "/design_width"));
+        }
+        const Json now = display_json(d);
+        if (now != previous) {
+          context.session().mutable_project().display = d;
+          context.mark_project_dirty();
+        }
+        return CommandResult{{{"changed", now != previous}, {"previous", previous}, {"display", now}},
+                             now != previous ? std::optional<Invocation>(Invocation{"display.set", previous})
                                              : std::nullopt};
       });
 }

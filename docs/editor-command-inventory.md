@@ -6,7 +6,7 @@ through `EditSession`, so each Save is **one undoable step** (undo restores the 
 `clip.restore`/`tileset.restore`) and sets `*modified*`. The panels keep a draft model on purpose: edits to the draft fields
 before Save (grid, frames, tile flags, terrain rules, New tileset) are unsaved view state like a text box, not authored data; the
 authored change is the Save. Project Settings now also edits the scene transition (fade out/in, colour), save (game id, data
-version) and debug overlay (visible, font scale) through `transition.set`, `save.config_set` and `debug.set`. Those three edit the
+version) and debug overlay (visible, font scale) through `transition.set`, `save.config_set` and `debug.set`. Those three (and the display design size/scale mode through `display.set`, same model) edit the
 project data in memory like `project.set` (AF8C changed them from immediate `project.json` writes, which would have conflicted with
 File > Save), so they undo/redo, coalesce slider drags and are written by File > Save (CLI: persisted per command). Covered by
 `test_edit_session` (`test_gui_flow_settings_match_cli_model`, `test_tileset_save_is_one_undoable_command`,

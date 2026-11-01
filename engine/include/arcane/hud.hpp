@@ -111,6 +111,10 @@ class ARCANE_API Hud {
  public:
   void add(HudElement element) { elements_.push_back(std::move(element)); }
   void clear() noexcept { elements_.clear(); }
+  // Removes the element with this id, of any kind; false if none. Invalidates pointers and indices (HudInput
+  // re-validates its focus on the next update).
+  bool remove(std::string_view id);
+  bool contains(std::string_view id) const;
   const std::vector<HudElement>& elements() const noexcept { return elements_; }
   std::vector<HudElement>& elements() noexcept { return elements_; }
 
@@ -177,8 +181,10 @@ class ARCANE_API HudInput {
   HudInput() = default;
 
   // Pointer position is offset by `origin` (e.g. the editor viewport's
-  // top-left) before hit-testing in HUD pixels.
-  void update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin = {});
+  // top-left) and multiplied by `pointer_scale` before hit-testing in HUD
+  // pixels (a letterboxed view: see pointer_mapping in display.hpp).
+  void update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin = {},
+              Vec2 pointer_scale = {1.0f, 1.0f});
 
   // Valid until the next update() (or until this HudInput is moved/copied).
   const InputBackend& gameplay_backend() const noexcept { return masked_; }

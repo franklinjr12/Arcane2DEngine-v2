@@ -102,6 +102,8 @@ void Window::framebuffer_size(int& width, int& height) const {
   glfwGetFramebufferSize(impl_->window, &width, &height);
 }
 
+void Window::window_size(int& width, int& height) const { glfwGetWindowSize(impl_->window, &width, &height); }
+
 void* Window::native_handle() const noexcept { return impl_->window; }
 
 bool load_gl_functions() {

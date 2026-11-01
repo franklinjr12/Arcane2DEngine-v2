@@ -53,6 +53,11 @@ std::expected<RunOutput, ToolError> run_on_copy(ProjectContext& context, FixedRu
   if (!audio) return std::unexpected(offline_error("IO_ERROR", audio.error()));
   GameContext game_context(context.project_dir(), context.registry());
   game_context.set_collision_layers(context.session().project().collision_layers);
+  const DisplayConfig& display = context.session().project().display;
+  if (options.viewport_width <= 0 || options.viewport_height <= 0) {  // no explicit size: the project's design resolution
+    options.viewport_width = display.design_width;
+    options.viewport_height = display.design_height;
+  }
   if (options.viewport_width > 0 && options.viewport_height > 0) game_context.set_viewport_size(options.viewport_width, options.viewport_height);
   options.restart_scene_json = *scene_text;
   set_active_audio_system(&*audio);
