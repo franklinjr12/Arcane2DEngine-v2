@@ -1,5 +1,7 @@
 #include "arcane/migration.hpp"
 
+#include "arcane/atomic_save.hpp"
+
 #include <algorithm>
 #include <format>
 #include <set>
@@ -121,38 +123,18 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
     return report;
   }
 
-  // Stage every changed file, then commit them one by one; on any failure
-  // put back the files already replaced and drop the remaining staged ones.
-  std::vector<const MigratedFile*> changed;
+  // Commit every changed file as one crash-atomic unit (journal in atomic_save.hpp); on an
+  // ordinary failure the files already replaced are put back.
+  std::vector<FileWrite> writes;
   for (const MigratedFile& file : report.files) {
-    if (file.changed) changed.push_back(&file);
+    if (file.changed) writes.push_back({project_dir / file.path, file.new_text});
   }
-  auto discard_staged = [&] {
-    for (const MigratedFile* file : changed) {
-      std::filesystem::remove(staging_path(project_dir / file->path), ec);
-    }
-  };
-  for (const MigratedFile* file : changed) {
-    auto staged = stage_text_file(project_dir / file->path, file->new_text);
-    if (!staged) {
-      discard_staged();
-      return std::unexpected(staged.error());
-    }
-  }
-  for (std::size_t i = 0; i < changed.size(); ++i) {
-    std::expected<void, std::string> committed;
-    if (static_cast<int>(i) == options.fail_commit_index) {
-      committed = std::unexpected(std::format("simulated failure committing '{}'", changed[i]->path));
-    } else {
-      committed = commit_staged_file(project_dir / changed[i]->path);
-    }
-    if (!committed) {
-      discard_staged();
-      for (std::size_t j = 0; j < i; ++j) {
-        (void)write_text_file_atomic(project_dir / changed[j]->path, changed[j]->old_text);
-      }
-      return std::unexpected(std::format("migration rolled back: {}", committed.error()));
-    }
+  AtomicSaveOptions save_options;
+  save_options.fail_commit_index = options.fail_commit_index;
+  if (auto committed = commit_files_atomic(project_dir, writes, save_options); !committed) {
+    return std::unexpected(committed.error().starts_with("rolled back: ")
+                               ? "migration " + committed.error()
+                               : "migration failed: " + committed.error());
   }
   report.applied = true;
   return report;

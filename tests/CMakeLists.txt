@@ -1,7 +1,7 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_display test_tilemap test_particles test_camera2d test_tween test_render_cull)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_atomic_save test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_display test_tilemap test_particles test_camera2d test_tween test_render_cull)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
@@ -280,6 +280,15 @@ target_compile_definitions(test_cli PRIVATE
 add_dependencies(test_cli arcane)
 add_test(NAME test_cli COMMAND test_cli)
 
+# IN5: every registered command given an invalid argument: exit 2, JSON error shape, no file change.
+add_executable(test_cli_contract test_cli_contract.cpp)
+target_link_libraries(test_cli_contract PRIVATE arcane_tooling)
+target_compile_definitions(test_cli_contract PRIVATE
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>"
+  ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+  ARCANE_CLI_REFERENCE_PATH="${CMAKE_SOURCE_DIR}/docs/cli-reference.md")
+add_test(NAME test_cli_contract COMMAND test_cli_contract)
+
 # asset.list/import/reimport on temporary projects (failure injection, hot reload of a reimported clip).
 add_executable(test_asset_commands test_asset_commands.cpp)
 target_link_libraries(test_asset_commands PRIVATE arcane_tooling)
@@ -413,3 +422,21 @@ add_test(NAME test_physics_events COMMAND test_physics_events)
 add_executable(test_animgraph_commands test_animgraph_commands.cpp)
 target_link_libraries(test_animgraph_commands PRIVATE arcane_tooling)
 add_test(NAME test_animgraph_commands COMMAND test_animgraph_commands)
+
+# --- IN6 headless bench regression gate (docs/perf_gate.md), label "perf" -----
+set(ARCANE_PERF_FLAVOR "${CMAKE_BUILD_TYPE}-${CMAKE_CXX_COMPILER_ID}")
+if(ARCANE_SANITIZE)
+  string(APPEND ARCANE_PERF_FLAVOR "-san")
+endif()
+set(ARCANE_PERF_GATE_ARGS -DBENCH=$<TARGET_FILE:arcane_bench> -DBASELINE=${CMAKE_SOURCE_DIR}/docs/perf_baseline.json
+    -DFLAVOR=${ARCANE_PERF_FLAVOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
+add_test(NAME perf_gate COMMAND ${CMAKE_COMMAND} ${ARCANE_PERF_GATE_ARGS})
+# A 1000x slowdown must fail even when the baseline flavor differs (FORCE ignores the flavor check).
+add_test(NAME perf_gate_forced_slow COMMAND ${CMAKE_COMMAND} -DFORCE=ON ${ARCANE_PERF_GATE_ARGS})
+set_tests_properties(perf_gate perf_gate_forced_slow PROPERTIES LABELS perf RUN_SERIAL TRUE)
+set_tests_properties(perf_gate PROPERTIES SKIP_RETURN_CODE 77)
+set_tests_properties(perf_gate_forced_slow PROPERTIES WILL_FAIL TRUE ENVIRONMENT ARCANE_PERF_GATE_SCALE=1000)
+# Refresh the baseline for this build: cmake --build DIR --target perf_baseline_update
+add_custom_target(perf_baseline_update
+  COMMAND ${CMAKE_COMMAND} -DMODE=update ${ARCANE_PERF_GATE_ARGS}
+  DEPENDS arcane_bench USES_TERMINAL)

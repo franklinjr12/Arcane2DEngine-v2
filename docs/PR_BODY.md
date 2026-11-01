@@ -1,41 +1,25 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-30` -> `engine-hermes-2026-10-30`) is stacked on PR #8. Merge #7 and #8 first, then this one (retarget to master afterwards). It shows only tonight's diff. Jobs are appended per job below; HY1 (hygiene), AF10C (`arcane render`), AF8C (editor tileset/clip/settings through commands) GP1 (gameplay context API), GP2 (collision/trigger events, layers, queries, tile tags) and GP3 (camera follow, viewport size, parallax) have run, followed by GP4 (animation graph, sprite flip) and PX1 (prefab follow-ups). PX2, GP5, GS1, GS2, GP6, PF1, GP7, KI2 and AU2 did not run: each was blocked by its board prerequisite (see "Night status" below), so nothing from them is in this PR.
+This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff (4 commits: IN4, IN5, IN6 and this PR body). Jobs done tonight: IN4 (ENG-034), IN5 (ENG-035), IN6 (ENG-036). Queue is empty after these; IN1-IN3 belong to hermes PR #10.
+
+Verified on the final commit 7e2b867 (WRAP, 2026-11-01): gcc Debug incremental build OK, `ctest` 76/76 passed (perf label 2/2 passed); `arcane --project samples/<p> --module <p>.so run --frames 120` returns `ok:true` for platformer_slice, topdown_slice and sample_project. clang ASan/UBSan and mingw results are from the IN6 job on the same commit (not re-run by WRAP).
 
 **1. Step-by-step manual checks**
 
 Linux:
 ```
 scripts/build-and-test.sh     # expect: gcc PASS, clang_san PASS, mingw PASS (build only)
-git ls-files samples | grep -E '\.(so|dll)$'    # expect: no output
+ctest --test-dir build-gcc -R "test_atomic_save|test_canonical_json|test_migration|test_editor_project|test_tooling_commands" --output-on-failure   # expect: all pass
 ```
 Windows / MSVC (PowerShell, repo root):
 ```
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64     # or "Visual Studio 17 2022"
 cmake --build build --config Debug
-ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pass
+ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pass, including test_atomic_save
 ```
-After a build, `samples/topdown_slice/topdown_slice_game.so` (or `.dll`) appears in the work tree but `git status` stays clean.
-
-AF10C extra check (Linux, needs a display or Xvfb; on Windows run it from a Developer PowerShell with a GL-capable desktop):
-```
-xvfb-run -a build-gcc/bin/arcane --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so render --output out/slice.png --size 320x180 --frames 30
-```
-Expected: JSON with `"ok":true`, `scene_hash`, `backend`; open `samples/platformer_slice/out/slice.png`: yellow coins, brown platform, red bar and score text on a dark background (delete the `out/` folder afterwards). With `env -u DISPLAY -u WAYLAND_DISPLAY` the same command prints `RENDER_UNAVAILABLE` and exits 8.
-
-PX1 extra check (prefabs; headless): `ctest --test-dir build -C Debug -R "test_prefab|test_cli|test_edit_session" --output-on-failure` expects all to pass. Editor (needs a display): `arcane_editor --project <copy of a project>`; create a node with a Sprite, select it, Hierarchy > **Save as Prefab** (default `prefabs/<Name>.prefab.json`, Save); open Assets > **Prefabs** and click the file: an instance appears (`[P]` in the Hierarchy, "Prefab: ..." in the Inspector). Change its width in the Inspector: "* overridden" appears; **Revert** next to the listed override restores it; Ctrl+Z/Y undo/redo. **Break prefab link** turns it into plain nodes. Propagation: edit and re-save the prefab (`prefab save ... --overwrite true`, CLI) and reopen the project: non-overridden values of existing instances follow.
-
-AF8C extra check (Linux, or Windows with a GL desktop): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, then
-- Project Settings panel: below Name/Main scene/Module there are now Scene transition (fade out/in, colour), Save (game id, data version) and Debug overlay (visible, font scale). Change one: the title shows modified, Edit > Undo (Ctrl+Z) reverts it, File > Save writes `project.json`.
-- Tileset panel: New tileset / edit fields / Save tileset, then Ctrl+Z: the file disappears again (or returns to its previous content). Animation Clip panel: Save clip then Ctrl+Z likewise; Open clip reloads a saved clip on the current grid.
-
-GP3 extra check (Linux with Xvfb, or Windows with a GL desktop): `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, hold D. Expected: the view follows the hero with a small lead and smoothing, stops at the level edges (x 0..1280), and the hills/sky background scrolls slower than the ground (parallax, tiled). Headless: `ctest --test-dir build -C Debug -R "test_camera2d|test_game_context|test_platformer_slice|test_render_cli" --output-on-failure`. CLI: `arcane --project P component add --node id:N --type ParallaxLayer` then `prop set ... --name factor --value "[0.3, 1.0]"`.
-
-GP1 extra check (any platform, no window needed): `ctest --test-dir build -C Debug -R "test_game_context|test_platformer_slice" --output-on-failure` expects both to pass. To see it live: run `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, collect a coin (it disappears and the score rises), walk into the pit with health left (you respawn at the start instead of dying at once; the second fall is game over), click Restart (the whole level reloads: coins are back, score 0).
-
-GP2 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_physics_events|test_tilemap_commands|test_tooling_commands|test_schema_examples" --output-on-failure` expects all four to pass. CLI: `arcane --project DIR project set --collision_layers '["world","player"]'` then `project get` shows them; `arcane --project DIR tileset set_tile --tileset assets/set.json --tile 1 --tags '["hazard"]'`. Not visible in a window: there is no editor UI for layers/tags beyond the Inspector's integer `layer`/`mask` fields.
-
-GP4 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_animgraph|test_animgraph_commands|test_platformer_slice|test_physics_components|test_schema_examples|test_cli" --output-on-failure` expects all to pass. CLI: `build-gcc/bin/arcane --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so animgraph info --graph assets/hero.animgraph.json` prints the hero's idle/run machine; in a copy of the project, `animgraph add-event` then `animgraph info` shows the change. Editor (needs a display): `build-gcc/bin/arcane_editor --project samples/platformer_slice`, open the new **Animation Graph** panel, add a parameter, Ctrl+Z removes it again. Player: hold D/A in `arcane_player` on the slice: the hero runs, faces left/right via `Sprite.flip_x` (no negative scale) and the HUD updates by ids.
+IN6 check: `ctest --test-dir build-gcc -L perf --output-on-failure` (Windows: `ctest --test-dir build -C Debug -L perf`); expect `perf_gate` passed (or skipped on a non-gcc/non-Debug build; it only compares against the committed `Debug-GNU` baseline) and `perf_gate_forced_slow` passed (it expects the gate to fail on 1000x slower timings). Refresh: `cmake --build build-gcc --target perf_baseline_update`.
+IN5 check: `ctest --test-dir build-gcc -R test_cli_contract --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_cli_contract`); expect pass.
+IN4 manual check (any platform): open a project in the editor, change something in the scene and project settings, File > Save. Expected: both saved, no `*.arcane-tmp` or `.arcane-commit` file left in the project folder.
 
 GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_topdown_controller|test_navigation|test_spawner|test_combat|test_topdown_slice|test_topdown_commands" --output-on-failure` expects all six to pass. To play (needs a display or Xvfb): `build-gcc/bin/arcane_player --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so`, move with WASD and shoot with Space (the bullet flies where you last moved). The red enemy walks around the interior wall to reach you (each touch costs 1 health, shown in the HUD with a particle burst); three bullets kill it; at 0 health the scene restarts. CLI: `arcane --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so prefab info --node path:/Arena/Enemy`.
 
@@ -58,10 +42,11 @@ GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's 
 AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
 
 AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
+IN6: `docs/perf_gate.md`, `docs/perf_baseline.json`, `ctest -L perf`.
+No UI change. New: `engine/include/arcane/atomic_save.hpp` and `test_atomic_save` (a simulated kill after every step of a save). Saves now briefly create a `.arcane-commit` file in the project root.
 
 **3. Enough to merge**
-
-Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Optional: open `arcane_editor --project samples/topdown_slice` and confirm it still loads (the module is rebuilt by CMake).
+Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises the Windows fsync/rename path). Optional: the editor save check.
 
 **4. Known risks**
 
@@ -80,22 +65,20 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - UNTESTED on native Windows/MSVC for this PR (only the mingw cross-build ran).
 - The `.so` stays in the history of PR #7/#8 (commits 49962be, 2e78c85, eb931a1); history was not rewritten, so the repo size is unchanged. The file is only removed from the index.
 - Anyone who relied on the committed `.so` must build once so CMake copies it in.
+- UNTESTED on native Windows/MSVC (only mingw cross-build ran). On Windows `_commit` is used for fsync and directory fsync is skipped.
+- Opening a project removes stale `*.arcane-tmp` files under it; a second process saving into the same project at that moment would see its save fail (rolled back, no corruption). Concurrent writers are not supported.
+- Single-file saves (`write_text_file_atomic`) are unchanged (rename of a synced-less temp); only the multi-file paths (editor save, CLI save, migration) use the journal. `canonical_json.hpp` still carries the old "not crash-atomic" note on `write_text_files_transactional`, which is now unused by product code (hermes IN2 owns that file tonight).
 
 ---
 
-## Night status (WRAP, 2026-10-31 02:40 BRT)
-
-- Done and committed: HY1, AF10C, AF8C, GP1, GP2, GP3, GP4, PX1 (8 commits on top of ac03c08, listed by `git log engine-hermes-2026-10-30..HEAD`).
-- Not run, PARTIAL in `jobs/<ID>/RESULT.md`: PX2, GP5, GS1, GS2, GP6, PF1, GP7, KI2, AU2 and their R-retry jobs. Reason in each: the Engine TASKS board prerequisite (ENG-021 onward) was still todo or in progress, and the parallel protocol forbids claiming a row until its dependencies are done. No code was written for them.
-- Validation of the final commit (`1c6ea03`, WRAP session): `cmake --build build-gcc` up to date; `ctest` 72/72 passed (gcc Debug, headless, includes the sample player/export runs). The last full `scripts/build-and-test.sh` recorded in the PX1 job (same tree as this commit): gcc PASS, clang ASan/UBSan PASS, mingw build PASS. WRAP did not re-run clang or mingw.
-- Working tree clean; no `-wip` branch was needed.
-
 ## Technical detail
 
-### PX1: prefab follow-ups
-- `refresh_prefab_instances` (engine) propagates prefab edits to non-overridden values on load (session open, scene switch, CLI scene override); `test_prefab` covers overridden values kept, missing prefab warning.
-- `prefab.remove` undo restores a scene snapshot (IDs unchanged); `EditSession::set_property/set_transform` use `prefab.override` on instance nodes.
-- Editor: Save as Prefab, Assets > Prefabs, instance header/revert/break link. `docs/editor-command-inventory.md` and `docs/formats/prefab.md` updated; `arcane prefab ...` CLI already generated from `prefab.*`.
+### Test results per config (tonight's tip 7e2b867)
+- gcc Debug headless: ctest 76/76 passed (WRAP, 2026-11-01).
+- clang ASan/UBSan headless: PASS in the IN6 job (same tip).
+- mingw cross-build: OK in the IN6 job (build only, not run).
+- Native Windows/MSVC: not run. UNTESTED.
+- Samples (headless `arcane run`, 120 fixed frames): platformer_slice, topdown_slice, sample_project all `ok:true`.
 
 ### GP5: top-down controller, steering, combat, pooled spawner (docs/slice_topdown_gaps.md)
 - Engine components (all registered by `register_physics_components`): `TopDownController2D` (`topdown.hpp`), `SteeringAgent2D` + `NavGrid`/`find_path` grid A* (`navigation.hpp`), `Spawner2D` + `Node::set_active` (`spawner.hpp`), `Health`/`Hurtbox`/`Hitbox`/`Projectile` (`combat.hpp`). Decisions 82-85 and 86 in `docs/decisions.md`.
@@ -110,11 +93,13 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - `Sprite::flip_x/flip_y` (render swaps UVs), `Collider2D::mirror_with_sprite` (offset mirrored, shape rebuilt on change).
 - `Hud::find_text/find_bar/find_image/find_button`; HUD ids already existed. platformer_slice uses all three (module no longer has clip properties or negative scale).
 - Tests: `test_animgraph`, `test_animgraph_commands`, extended `test_platformer_slice`, `test_physics_components`, `test_schema_examples`, `test_migration`.
+### Delegated decisions tonight
+- Branch stacked on `engine-nightly-2026-10-30` (PR #9), not on hermes branches (docs/decisions.md).
+- IN6 baseline is per flavor (`Debug-GNU`); other flavors skip the perf gate rather than compare against foreign timings.
+- IN4 manifest name `.arcane-commit` and temp suffix `.arcane-tmp` chosen by us; recovery runs at every open.
 
-### GP2: events, layers/masks, spatial queries, tile tags (slice gaps 3 and 9)
-- `Component::on_collision_enter/exit` (renamed from `on_contact_*`) and new `on_trigger_enter/exit` (sensor Collider2D, Box2D sensor events); deterministic order (exits first, then by node id). `Collider2D.layer`/`mask`; names in `project.json` `collision_layers` (schema, `project.set`, undoable through EditSession). `PhysicsWorld::raycast/overlap_aabb/overlap_point` with layer mask, reachable via `GameContext::physics()` (set by the player and the fixed-frame runner). Tileset `tiles[].tags` (`tileset.set_tile --tags`), `GameContext::tile_at/tagged_tile_at`. Goldens: only `layer`/`mask` added to scene goldens; new `project.example.json`, `tileset.example.json`.
-- Tests: `test_physics_events` (new), `test_tilemap_commands`, `test_tooling_commands`, `test_schema_examples`. `scripts/build-and-test.sh`: gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC.
-- Not done: the platformer slice still uses its manual AABB test (not replaced); no editor widgets for layer names or tile tags; sensors do not detect static bodies' shapes beyond what Box2D allows.
+### UNTESTED on native Windows/MSVC
+Everything in this PR: the atomic-save fsync/rename path (`_commit`), the CLI contract test, the perf gate (skips on MSVC) and the new docs. Only the mingw cross-build ran.
 
 ### GP1: gameplay context API (docs/slice_platformer_gaps.md items 1, 2, 5, 6)
 - `RigidBody2D::teleport(pos)` moves the node at once and queues a Box2D transform applied at the start of the next `PhysicsWorld::step` (velocity cleared), so it is safe inside any hook. `PhysicsWorld::step` now also drops bodies of destroyed nodes and creates bodies for nodes spawned since the last step (before this a destroyed node kept a ghost body).
@@ -123,11 +108,13 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 - Restart: the runner reloads the authored scene file between ticks (`FixedRunOptions::restart_scene_json` for the headless runners, `reload_scene_file` in the player, stop+play in the editor so it restarts from the editor's in-memory scene). The windowed player and the editor's Play mode own a `SceneManager` (PX2: `active_scene_manager()->request_switch(...)`, authored persistent roots carry across scenes); the headless runners (`--headless`, `arcane run`) do not yet. Restart stays a small request flag rather than a manager switch.
 - `platformer_slice`: coins use `destroy_node`, pit fall respawns with `teleport` (second fall = game over; test expects 2 hurt cues), Restart requests a real reload, sounds go through `play_sound("coin.wav")`.
 - No authored data or registry commands were added, so no schema/command rows were needed. New test `tests/test_game_context.cpp` (teleport, destroy/spawn vs bodies, scene pointer through moves, asset lookup + audio by id, restart); `test_platformer_slice` updated. Tests: gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC; real audio device playback untested.
+### IN6: headless bench regression gate (ENG-036)
+- `tests/perf_gate.cmake` (cmake -P) runs `arcane_bench` for scene/particles/physics at default sizes, 5 runs each, median `avg_frame_ms`, fails above baseline +30% (`docs/perf_baseline.json`). Tests `perf_gate` and `perf_gate_forced_slow` (WILL_FAIL, 1000x scale) carry label `perf`; baseline refresh target `perf_baseline_update`. Baseline is for flavor `Debug-GNU`; other flavors skip. Docs in new `docs/perf_gate.md` (hermes owns docs/perf.md and bench_main.cpp tonight, untouched).
+- UNTESTED on native Windows/MSVC (the gate skips there anyway: different flavor).
 
-### AF8C: tileset/clip panel Save, Open clip, settings widgets
-- `transition.set`/`save.config_set`/`debug.set`: in-memory project edits (`mutable_project` + `mark_project_dirty`), `mutating`, no longer immediate writes (`tooling/src/flow_commands.cpp`, `all_commands.cpp`). New `tileset.replace` (whole tileset in one step) and `tileset.restore` (inverse; `tileset.create` returns it too) in `tilemap_commands.cpp`.
-- `editor/app/editor_main.cpp`: Save tileset = one `tileset.replace`, Save clip = `clip.create` via `EditSession`, Open clip = `clip.info`, Open tileset = `tileset.info`, Project Settings gets transition/save/debug widgets.
-- Tests: `test_edit_session` +3 (flow settings parity/undo/save, tileset Save undo, clip open/save undo) and a wider source lint; `test_scene_flow`/`test_debug` now persist explicitly. Docs: `docs/commands.md`, regenerated `docs/cli-reference.md`, inventory, decisions.
+### IN5: CLI exit-code and error contract test (ENG-035)
+- New `tests/test_cli_contract.cpp`: for every registry and offline command (generated list) runs `arcane <cmd> --args <invalid>` on a copy of `samples/sample_project`; asserts exit 2, `ok:false` with `code/message/file/path/hint`, `ARGS_INVALID`, single-line stdout, stderr diagnostic, and no project file changed. Also pins `exit_code()` for every code and checks each is listed in its row of `docs/cli-reference.md`. The exit table already existed in the generator, so no generator change.
+- Tests: gcc Debug and clang ASan/UBSan green, mingw build OK. UNTESTED on native Windows/MSVC.
 
 ### AF10C: `arcane render`
 - New `tooling/src/render_commands.cpp` (command `render`), `render_offscreen` and masked `compare_images` in `engine/include/arcane/screenshot.hpp`, `run_on_copy` shared with `run`/`test` (optional `finish` callback), exit code 8 / `RENDER_UNAVAILABLE`.
@@ -161,3 +148,9 @@ Minimum: `scripts/build-and-test.sh` (or the Windows ctest above) is green. Opti
 ## PF1: rendering and entity performance
 
 - Sprite batching (static index buffer, VBO orphaning, 16384-quad batches), view culling with `RenderStats::culled`, benchmark defaults 5000 sprites / 2000 particles / 500 bodies, `arcane_bench --render 1`. Tests: `test_render_bench`, `test_render_cull`, `test_debug`, `bench_cli_render_smoke`. Numbers in `docs/perf.md` come from llvmpipe under Xvfb; Windows not measured.
+### IN4: crash-atomic multi-file save (ENG-034)
+- New `arcane/atomic_save.hpp` + `engine/src/atomic_save.cpp`: `commit_files_atomic(root, files, options)` stages every file as `NAME.arcane-tmp` (fwrite + fsync), writes a manifest `ROOT/.arcane-commit` (itself via temp + rename = the commit point), renames the staged files, fsyncs the root, removes the manifest. `recover_pending_commit(root)` rolls a committed-but-unfinished save forward, or discards a missing/torn manifest and all stale `.arcane-tmp`. A kill therefore yields entirely old or entirely new files.
+- Ordinary failure while renaming still restores previous bytes and reports `rolled back: ...` (existing tests pass unchanged).
+- Call sites: `ProjectSession::save` (editor), `ProjectContext::save` (CLI/tooling), `migrate_project`; recovery runs in `ProjectSession::open` (so editor, player, CLI) and at the start of every commit.
+- Test `tests/test_atomic_save.cpp`: crash hook (`crash_at_step`) after each of the 2N+2 steps, recover, assert all-old before the commit point / all-new after, no leftovers; torn manifest; next save recovers; rollback; path outside root.
+- Tests: gcc Debug and clang ASan/UBSan green (ctest all passed), mingw cross-build OK.
