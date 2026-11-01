@@ -1,6 +1,8 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff. Jobs so far: IN4 (ENG-034), IN5 (ENG-035), IN6 (ENG-036).
+This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff (4 commits: IN4, IN5, IN6 and this PR body). Jobs done tonight: IN4 (ENG-034), IN5 (ENG-035), IN6 (ENG-036). Queue is empty after these; IN1-IN3 belong to hermes PR #10.
+
+Verified on the final commit 7e2b867 (WRAP, 2026-11-01): gcc Debug incremental build OK, `ctest` 76/76 passed (perf label 2/2 passed); `arcane --project samples/<p> --module <p>.so run --frames 120` returns `ok:true` for platformer_slice, topdown_slice and sample_project. clang ASan/UBSan and mingw results are from the IN6 job on the same commit (not re-run by WRAP).
 
 **1. Step-by-step manual checks**
 
@@ -34,6 +36,21 @@ Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises 
 ---
 
 ## Technical detail
+
+### Test results per config (tonight's tip 7e2b867)
+- gcc Debug headless: ctest 76/76 passed (WRAP, 2026-11-01).
+- clang ASan/UBSan headless: PASS in the IN6 job (same tip).
+- mingw cross-build: OK in the IN6 job (build only, not run).
+- Native Windows/MSVC: not run. UNTESTED.
+- Samples (headless `arcane run`, 120 fixed frames): platformer_slice, topdown_slice, sample_project all `ok:true`.
+
+### Delegated decisions tonight
+- Branch stacked on `engine-nightly-2026-10-30` (PR #9), not on hermes branches (docs/decisions.md).
+- IN6 baseline is per flavor (`Debug-GNU`); other flavors skip the perf gate rather than compare against foreign timings.
+- IN4 manifest name `.arcane-commit` and temp suffix `.arcane-tmp` chosen by us; recovery runs at every open.
+
+### UNTESTED on native Windows/MSVC
+Everything in this PR: the atomic-save fsync/rename path (`_commit`), the CLI contract test, the perf gate (skips on MSVC) and the new docs. Only the mingw cross-build ran.
 
 ### IN6: headless bench regression gate (ENG-036)
 - `tests/perf_gate.cmake` (cmake -P) runs `arcane_bench` for scene/particles/physics at default sizes, 5 runs each, median `avg_frame_ms`, fails above baseline +30% (`docs/perf_baseline.json`). Tests `perf_gate` and `perf_gate_forced_slow` (WILL_FAIL, 1000x scale) carry label `perf`; baseline refresh target `perf_baseline_update`. Baseline is for flavor `Debug-GNU`; other flavors skip. Docs in new `docs/perf_gate.md` (hermes owns docs/perf.md and bench_main.cpp tonight, untouched).
