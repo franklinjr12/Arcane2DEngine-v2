@@ -56,6 +56,9 @@ class PlayStopController {
     physics_.step(*runtime_, fixed_dt);
   }
 
+  // Bodies in the Play-mode physics world (0 in Edit mode).
+  int physics_body_count() const noexcept { return mode_ == EditorMode::Play ? physics_.body_count() : 0; }
+
   // Discards the runtime scene; the authored scene was never touched.
   void stop() noexcept {
     runtime_.reset();

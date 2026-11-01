@@ -28,5 +28,7 @@ The file name is free (`tiles.json`, `*.tileset.json`); migration finds tilesets
 | `terrains[].terrain` | integer ≥ 1 | |
 | `terrains[].tiles` | 16 integers | tile id (0..`tile_count`) for each neighbour mask 0..15 |
 
+Author tilesets with `arcane tileset create/set_tile/set_rule/remove_rule/validate` (`docs/commands.md`).
+
 Tile ids are 1-based, `0` is the empty cell. Unknown fields are errors; v1 differs only in the
 header (`"format_version": 1`) and ignores unknown fields on plain loads.

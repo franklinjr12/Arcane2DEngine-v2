@@ -69,6 +69,7 @@ int main() {
                                      .height = static_cast<float>(fb_height)});
   renderer->end_frame();
 
+  ARCANE_ASSERT_TRUE(renderer->stats().sprites == 1 && renderer->stats().draw_calls == 1);  // debug overlay counters
   const arcane::Color center = renderer->read_pixel(fb_width / 2, fb_height / 2);
   ARCANE_ASSERT_TRUE(center.r > 0.9f);
   ARCANE_ASSERT_TRUE(center.g < 0.1f);

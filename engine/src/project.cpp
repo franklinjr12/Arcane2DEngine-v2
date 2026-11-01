@@ -24,11 +24,14 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
     const bool strict = strict_unknown || dialect == canonical::Dialect::V2;
     if (strict) {
       if (dialect == canonical::Dialect::V2) {
-        canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud"},
+        canonical::require_only_keys(root, {"format", "version", "name", "main_scene", "module", "input_actions", "hud", "transition",
+                                     "save", "debug"},
                                      "project");
       } else {
         canonical::require_only_keys(
-            root, {"format_version", "name", "main_scene", "module", "input_actions", "hud"}, "project");
+            root, {"format_version", "name", "main_scene", "module", "input_actions", "hud", "transition",
+                         "save", "debug"},
+            "project");
       }
     }
     if (!root.contains("name") || !root.contains("main_scene")) {
@@ -58,6 +61,40 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
       }
       project.hud = std::move(*hud);
     }
+    if (root.contains("transition")) {
+      const json& t = root["transition"];
+      canonical::require_object(t, "project 'transition'");
+      canonical::require_only_keys(t, {"fade_out_seconds", "fade_in_seconds", "color"}, "project 'transition'");
+      TransitionConfig& c = project.transition;
+      if (t.contains("fade_out_seconds")) c.fade_out_seconds = canonical::as_float(t["fade_out_seconds"], "transition 'fade_out_seconds'");
+      if (t.contains("fade_in_seconds")) c.fade_in_seconds = canonical::as_float(t["fade_in_seconds"], "transition 'fade_in_seconds'");
+      if (t.contains("color")) c.color = canonical::as_color(t["color"], "transition 'color'");
+      if (!(c.fade_out_seconds >= 0.0f && c.fade_out_seconds <= 60.0f) ||
+          !(c.fade_in_seconds >= 0.0f && c.fade_in_seconds <= 60.0f)) {
+        canonical::fail("project 'transition': fade seconds must be within [0, 60]");
+      }
+    }
+    if (root.contains("debug")) {
+      const json& d = root["debug"];
+      canonical::require_object(d, "project 'debug'");
+      canonical::require_only_keys(d, {"overlay_visible", "overlay_font_scale"}, "project 'debug'");
+      if (d.contains("overlay_visible")) project.debug.overlay_visible = canonical::as_bool(d["overlay_visible"], "debug 'overlay_visible'");
+      if (d.contains("overlay_font_scale")) project.debug.overlay_font_scale = canonical::as_float(d["overlay_font_scale"], "debug 'overlay_font_scale'");
+      if (!(project.debug.overlay_font_scale > 0.0f && project.debug.overlay_font_scale <= 8.0f)) {
+        canonical::fail("project 'debug': overlay_font_scale must be within (0, 8]");
+      }
+    }
+    if (root.contains("save")) {
+      const json& s = root["save"];
+      canonical::require_object(s, "project 'save'");
+      canonical::require_only_keys(s, {"game_id", "data_version"}, "project 'save'");
+      if (s.contains("game_id")) project.save.game_id = canonical::as_string(s["game_id"], "save 'game_id'");
+      if (s.contains("data_version")) project.save.data_version = canonical::as_int(s["data_version"], "save 'data_version'");
+      if (!project.save.game_id.empty() && !is_valid_game_id(project.save.game_id)) {
+        canonical::fail("project 'save': game_id must be 1-64 characters of A-Z a-z 0-9 . _ -");
+      }
+      if (project.save.data_version < 1) canonical::fail("project 'save': data_version must be >= 1");
+    }
     return project;
   } catch (const canonical::SchemaError& ex) {
     return std::unexpected(std::string(ex.what()));
@@ -65,6 +102,16 @@ std::expected<ProjectFile, std::string> load_project(const std::string& text, bo
 }
 
 }  // namespace
+
+bool is_valid_game_id(const std::string& id) noexcept {
+  if (id.empty() || id.size() > 64 || id == "." || id == "..") return false;
+  for (const char c : id) {
+    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' ||
+                    c == '_' || c == '-';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 std::expected<std::string, std::string> save_project_canonical_json(const ProjectFile& project) {
   json root;
@@ -80,6 +127,37 @@ std::expected<std::string, std::string> save_project_canonical_json(const Projec
   if (!hud) return std::unexpected(hud.error());
   root["input_actions"] = *canonical::parse_strict(*input_actions);
   root["hud"] = *canonical::parse_strict(*hud);
+  // Optional sections are written only when they differ from the defaults, so
+  // projects that never configure them keep their exact bytes.
+  const TransitionConfig default_transition;
+  const TransitionConfig& t = project.transition;
+  if (t.fade_out_seconds != default_transition.fade_out_seconds ||
+      t.fade_in_seconds != default_transition.fade_in_seconds || t.color.r != 0.0f || t.color.g != 0.0f ||
+      t.color.b != 0.0f || t.color.a != 1.0f) {
+    if (!(t.fade_out_seconds >= 0.0f && t.fade_out_seconds <= 60.0f && t.fade_in_seconds >= 0.0f &&
+          t.fade_in_seconds <= 60.0f)) {
+      return std::unexpected(std::string("project transition: fade seconds must be within [0, 60]"));
+    }
+    root["transition"] = {{"fade_out_seconds", t.fade_out_seconds},
+                          {"fade_in_seconds", t.fade_in_seconds},
+                          {"color", {t.color.r, t.color.g, t.color.b, t.color.a}}};
+  }
+  const DebugConfig default_debug;
+  if (project.debug.overlay_visible != default_debug.overlay_visible ||
+      project.debug.overlay_font_scale != default_debug.overlay_font_scale) {
+    if (!(project.debug.overlay_font_scale > 0.0f && project.debug.overlay_font_scale <= 8.0f)) {
+      return std::unexpected(std::string("project debug: overlay_font_scale must be within (0, 8]"));
+    }
+    root["debug"] = {{"overlay_visible", project.debug.overlay_visible},
+                     {"overlay_font_scale", project.debug.overlay_font_scale}};
+  }
+  if (!project.save.game_id.empty() || project.save.data_version != 1) {
+    if (!project.save.game_id.empty() && !is_valid_game_id(project.save.game_id)) {
+      return std::unexpected(std::string("project save: invalid game_id"));
+    }
+    if (project.save.data_version < 1) return std::unexpected(std::string("project save: data_version must be >= 1"));
+    root["save"] = {{"game_id", project.save.game_id}, {"data_version", project.save.data_version}};
+  }
   return canonical::dump(root);
 }
 

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -9,6 +10,7 @@
 #include "arcane/component.hpp"
 #include "arcane/export.hpp"
 #include "arcane/math2d.hpp"
+#include "arcane/property.hpp"
 
 namespace arcane {
 
@@ -25,6 +27,27 @@ struct Transform2D {
 
 // Resolved transform in scene space, after composing the full parent chain.
 using WorldTransform2D = Transform2D;
+
+// One recorded difference between a prefab instance and its prefab file.
+// `local_id` is the prefab-local node ID. With an empty `component` the
+// property is a node field ("name", "position", "rotation_radians", "scale");
+// otherwise it is a property of the node's component of that type.
+struct PrefabOverride {
+  NodeId local_id = kInvalidNodeId;
+  std::string component;
+  std::string property;
+  PropertyValue value;
+};
+
+// Marks a node as part of a prefab instance (docs/formats/prefab.md).
+// `instance_id` is the scene ID of the instance's root node; `overrides` is
+// only filled on that root node.
+struct PrefabLink {
+  std::string asset;
+  NodeId instance_id = kInvalidNodeId;
+  NodeId local_id = kInvalidNodeId;
+  std::vector<PrefabOverride> overrides;
+};
 
 class Scene;
 
@@ -55,6 +78,9 @@ class ARCANE_API Node {
   const std::vector<std::unique_ptr<Component>>& components() const noexcept { return components_; }
   Component* find_component(std::string_view type_name) const noexcept;
 
+  const std::optional<PrefabLink>& prefab_link() const noexcept { return prefab_link_; }
+  void set_prefab_link(std::optional<PrefabLink> link) { prefab_link_ = std::move(link); }
+
   // True once Scene::destroy_node has marked this node (or an ancestor) for
   // destruction; the node still physically exists until the next flush.
   bool pending_destroy() const noexcept { return pending_destroy_; }
@@ -73,6 +99,7 @@ class ARCANE_API Node {
   std::vector<std::unique_ptr<Node>> children_;
   Transform2D local_{};
   std::vector<std::unique_ptr<Component>> components_;
+  std::optional<PrefabLink> prefab_link_;
   bool pending_destroy_ = false;
 };
 
