@@ -26,6 +26,14 @@ const char* env(const char* name) {
   return value && *value ? value : nullptr;
 }
 
+// True when `text` is a well-formed save from a newer engine: refuse it, never fall back or overwrite.
+bool is_newer_file_version(const std::string& text) {
+  auto parsed = canonical::parse_strict(text);
+  if (!parsed || !parsed->is_object() || !parsed->contains("version")) return false;
+  const json& v = (*parsed)["version"];
+  return v.is_number_integer() && v.get<long long>() > 2;
+}
+
 }  // namespace
 
 const SaveValue* SaveData::find(std::string_view key) const noexcept {
@@ -136,7 +144,24 @@ std::expected<void, std::string> write_save_game(const std::filesystem::path& di
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
   if (ec) return std::unexpected(std::format("cannot create save folder {}: {}", dir.string(), ec.message()));
-  return write_text_file_atomic(save_file_path(dir, slot), *text);
+  const auto path = save_file_path(dir, slot);
+  if (std::filesystem::exists(path, ec)) {
+    if (auto old = read_text_file(path)) {
+      if (is_newer_file_version(*old)) {
+        return std::unexpected(std::format("save: {} was written by a newer engine; not overwriting", path.string()));
+      }
+      if (load_save_game_from_json(*old)) {
+        if (auto kept = write_text_file_atomic(save_backup_path(dir, slot), *old); !kept) {
+          return std::unexpected(std::format("cannot keep backup: {}", kept.error()));
+        }
+      }
+    }
+  }
+  return write_text_file_atomic(path, *text);
+}
+
+std::filesystem::path save_backup_path(const std::filesystem::path& dir, std::string_view slot) {
+  return dir / (std::string(slot) + std::string(kSaveSuffix) + ".bak");
 }
 
 std::expected<SaveData, std::string> read_save_game_file(const std::filesystem::path& dir, std::string_view slot) {
@@ -173,6 +198,48 @@ std::expected<SaveData, std::string> load_save_game(const std::filesystem::path&
   if (!data) return data;
   if (auto ok = migrate_save_game(*data, current_version, migrate); !ok) return std::unexpected(ok.error());
   return data;
+}
+
+std::expected<LoadedSave, std::string> load_save_game_recovering(const std::filesystem::path& dir,
+                                                                 std::string_view slot, int current_version,
+                                                                 const SaveMigration& migrate) {
+  if (!is_valid_save_slot(slot)) return std::unexpected(std::format("save: invalid slot name '{}'", slot));
+  LoadedSave out;
+  auto text = read_text_file(save_file_path(dir, slot));
+  std::string why;
+  if (text) {
+    if (is_newer_file_version(*text)) {
+      return std::unexpected(std::format("save slot '{}' was written by a newer engine and is not read", slot));
+    }
+    if (auto data = load_save_game_from_json(*text)) out.data = std::move(*data);
+    else why = data.error();
+  } else {
+    why = text.error();
+  }
+  if (!why.empty()) {
+    auto backup = read_text_file(save_backup_path(dir, slot));
+    std::expected<SaveData, std::string> data =
+        backup ? load_save_game_from_json(*backup) : std::unexpected(backup.error());
+    if (!data) {
+      return std::unexpected(std::format("save slot '{}' is unusable ({}) and so is its backup ({})", slot, why,
+                                         data.error()));
+    }
+    out.data = std::move(*data);
+    out.from_backup = true;
+    out.recovery_note = std::move(why);
+  }
+  if (auto ok = migrate_save_game(out.data, current_version, migrate); !ok) return std::unexpected(ok.error());
+  return out;
+}
+
+std::expected<void, std::string> delete_save_game(const std::filesystem::path& dir, std::string_view slot) {
+  if (!is_valid_save_slot(slot)) return std::unexpected(std::format("save: invalid slot name '{}'", slot));
+  for (const auto& path : {save_file_path(dir, slot), save_backup_path(dir, slot)}) {
+    std::error_code ec;
+    std::filesystem::remove(path, ec);
+    if (ec) return std::unexpected(std::format("cannot delete {}: {}", path.string(), ec.message()));
+  }
+  return {};
 }
 
 std::vector<std::string> list_save_slots(const std::filesystem::path& dir) {

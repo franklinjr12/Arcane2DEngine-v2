@@ -305,6 +305,11 @@ add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
 add_test(NAME test_scene_flow COMMAND test_scene_flow)
 
+# --- IN10 versioned save slots: .bak recovery, future version refusal, upgrade hook ---
+add_executable(test_save_game test_save_game.cpp)
+target_link_libraries(test_save_game PRIVATE arcane_tooling)
+add_test(NAME test_save_game COMMAND test_save_game)
+
 # --- FE23 debug overlay data, debug.* / bench.run commands, headless benchmark -
 add_executable(test_debug test_debug.cpp)
 target_link_libraries(test_debug PRIVATE arcane_tooling)

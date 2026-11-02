@@ -46,8 +46,13 @@ ARCANE_API std::expected<std::string, std::string> save_game_canonical_json(cons
 // are errors.
 ARCANE_API std::expected<SaveData, std::string> load_save_game_from_json(const std::string& text);
 
+// "<dir>/<slot>.save.json.bak": the previous good save of the slot.
+ARCANE_API std::filesystem::path save_backup_path(const std::filesystem::path& dir, std::string_view slot);
+
 // Creates `dir` if needed and replaces `<dir>/<slot>.save.json` atomically
-// (temp file, close, rename): a failed write leaves the old save untouched.
+// (temp file, close, rename): a failed write leaves the old save untouched. If the old file is a valid save
+// it is first kept as the .bak (a corrupt old file never replaces a good .bak). A file written by a newer
+// engine (unsupported file 'version') is refused and left as it is.
 ARCANE_API std::expected<void, std::string> write_save_game(const std::filesystem::path& dir, std::string_view slot,
                                                             const SaveData& data);
 ARCANE_API std::expected<SaveData, std::string> read_save_game_file(const std::filesystem::path& dir,
@@ -68,6 +73,24 @@ ARCANE_API std::expected<void, std::string> migrate_save_game(SaveData& data, in
 // call write_save_game to keep the upgraded data.
 ARCANE_API std::expected<SaveData, std::string> load_save_game(const std::filesystem::path& dir, std::string_view slot,
                                                                int current_version, const SaveMigration& migrate = {});
+
+// A save loaded by load_save_game_recovering.
+struct LoadedSave {
+  SaveData data;
+  bool from_backup = false;   // the slot file was unusable and the .bak was read instead
+  std::string recovery_note;  // why the slot file was rejected (empty unless from_backup); a recoverable error
+};
+
+// Like load_save_game, but a slot file that is missing, truncated, not valid JSON, or fails the strict format
+// check falls back to <slot>.save.json.bak and reports the reason in recovery_note. Nothing is rewritten.
+// Not recoverable (error, .bak not used): a file from a newer engine (file 'version' > 2), data newer than
+// `current_version`, or a failing migration step.
+ARCANE_API std::expected<LoadedSave, std::string> load_save_game_recovering(const std::filesystem::path& dir,
+                                                                            std::string_view slot, int current_version,
+                                                                            const SaveMigration& migrate = {});
+
+// Removes the slot file and its .bak. Not an error if neither exists.
+ARCANE_API std::expected<void, std::string> delete_save_game(const std::filesystem::path& dir, std::string_view slot);
 
 // Slot names that have a save file in `dir`, sorted. Empty if `dir` is missing.
 ARCANE_API std::vector<std::string> list_save_slots(const std::filesystem::path& dir);

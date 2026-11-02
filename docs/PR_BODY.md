@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery).
 
 **1. Step-by-step manual checks**
 
@@ -17,6 +17,8 @@ No UI change. IN8: `Tween` components accept 7 new easing names (`back_in`, `bac
 
 IN9: no UI change; new `arcane::layout_text()` in `arcane/text.hpp` (word wrap, break long words, left/center/right, line height, UTF-8 + missing-glyph fallback), cases in `tests/test_text.cpp` (`ctest -R test_text`). HUD is not wired to it (hermes owns hud.cpp).
 
+IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (falls back to `<slot>.save.json.bak`, reports why), `delete_save_game`, `save_backup_path`; `write_save_game` keeps the previous good file as `.bak` and refuses to overwrite a file from a newer engine. Tests: `ctest -R test_save_game`.
+
 **3. Enough to merge**
 Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.
 
@@ -28,6 +30,11 @@ Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manu
 ---
 
 ## Technical detail
+
+### IN10: save slot recovery
+- `write_save_game`: old file valid -> copied atomically to `.bak` first; corrupt old file never replaces a good `.bak`; newer file `version` is refused untouched. Existing `load_save_game`/`read_save_game_file` and all error texts unchanged.
+- No checksum field: the `arcane.save` v2 schema is strict (schemas/* is hermes-owned tonight), so truncation/garbage is detected by the strict parse instead. Future data_version refused by `migrate_save_game` without fallback.
+- Tests: `tests/test_save_game.cpp` (list/delete, upgrade, truncated->.bak, garbage, future version, no temp leftovers). gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC.
 
 ### IN8: tween easings, chaining, cancel
 - Easing set complete: in/out/in-out for quad, cubic, sine, back, elastic, bounce (+linear). Endpoints exact for all.
