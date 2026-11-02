@@ -1,0 +1,63 @@
+{
+  "events": [
+    {
+      "code": 68,
+      "down": true,
+      "frame": 5,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": true,
+      "frame": 174,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": false,
+      "frame": 194,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": true,
+      "frame": 260,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": false,
+      "frame": 280,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": true,
+      "frame": 296,
+      "kind": "key"
+    },
+    {
+      "code": 32,
+      "down": false,
+      "frame": 300,
+      "kind": "key"
+    },
+    {
+      "code": 68,
+      "down": false,
+      "frame": 312,
+      "kind": "key"
+    },
+    {
+      "code": 68,
+      "down": true,
+      "frame": 380,
+      "kind": "key"
+    }
+  ],
+  "fixed_hz": 60,
+  "format": "arcane.replay",
+  "frames": 620,
+  "seed": 0,
+  "version": 1
+}

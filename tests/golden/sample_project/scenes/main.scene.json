@@ -31,7 +31,11 @@
         {
           "id": 4,
           "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
             "height": 48.0,
+            "region": "",
             "texture": 13743565431654770875,
             "tint": [
               1.0,
@@ -63,6 +67,9 @@
             "friction": 0.0,
             "height": 48.0,
             "is_sensor": false,
+            "layer": 0,
+            "mask": 2147483647,
+            "mirror_with_sprite": false,
             "offset": [
               0.0,
               0.0

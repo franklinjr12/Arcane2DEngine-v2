@@ -36,6 +36,8 @@ class ARCANE_API Window {
   void poll_events();
   void swap_buffers();
   void framebuffer_size(int& width, int& height) const;
+  // Window size in screen coordinates (the unit of cursor positions); differs from the framebuffer on HiDPI.
+  void window_size(int& width, int& height) const;
 
   // Opaque GLFWwindow*, exposed only for other engine subsystems (e.g. the
   // renderer's ImGui backend later) that must already link GLFW directly.

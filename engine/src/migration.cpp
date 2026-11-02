@@ -1,10 +1,13 @@
 #include "arcane/migration.hpp"
 
+#include "arcane/atomic_save.hpp"
+
 #include <algorithm>
 #include <format>
 #include <set>
 
 #include "arcane/animation.hpp"
+#include "arcane/animgraph.hpp"
 #include "arcane/canonical_json.hpp"
 #include "arcane/tilemap.hpp"
 #include "canonical_json.hpp"
@@ -23,7 +26,7 @@ bool is_scene_file(const std::filesystem::path& path) {
   return name.size() > 11 && name.ends_with(".scene.json");
 }
 
-enum class AssetKind { None, Tileset, Clip };
+enum class AssetKind { None, Tileset, Clip, AnimGraph };
 
 // Tileset and clip files have arbitrary *.json names, so they are recognized
 // by content: the v2 `format` string, or the legacy keys that only that kind
@@ -35,6 +38,7 @@ AssetKind classify_asset(const std::string& text) {
   if (root.contains("format")) {
     if (root["format"] == "arcane.tileset") return AssetKind::Tileset;
     if (root["format"] == "arcane.clip") return AssetKind::Clip;
+    if (root["format"] == "arcane.animgraph") return AssetKind::AnimGraph;
     return AssetKind::None;
   }
   if (!root.contains("format_version")) return AssetKind::None;
@@ -104,7 +108,9 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
     }
     const AssetKind kind = classify_asset(*text);
     if (kind == AssetKind::None) continue;
-    auto migrated = kind == AssetKind::Tileset ? migrate_tileset_json(*text) : migrate_clip_json(*text);
+    auto migrated = kind == AssetKind::Tileset ? migrate_tileset_json(*text)
+                    : kind == AssetKind::Clip  ? migrate_clip_json(*text)
+                                               : migrate_animgraph_json(*text);
     if (!migrated) {
       return std::unexpected(std::format("{}: {}", asset_path, migrated.error()));
     }
@@ -117,38 +123,18 @@ std::expected<MigrationReport, std::string> migrate_project(const std::filesyste
     return report;
   }
 
-  // Stage every changed file, then commit them one by one; on any failure
-  // put back the files already replaced and drop the remaining staged ones.
-  std::vector<const MigratedFile*> changed;
+  // Commit every changed file as one crash-atomic unit (journal in atomic_save.hpp); on an
+  // ordinary failure the files already replaced are put back.
+  std::vector<FileWrite> writes;
   for (const MigratedFile& file : report.files) {
-    if (file.changed) changed.push_back(&file);
+    if (file.changed) writes.push_back({project_dir / file.path, file.new_text});
   }
-  auto discard_staged = [&] {
-    for (const MigratedFile* file : changed) {
-      std::filesystem::remove(staging_path(project_dir / file->path), ec);
-    }
-  };
-  for (const MigratedFile* file : changed) {
-    auto staged = stage_text_file(project_dir / file->path, file->new_text);
-    if (!staged) {
-      discard_staged();
-      return std::unexpected(staged.error());
-    }
-  }
-  for (std::size_t i = 0; i < changed.size(); ++i) {
-    std::expected<void, std::string> committed;
-    if (static_cast<int>(i) == options.fail_commit_index) {
-      committed = std::unexpected(std::format("simulated failure committing '{}'", changed[i]->path));
-    } else {
-      committed = commit_staged_file(project_dir / changed[i]->path);
-    }
-    if (!committed) {
-      discard_staged();
-      for (std::size_t j = 0; j < i; ++j) {
-        (void)write_text_file_atomic(project_dir / changed[j]->path, changed[j]->old_text);
-      }
-      return std::unexpected(std::format("migration rolled back: {}", committed.error()));
-    }
+  AtomicSaveOptions save_options;
+  save_options.fail_commit_index = options.fail_commit_index;
+  if (auto committed = commit_files_atomic(project_dir, writes, save_options); !committed) {
+    return std::unexpected(committed.error().starts_with("rolled back: ")
+                               ? "migration " + committed.error()
+                               : "migration failed: " + committed.error());
   }
   report.applied = true;
   return report;

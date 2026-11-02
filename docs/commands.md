@@ -1,0 +1,388 @@
+# Authoring commands (`arcane_tooling`)
+
+Every command is a name plus JSON arguments, run against an open
+`ProjectContext` through `CommandRegistry::execute`. The library has no GUI
+dependency. The `arcane` CLI (AF4B, `docs/cli-reference.md`) calls this registry; the
+editor (AF5) is meant to but does not yet. The CLI also has file-level
+commands that need no open scene (`project.*`, `scene.new`, `scene.list`,
+`validate`, `fmt`, `migrate`, `schema`, `docs`); they are listed only in the
+generated CLI reference.
+
+## Project context
+
+`ProjectContext::open(dir, module_override, scene_override)` registers builtin component
+types, loads the project's native module (or `module_override`) and registers
+its types, then reads the main scene, in that order. The scene is read
+strictly: unknown component types or properties, or a missing module, fail the
+open and nothing is written. The module stays loaded until the context is
+destroyed; the scene and registry are destroyed first. Do not keep node,
+component or descriptor pointers beyond the context.
+
+`save()` writes the scene file and, when project-level data changed (`project_dirty()`, set by `hud.*` and `input.*`),
+`project.json`. Both are serialized before anything is written, both files are written in one transactional
+step (project.json first): all-or-nothing for ordinary failures, with the earlier file restored if the second
+commit fails, but not crash-atomic (a kill between the two renames can leave a mix); a failure is `IO_ERROR` and keeps both dirty flags. It fails with `CONFLICT`, writing
+nothing, if a file it would write changed on disk since it was read or last saved. Project-level commands edit
+`session().mutable_project()` in memory only, are ordinary mutating commands (`persist` and `dry_run` work as
+for scene commands, `dry_run` leaves the project clean) and never write on their own.
+
+## Execution
+
+`execute(context, {command, args}, {persist, dry_run})`:
+
+- arguments are checked against the command's schema (`ARGS_INVALID`);
+- a mutating command returns `inverse`, the invocation that restores the
+  previous state (absent when nothing changed);
+- `persist` saves after the command and restores memory if saving fails;
+  `dry_run` runs and then restores memory, writing nothing;
+- a failed command leaves memory and disk unchanged.
+
+`CommandHistory` records forward/inverse pairs for undo/redo (the GUI model;
+the CLI persists immediately and keeps no history).
+
+## Selectors
+
+Structural edits (`node.remove`, `reparent`, `component.remove`, `scene.restore`) return a `scene.restore` inverse
+holding the previous canonical scene, so node/component pointers from before such a call are invalid afterwards.
+IDs are never reused within a session because the counter is part of the scene text, but undoing an add/remove
+restores the counter too.
+
+Node: `id:42` or `path:/Root/Player` (each name must be unique at its level).
+Component: an integer component id, or a type name attached exactly once.
+
+## Commands
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `prop.list` | `node`, `component` | `{component_id, type, properties:[{name,type,value}]}` |
+| `prop.get` | `node`, `component`, `name` | `{name, type, value}` |
+| `prop.set` (mutating) | `node`, `component`, `name`, `value` | `{changed, previous, value}` |
+| `scene.tree` | `node?`, `depth?` | `{scene, nodes:[{id,name,components,children}]}` |
+| `scene.query` | none | `{scene, nodes, roots, components, component_types, next_id}` |
+| `scene.restore` (mutating, internal) | `text` | replaces the scene with canonical scene v2 text; the inverse of structural edits |
+| `node.info` | `node` | `{id,name,path,selector,parent,transform,components,children,prefab?}` |
+| `node.find` | `name?`, `name_contains?`, `component?`, `under?` | `{count, nodes:[{id,name,path,selector}]}` |
+| `node.add` (mutating) | `name`, `parent?`, `position?`, `rotation_radians?`, `scale?` | `{id,name,path,selector}`; inverse `node.remove` |
+| `node.remove` (mutating) | `node` | `{removed, nodes}`; refused for prefab-instance nodes and while an outside `entity_id` property references the subtree (`CONFLICT`) |
+| `node.rename` (mutating) | `node`, `name` | `{changed, previous, name}`; names must not contain `/` |
+| `node.reparent` (mutating) | `node`, `parent?` | moves the subtree to the end of the new parent (root if omitted); refuses cycles |
+| `node.duplicate` (mutating) | `node`, `name?` (default `<name>_copy`), `parent?` | deep copy with new ids and remapped internal `entity_id` references |
+| `node.set_persistent` (mutating) | `node`, `value` | authored root flag, `{changed, previous, persistent}`; non-root refused |
+| `node.set_transform` (mutating) | `node`, `position?`, `rotation_radians?`, `scale?` | `{changed, previous, transform}` |
+| `component.types` | none | registered types with property names |
+| `component.list` | `node` | `{node, components:[{id,type}]}` |
+| `component.add` (mutating) | `node`, `type` | `{component_id,type,node}`; default property values |
+| `component.remove` (mutating) | `node`, `component` | `{removed}`; calls the component's `on_destroy` |
+| `atlas.pack` | `folder`, `atlas`, `image?`, `padding?` (default 1), `max_size?` (default 2048) | `{atlas, image, width, height, padding, regions:[{name,x,y,w,h,uv}]}`; writes the PNG and `arcane.atlas` file at once (ignores `persist`/`dry_run`) |
+| `atlas.regions` | `atlas`, `name?` | same shape as `atlas.pack`, read only |
+| `atlas.make_clip` | `atlas`, `regions:[name]`, `clip`, `name?`, `frame_seconds?` (0.1), `loop?`, `overwrite?` | `{clip, frames}`; writes the clip file, `CONFLICT` if it exists without `overwrite` |
+| `transition.get` | none | `{fade_out_seconds, fade_in_seconds, color}` from `project.json` |
+| `transition.set` | `fade_out_seconds?`, `fade_in_seconds?` (0..60), `color?` `[r,g,b,a]` | `{changed, previous, transition}`; edits the project in memory like `project.set` (the CLI persists `project.json`, the editor undoes it and File > Save writes it); inverse is `transition.set` with the previous values |
+| `debug.get` | none | `{overlay_visible, overlay_font_scale}` from `project.json` |
+| `debug.set` | `overlay_visible?`, `overlay_font_scale?` (>0, <=8) | `{changed, previous, debug}`; edits the project in memory like `project.set`; inverse is `debug.set` with the previous values |
+| `display.get` | none | `{design_width, design_height, scale_mode}` from `project.json` |
+| `display.set` | `design_width?`, `design_height?` (both 0 or both 16..8192), `scale_mode?` (`letterbox`\|`stretch`) | `{changed, previous, display}`; edits the project in memory like `project.set`; inverse is `display.set` with the previous values |
+| `replay.save` | `file`, `frames`, `fixed_hz?`, `seed?`, `events?` | `{file, frames, events}`; writes a validated `arcane.replay` v1 file (`docs/formats/replay.md`) at once (ignores `persist`/`dry_run`) |
+| `replay.run` | `recording`, `expected?`, `trace_out?` | `{frames, final_hash, hashes, matches_expected}`; replays on a copy of the scene (module `on_update` is not called), `trace_out` writes the trace, `expected` fails with `REPLAY_DIVERGED` (path `/hashes/<frame>`) at the first differing frame |
+| `bench.run` | `sprites?`, `emitters?`, `particles_per_emitter?` (0..256), `bodies?`, `frames?` (1..100000) | `arcane.bench` v1 document `{format, version, config, results}`; headless, touches no project file; see `docs/perf.md` |
+| `save.config_get` | none | `{game_id, data_version, directory}` |
+| `save.config_set` | `game_id?`, `data_version?` (>= 1) | `{changed, previous, save}`; edits the project in memory like `project.set`; inverse restores the previous values |
+| `save.list` | `dir?` | `{directory, slots:[{slot, data_version, valid}]}` |
+| `save.get` | `slot`, `key?`, `dir?` | `{data_version, values}` or `{key, value, data_version}` |
+| `save.set` | `slot`, `key`, `value`, `create?`, `dir?` | `{slot, key, value, previous}`; atomic write; `create` makes a missing slot at the project's `data_version` |
+| `save.remove` | `slot`, `key`, `dir?` | `{slot, removed}` |
+| `save.migrate` | `slot`, `to?` (default `save.data_version`), `rename?`, `remove?`, `defaults?`, `dir?` | `{slot, from_version, data_version, values}`; never downgrades; a failure writes nothing |
+| `audio.backend` | `probe_device?` (default false) | `{backend:"null"\|"miniaudio", probed, diagnostic}` |
+| `prefab.save` | `node`, `asset`, `overwrite?` | `{asset, nodes}`; writes the file at once (ignores `persist`/`dry_run`) |
+| `prefab.instantiate` (mutating) | `asset`, `parent?`, `name?`, `position?`, `overrides?` | `{instance_id, nodes:[{local_id,id}]}` |
+| `prefab.remove` (mutating) | `node` (any node of the instance) | `{removed}`; undo restores the scene snapshot (`scene.restore`), so node and component IDs are unchanged |
+| `prefab.override` (mutating) | `node`, `component?`, `property`, `value` | `{instance_id, local_id, property, value, overridden, changed}` |
+| `prefab.revert` (mutating) | `node`, `component?`, `property` | `{reverted, ...}`; no-op if not overridden |
+| `prefab.break_link` (mutating) | `node` | `{instance_id, nodes}`; inverse is `prefab.relink` |
+| `prefab.relink` (mutating) | `asset`, `instance_id`, `nodes:[{id,local_id}]`, `overrides?` | `{instance_id, nodes}` |
+| `prefab.info` | `node` | `{linked, asset, instance_id, local_id, overrides}` |
+
+Atlases (`docs/formats/atlas.md`): all paths are project-relative `/` paths; `image` defaults to the `atlas` path with `.png`
+in place of `.json`. Packing is deterministic. Register with `register_atlas_commands`.
+
+Prefabs (`docs/formats/prefab.md`): `asset` is a project-relative path ending in `.prefab.json`.
+`node` selectors for override/revert/break_link/remove/info may name any node of an instance.
+`overrides` entries are `{local_id, component?, property, value}` with prefab-local IDs; `name` and
+`position` on `prefab.instantiate` are shortcuts for root overrides. The root's `name`/`position`
+differing from the prefab are ordinary overrides. Undo of `prefab.remove` and redo of `prefab.instantiate` keep the same IDs (snapshot restore; redo resets the ID counter).
+
+Transitions and saves (`docs/formats/project.md`, `docs/formats/save.md`): without `dir` the save commands use
+`save_directory(save.game_id)` and fail with `VALUE_INVALID` if no `game_id` is set. They touch only `project.json`
+and save files, never the open scene. Register with `register_flow_commands`.
+
+`audio.backend` opens no audio device unless `probe_device` is true; without it
+the answer is always `null`. With it, a device is opened briefly and, if that
+fails, `backend` is `null` and `diagnostic` holds the reason (the same fallback
+visible editor/player sessions use). Its failure code `AUDIO_UNAVAILABLE`
+(neither backend could start) has CLI exit status 1. Audio settings are the
+`AudioSource` properties (`clip`, `volume`, `loop`, `play_on_start`), edited
+with `prop.set`.
+
+Values use the scene encodings (`docs/formats/scene.md`): bool, 32-bit int,
+finite binary32 float, `[x,y]`, `[r,g,b,a]`, string, unsigned id. `entity_id`
+values must be 0 or an existing node.
+
+Tilemaps and tilesets (`docs/formats/tileset.md`, `tooling/src/tilemap_commands.cpp`): cell commands take a `node` with a
+`Tilemap` component and cell coordinates (`x`,`y`, 0-based, y down; `layer` defaults to 0). `tilemap.paint`, `erase`,
+`fill_rect`, `terrain_paint` and `import_csv` all reduce to a list of changed cells whose inverse is one `tilemap.set_cells`
+with the previous ids (the redo is the exact `set_cells`, so `CommandHistory` merges consecutive calls with the same
+coalesce key into one stroke: the editor's drag = one undo step). Cells and tile ids are validated first (`VALUE_INVALID`
+for out-of-grid cells, missing layers and ids above the tileset's `tile_count` when the map's tileset resolves); nothing
+changes on error. `terrain_paint` is the editor's terrain brush (rule lookup by N/E/S/W mask, neighbours of that terrain
+re-picked; `erase=true` clears and re-picks neighbours). CSV is one row per grid row, comma-separated non-negative
+integers, equal row lengths, no trailing comma; `import_csv` takes `csv` text or a project-relative `file` at offset
+`x`,`y`, `dump_csv` returns the text and with `file` writes it at once (so it refuses `--dry-run`).
+`tileset.*` take a project-relative `tileset` path under `assets/` (the asset id derives from it) and write the file at once
+(no `persist`/`dry_run`): `create` (texture as `assets/*.png` path or asset id), `set_tile` (solid/terrain),
+`set_rule` (16 tile ids by neighbour mask N=1 E=2 S=4 W=8; replaces an existing rule), `remove_rule`, `info` and
+`validate` (rule tiles inside `tile_count`, rule tiles marked with their terrain, duplicate/empty rules; `ok:false` lists
+problems and the file is never changed). Their inverses are the matching tileset commands. Add layers with
+`tilemap.add_layer`; resize maps with `prop.set` on `width`/`height`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `tilemap.info` | `node` | size, cell size, layers and the tileset the map points at |
+| `tilemap.get` | `node`, `x`, `y`, `layer?` | the tile id at the cell (0 = empty) |
+| `tilemap.paint` (mutating) | `node`, `x`, `y`, `tile`, `layer?` | changed cells; inverse `tilemap.set_cells` |
+| `tilemap.erase` (mutating) | `node`, `x`, `y`, `layer?` | changed cells; clears the cell (tile 0) |
+| `tilemap.fill_rect` (mutating) | `node`, `x0`, `y0`, `x1`, `y1`, `tile`, `layer?` | changed cells; inclusive rectangle, corners in any order |
+| `tilemap.terrain_paint` (mutating) | `node`, `x`, `y`, `terrain`, `erase?`, `layer?` | changed cells including re-picked neighbours |
+| `tilemap.import_csv` (mutating) | `node`, `csv` or `file`, `x?`, `y?`, `layer?` | changed cells |
+| `tilemap.dump_csv` | `node`, `layer?`, `file?` | the CSV text; with `file` writes it at once (refuses `--dry-run`) |
+| `tilemap.set_cells` (mutating) | `node`, `cells` (`[{layer,x,y,tile}]`) | changed cells; the inverse of every cell edit |
+| `tilemap.add_layer` (mutating) | `node` | index of the new empty layer |
+| `tileset.create` | `tileset`, `texture`, `tile_width`, `tile_height`, `columns`, `tile_count`, `overwrite?` | writes the tileset file at once |
+| `tileset.info` | `tileset` | sheet layout, per-tile solid/terrain flags and terrain rules |
+| `tileset.replace` | `tileset`, sheet layout as `tileset.create`, `tiles?` `[{id, solid?, terrain?}]`, `terrains?` `[{terrain, tiles[16]}]` | writes the whole file at once (the editor's Save tileset); inverse `tileset.restore` |
+| `tileset.restore` | `tileset`, `content` or `absent=true` | puts the file back; only used as an inverse |
+| `tileset.set_tile` | `tileset`, `tile` (1-based), `solid?`, `terrain?`, `tags?` (array of `a-z0-9_` gameplay labels such as `hazard`, `pickup`; replaces the list) | writes the file at once |
+| `tileset.set_rule` | `tileset`, `terrain`, `tiles` (16 ids by neighbour mask) | adds or replaces the rule; writes the file at once |
+| `tileset.remove_rule` | `tileset`, `terrain` | removes the rule; writes the file at once |
+| `tileset.validate` | `tileset` | `ok:false` (exit 4) lists problems; never changes the file |
+
+## HUD commands
+
+`hud.*` edit the HUD layout stored in `project.json` (`docs/formats/hud.md`), addressing elements by 0-based
+`index` into the draw order. Registered by `register_hud_commands`; see `tooling/src/hud_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `hud.list` | none | `{count, elements:[{index,type,id,...fields}]}`; `type` is `text`, `image`, `bar` or `button` |
+| `hud.add` (mutating) | `type`, `index?` (default append), `element?` (field overrides) | `{index, id}`; inverse `hud.remove` |
+| `hud.remove` (mutating) | `index` | `{index,id,type}`; inverse `hud.add` with every field and the index |
+| `hud.set` (mutating) | `index`, `field`, `value` | `{index,field,previous,value,changed}`; inverse `hud.set` with the previous value |
+| `hud.move` (mutating) | `from`, `to` | `{from,to,changed}`; inverse `hud.move` with the indices swapped |
+
+Defaults match the editor's `+` buttons (button id `button` label `Button`; text `Text`, white; default bar; default
+image). A new element without an `id` gets an unused one (`button`, then `<type>_<n>`); ids are unique and non-empty.
+Fields: all types `id`, `anchor` (`TopLeft`, `Top`, `TopRight`, `Left`, `Center`, `Right`, `BottomLeft`, `Bottom`,
+`BottomRight`), `offset_x`, `offset_y`; text `text`, `font_scale`, `color`; image `texture_asset` (image asset id,
+0 = none; a non-zero id must name an image under `assets/`), `uv` `[u0,v0,u1,v1]`, `width`, `height`, `tint`;
+bar `width`, `height`, `fraction` (0..1), `fill`, `background`; button `label`, `width`, `height`, `font_scale`,
+`enabled`, `normal`, `hover`, `pressed`, `disabled`, `text_color`. Colors are `[r,g,b,a]`; sizes are >= 0 and
+`font_scale` > 0. Runtime-only state (`HudImage::texture`, button `state`/`focused`) is never exposed. An unknown
+field is `ARGS_INVALID` with the valid names in the hint, a bad value or index `VALUE_INVALID`; a rejected call changes
+nothing. Setting a field to its current value, or moving an element onto itself, is a no-op without an inverse.
+
+## Input commands
+
+`input.*` edit the input action map stored in `project.json` (`input_actions`, `docs/formats/input.md`). Actions are
+addressed by name, bindings by 0-based `index`. Registered by `register_input_commands`; see
+`tooling/src/input_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `input.list` | none | `{count, actions:[{name,player,bindings:[{device,code,pad,axis_sign,deadzone,threshold}]}]}` |
+| `input.add_action` (mutating) | `name`, `player?` (-1..3, default -1) | `{name,player}`; inverse `input.remove_action` |
+| `input.remove_action` (mutating) | `action` | `{name}`; inverse `input.restore_action` with the full action and its position |
+| `input.restore_action` (mutating) | `action` (object from `input.list`), `index?` (default append) | `{name,index}`; inverse `input.remove_action` |
+| `input.set_player` (mutating) | `action`, `player` | `{action,previous,player,changed}`; inverse `input.set_player` |
+| `input.add_binding` (mutating) | `action`, `device?`, `code?`, `pad?`, `axis_sign?`, `deadzone?`, `threshold?`, `index?` | `{index}`; inverse `input.remove_binding` |
+| `input.remove_binding` (mutating) | `action`, `index` | `{index}`; inverse `input.add_binding` with every field and the index |
+| `input.set_binding` (mutating) | `action`, `index`, `field`, `value` | `{action,index,field,previous,value,changed}`; inverse `input.set_binding` with the previous value |
+
+`device` is `keyboard`, `mouse_button`, `gamepad_button` or `gamepad_axis` (the persisted names; default `keyboard`).
+Ranges: `pad` -1..3 (-1 = the action's player), `axis_sign` -1..1, `deadzone` 0..0.99, `threshold` 0..1, `code` >= 0;
+the axis fields are only persisted for `gamepad_axis`. Action names are unique and non-empty. Action order is the
+persisted order; `input.restore_action` rebuilds the map to insert at `index`, so undo restores equal content and order.
+An unknown action or out-of-range index is `VALUE_INVALID` (hint: list with `input.list`); a rejected call changes
+nothing, and setting a field to its current value is a no-op without an inverse.
+
+## Clip commands
+
+`clip.*` slice a sprite sheet and author animation clip files (`docs/formats/clip.md`). Like `atlas.*` and `tileset.*` they
+read and write asset files only, at once (no `persist`/`dry_run`, the CLI refuses `--dry-run`). Paths (`clip`, `sheet`) are
+project-relative `/` paths; clips normally live under `assets/`. The sheet's pixel size is read from the PNG file without
+a GL context, so only PNG sheets are supported (`VALUE_INVALID` otherwise, `IO_ERROR` if missing). Registered by
+`register_clip_commands`; see `tooling/src/clip_commands.cpp`.
+
+Grid arguments (the editor's Animation Clip panel fields): `columns`, `rows` (>= 1), `frame_width`, `frame_height`
+(0 = sheet size / count), `margin`, `spacing` (>= 0). Cells are numbered row-major from the top-left.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `clip.slice` | `sheet`, grid | `{sheet_width, sheet_height, cells:[{index, uv:[u0,v0,u1,v1]}]}`; an empty cell is `VALUE_INVALID` |
+| `clip.info` | `clip`, `sheet?` + grid | `{name, loop, frames:[{uv,seconds}]}`; with a sheet also `{cells, durations, fps}` |
+| `clip.create` | `clip`, `sheet`, grid, `cells` or `from`+`to`, `fps?` (10), `durations?`, `loop?`, `name?`, `overwrite?` | `{clip, frames, cells}`; inverse `clip.restore` |
+| `clip.add_frames` | `clip`, `sheet`, grid, `from`, `to`, `index?` (append) | `{clip, frames, added, index, changed}` |
+| `clip.remove_frame` | `clip`, `sheet`, grid, `index` | `{clip, frames, index, changed}` |
+| `clip.move_frame` | `clip`, `sheet`, grid, `from`, `to` | `{clip, frames, from, to, changed}` |
+| `clip.set_frame` | `clip`, `sheet`, grid, `index`, `cell?`, `seconds?` | `{clip, frames, index, changed}` |
+| `clip.set` | `clip`, `name?`, `loop?` | `{clip, name, loop, changed}`; no grid needed, frames are kept exactly |
+| `clip.restore` | `clip`, `content` or `absent=true` | `{clip, restored}`; only used as the inverse of the others |
+
+`clip.create` builds the clip with `ClipDraft` + `build_clip` (a `durations` entry of 0 means `1/fps`) and refuses an
+existing file (`CONFLICT`) unless `overwrite=true`. The edit commands reopen the clip with `draft_from_clip` on the grid
+you pass: clip files do not store their grid, so every frame must be exactly one grid cell, otherwise the call fails with
+`VALUE_INVALID` naming the frame and the file is untouched. Durations are kept per frame; frames added by `add_frames` use
+`1/fps` of the first frame (change them with `set_frame --seconds`). Setting a value to what it already is writes nothing
+and has no inverse. Every write returns `clip.restore` carrying the previous file text (or `absent` for a new file), so
+undo restores the exact bytes.
+
+## Animation graph commands
+
+`animgraph.*` edit animation state machine files (`arcane.animgraph`, `docs/formats/animgraph.md`). Like `clip.*` they
+read and write the graph file only and write it at once (not through `--dry-run` / persist); every edit returns
+`animgraph.restore` with the previous file bytes as its inverse, and an edit that changes nothing writes nothing and has
+no inverse. `clip` arguments are project-relative files under `assets/` that must exist.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `animgraph.create` | `graph`, `overwrite?` | `{graph}`; an empty graph, `CONFLICT` if the file exists |
+| `animgraph.info` | `graph` | `{graph, initial, parameters, states, transitions}` |
+| `animgraph.add_param` | `graph`, `name`, `type` (bool/float/trigger), `default?` | `{graph, name, changed}` |
+| `animgraph.remove_param` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if a condition uses it |
+| `animgraph.add_state` | `graph`, `name`, `clip`, `speed?` (1) | `{graph, name, clip_id, changed}`; the first state is `initial` |
+| `animgraph.set_state` | `graph`, `name`, `clip?`, `speed?`, `initial?` | `{graph, name, changed}` |
+| `animgraph.remove_state` | `graph`, `name` | `{graph, name, changed}`; `CONFLICT` if initial or in a transition |
+| `animgraph.add_event` | `graph`, `state`, `frame`, `name` | `{graph, index, changed}` |
+| `animgraph.remove_event` | `graph`, `state`, `index` | `{graph, index, changed}` |
+| `animgraph.add_transition` | `graph`, `from` (or `*`), `to`, `priority?` (0), `conditions?` [{param, op, value?}], `index?` | `{graph, index, changed}` |
+| `animgraph.remove_transition` | `graph`, `index` | `{graph, index, changed}` |
+| `animgraph.restore` | `graph`, `content` or `absent=true` | `{graph, restored}`; only used as the inverse of the others |
+
+## Project commands
+
+`project.get` / `project.set` read and edit the project-level properties in `project.json` (`name`, `main_scene`,
+`module`). Like `hud.*` they edit the project in memory and mark it dirty; File > Save (or `--persist`) writes
+`project.json`. Nothing is reloaded: `main_scene` and `module` take effect the next time the project is opened.
+Registered by `register_project_commands`; see `tooling/src/project_commands.cpp`.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `project.get` | none | `{name, main_scene, module}` |
+| `project.set` (mutating) | `name?`, `main_scene?`, `module?`, `collision_layers?` (array of layer names, index = layer number; at least one argument) | `{changed, previous, project}`; inverse `project.set` with the previous values |
+| `project.new` | `path`, `name?` | creates a project folder with `project.json`, an empty main scene and `assets/` (file-level, works without an openable project) |
+| `project.info` | none | name, main scene, module, format, scene count, transition/save/debug settings |
+| `project.settings_get` | none | `{name, main_scene, module}` read from `project.json` |
+| `project.settings_set` | `name?`, `main_scene?` (must exist), `module?` (empty clears) | writes `project.json` at once |
+
+`name` must be non-empty. `main_scene` must be a project-relative `/` path without `..` that ends in `.json`.
+`module` may be empty (no native module) or a project-relative path. Anything else is `VALUE_INVALID` (file
+`project.json`, path `/name`, `/main_scene` or `/module`) and nothing is changed, even if another argument was valid.
+Setting a value to what it already is is a no-op without an inverse.
+
+## Assets
+
+`asset.list`, `asset.import` and `asset.reimport` are file-level (offline) commands on `<project>/assets`; they need a
+`project.json` (`PROJECT_NOT_FOUND` otherwise) but open neither the scene nor the module. An asset id is
+`editor::asset_id_for_relative_path` of its path relative to `assets/`, so there is no import database or sidecar file.
+
+| Command | Arguments | Result |
+| --- | --- | --- |
+| `asset.list` | `kind?` = `image`/`clip`/`audio`/`all` (default) | `{assets:[{id, path, kind, bytes}]}` sorted by path |
+| `asset.import` (mutating) | `source`, `dest?` (relative to `assets/`, default the source file name), `overwrite?` | `{id, path, kind, bytes, replaced}` |
+| `asset.reimport` (mutating) | `path` (must exist), `source?` | `{id, path, kind, bytes, changed}` |
+
+The kind comes from the extension: image `.png .jpg .jpeg .bmp`, clip `.json`, audio `.wav .ogg .mp3 .flac`; anything
+else, a `dest` with `..`, a backslash, an absolute or drive path, or a source of another kind than `dest`/`path` is
+`ARGS_INVALID`. A missing or unreadable source, or a missing reimport `path`, is `IO_ERROR`. Content is checked by header
+only (PNG signature and non-zero IHDR size, JPEG `FF D8 FF`, BMP `BM`, WAV/Ogg/FLAC/MP3 magic; clips must load with the
+clip loader) and a failure is `VALUE_INVALID` naming the source. An existing `dest` is `CONFLICT` unless `overwrite`.
+`asset.reimport` without `source` re-validates the file in place (`changed:false`, a corrupt file is `VALUE_INVALID` and
+not modified); with `source` it atomically replaces the file and `changed` is whether the bytes differ. Every check runs
+before the first write, so a failure leaves the project untouched; `--dry-run` writes nothing. The two writing commands
+are rejected in `arcane batch` with `TRANSACTION_UNSUPPORTED`; `asset.list` is allowed.
+
+Hot reload: a write is an atomic rename (`write_text_file_atomic`), so a running editor or player never reads a half
+written file. Their caches notice the change on the next file-time poll (about twice a second in the editor and the player; the player
+skips it during `--replay`) and reload the asset. The id stays the same, so scene references keep resolving.
+Registered by `tooling/src/asset_commands.cpp`; tested by `test_asset_commands`.
+
+## Run and test
+
+`run` and `test` (`tooling/src/run_commands.cpp`) step a fresh copy of the main (or `--scene`) scene with the
+engine's `run_fixed_frames`, calling the game module's `on_update` before each step. They need no window, GL
+context or audio device, and the context scene is never advanced or saved. The trace equals
+`arcane_player --headless` for the same inputs.
+
+- `arcane run [--frames N] [--fixed_hz N] [--seed N] [--replay FILE] [--trace_out FILE]`: result
+  `{frames, fixed_hz, final_hash, nodes, module, trace_out}`. `--replay` supplies frames/fixed_hz/seed (passing
+  `--frames`/`--fixed_hz` as well is `ARGS_INVALID`). `--trace_out` writes an `arcane.replay_trace`; `--dry-run` skips it.
+- `arcane test [--filter TEXT] [--frames N]`: replays every `tests/NAME.replay.json` against `tests/NAME.trace.json`
+  and also smoke-runs `frames` frames. Result `{ok, passed, failed, cases, smoke}`; exit 4 when `ok` is false
+  (a mismatch reports `first_divergent_frame`; a missing trace fails the case).
+
+## Render
+
+`arcane render --output FILE.png` (`tooling/src/render_commands.cpp`) steps a scene copy like `run` (default `--frames 0`, module
+`on_update` included), then draws it with the editor/player scene renderer and the HUD into an offscreen GL framebuffer
+(`render_offscreen`, `arcane/screenshot.hpp`) and writes the PNG. Arguments: `output` (project-relative, required), `size` `WxH`
+(default: the project's `display` design resolution, else `320x180`; max 4096), `frames`, `fixed_hz`, `seed`, `camera` (selector of a Camera/Camera2D node, made the only primary one on
+the copy), `compare` (golden PNG, project-relative), `tolerance` (per RGBA channel, default 2) and `mask` (array of `[x,y,w,h]` pixel
+rectangles ignored by the comparison). The scene file is never changed. Result `{output, scene, frame, fixed_hz, size, scene_hash, camera,
+backend:{api,renderer}, module, compare}`; a failed comparison (size mismatch or differing pixels) is `ok:false`, exit 4. A GL context needs a
+display or Xvfb: without one the error is `RENDER_UNAVAILABLE`, exit 8, nothing is written. Tests: `test_render_cli` (label `gl`, golden
+`tests/golden/render/platformer_slice_f30.png`, Mesa llvmpipe) and `test_render_cli_nodisplay` (exit 8, no display needed).
+
+## Export
+
+`arcane export OUT [--runtime_dir DIR] [--overwrite] [--validate false]` (`tooling/src/export_commands.cpp`; offline
+command, writes files, honors `--dry-run`) produces the layout of decision 30:
+`OUT/<runtime files>` + `OUT/game/{project.json,scenes,assets,<module file>}`.
+
+- `runtime_dir`: its regular files are copied flat into `OUT` (for example the result of
+  `cmake --install BUILD --prefix DIR --component game`: `arcane_player` and the engine libraries).
+- `validate` (default true) first opens the project strictly with `--module` honored and returns that error
+  (for example `MODULE_LOAD_FAILED`) if it does not open. `scripts/export-game.sh --mingw` passes `false` because a
+  native process cannot load a Windows `.dll`.
+- The module file is `--module` if given, else the project's `module` resolved against the project folder; a missing
+  file is `MODULE_LOAD_FAILED`. It is copied under its own file name and `project.json` is loaded strictly, given
+  that name as `module` (empty when there is none) and written with the canonical project writer. Only `scenes/` and
+  `assets/` are copied (never `tests/`, build output or the source-tree module copy); the main scene must be inside them.
+- A non-empty `OUT` is `CONFLICT` unless `overwrite`; an `OUT` that is, contains or lies inside the copied project
+  folders is `ARGS_INVALID`. The export is built in the sibling `OUT.tmp-*` and renamed into place (an old `OUT` is
+  renamed aside and removed afterwards), and a failure removes the temp folder and leaves `OUT` as it was.
+- Result `{out, game_dir, module, files, runtime_files}`: `files` are sorted OUT-relative `/` paths, `module` is the
+  file name or null. `--dry-run` returns the same manifest and writes nothing.
+
+Tested by `test_cli` (unit) and `test_cli_e2e` (author, run, test, export, reopen, run the export headless).
+
+## Errors
+
+`{"ok":false,"error":{"code","message","file","path","hint"}}`, absent fields
+null. Exit status for the CLI:
+
+| Code | Exit |
+| --- | --- |
+| `UNKNOWN_COMMAND`, `ARGS_INVALID`, `USAGE` | 2 |
+| `PROJECT_NOT_FOUND`, `IO_ERROR` | 3 |
+| `SCHEMA_INVALID`, `VALUE_INVALID`, `PROPERTY_UNKNOWN`, `NODE_NOT_FOUND`, `COMPONENT_NOT_FOUND`, `COMPONENT_TYPE_UNKNOWN`, `REPLAY_DIVERGED` | 4 |
+| `SELECTOR_AMBIGUOUS`, `CONFLICT` | 5 |
+| `MODULE_LOAD_FAILED`, `MODULE_FAILURE` | 6 |
+| `UNSUPPORTED_VERSION` | 7 |
+
+## Tween component
+
+There are no `tween.*` commands. The builtin `Tween` component's properties (`target`, `from`, `to`,
+`use_current_from`, `duration`, `delay`, `easing`, `loops`, `yoyo`, `autoplay`) are edited with
+`prop.list`/`prop.get`/`prop.set` like any component. `target` is one of `position.x`, `position.y`,
+`rotation`, `scale.x`, `scale.y`, `tint.r|g|b|a` (needs a `Sprite`); `easing` is one of `linear`,
+`quad_in|out|in_out`, `cubic_in|out|in_out`, `sine_in|out|in_out`, `back_out`, `bounce_out`. Unknown
+names are accepted by `prop.set` but make the tween do nothing. `loops` 0 repeats forever.
+

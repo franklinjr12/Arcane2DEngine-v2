@@ -30,6 +30,17 @@ std::vector<int> parse_int_list(const std::string& text) {
 }
 }  // namespace
 
+bool is_valid_tile_tag(const std::string& tag) noexcept {
+  if (tag.empty() || tag.size() > 32) return false;
+  return std::all_of(tag.begin(), tag.end(), [](char c) { return (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_'; });
+}
+
+bool Tileset::has_tag(int tile_id, const std::string& tag) const noexcept {
+  if (tile_id < 1 || tile_id > static_cast<int>(tiles.size())) return false;
+  const auto& tags = tiles[static_cast<std::size_t>(tile_id - 1)].tags;
+  return std::find(tags.begin(), tags.end(), tag) != tags.end();
+}
+
 std::expected<std::string, std::string> save_tileset_canonical_json(const Tileset& tileset) {
   nlohmann::json j;
   j["format"] = kTilesetFormat;
@@ -40,7 +51,16 @@ std::expected<std::string, std::string> save_tileset_canonical_json(const Tilese
   j["columns"] = tileset.columns;
   j["tile_count"] = tileset.tile_count;
   j["tiles"] = nlohmann::json::array();
-  for (const auto& tile : tileset.tiles) j["tiles"].push_back({{"solid", tile.solid}, {"terrain", tile.terrain}});
+  for (const auto& tile : tileset.tiles) {
+    nlohmann::json item = {{"solid", tile.solid}, {"terrain", tile.terrain}};
+    if (!tile.tags.empty()) {
+      std::vector<std::string> tags = tile.tags;
+      std::sort(tags.begin(), tags.end());
+      tags.erase(std::unique(tags.begin(), tags.end()), tags.end());
+      item["tags"] = tags;
+    }
+    j["tiles"].push_back(std::move(item));
+  }
   j["terrains"] = nlohmann::json::array();
   for (const auto& rule : tileset.terrains) j["terrains"].push_back({{"terrain", rule.terrain}, {"tiles", rule.tiles}});
   return canonical::dump(j);
@@ -92,10 +112,17 @@ std::expected<Tileset, std::string> load_tileset(const std::string& text, bool s
         const auto& item = j["tiles"][i];
         const std::string where = std::format("tileset tile {}", i + 1);
         canonical::require_object(item, where);
-        if (strict) canonical::require_only_keys(item, {"solid", "terrain"}, where);
+        if (strict) canonical::require_only_keys(item, {"solid", "terrain", "tags"}, where);
         TileInfo info;
         if (item.contains("solid")) info.solid = canonical::as_bool(item["solid"], where + " 'solid'");
         if (item.contains("terrain")) info.terrain = canonical::as_int(item["terrain"], where + " 'terrain'");
+        if (item.contains("tags")) {
+          if (!item["tags"].is_array()) return std::unexpected(std::format("tileset: {} 'tags' must be an array", where));
+          for (const auto& tag : item["tags"]) {
+            info.tags.push_back(canonical::as_string(tag, where + " tag"));
+            if (!is_valid_tile_tag(info.tags.back())) return std::unexpected(std::format("tileset: {} has an invalid tag '{}'", where, info.tags.back()));
+          }
+        }
         if (strict && info.terrain < 0) return std::unexpected(std::format("tileset: {} has a negative terrain", where));
         t.tiles.push_back(info);
       }
@@ -208,6 +235,12 @@ bool Tilemap::world_to_cell(const WorldTransform2D& node_world, Vec2 world, int&
   return local_to_cell({(world.x - node_world.position.x) / node_world.scale.x,
                          (world.y - node_world.position.y) / node_world.scale.y},
                         cx, cy);
+}
+
+bool Tilemap::tile_at_world(const WorldTransform2D& node_world, Vec2 world, int layer, TileHit& hit) const noexcept {
+  if (!world_to_cell(node_world, world, hit.cx, hit.cy)) return false;
+  hit.tile_id = tile_at(layer, hit.cx, hit.cy);
+  return true;
 }
 
 bool Tilemap::is_solid(int tile_id) const {

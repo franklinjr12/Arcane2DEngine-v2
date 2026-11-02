@@ -187,6 +187,26 @@ void test_one_way() {
   ARCANE_ASSERT_TRUE(rising.body->grounded);
 }
 
+void test_impulse_and_set_velocity() {
+  World plain(100.0f, 40, true);
+  World pushed(100.0f, 40, true);
+  // Mass of the 16x16 px box at density 1 is 0.25 m^2 -> 0.25 kg; an upward impulse of 40 px*kg/s
+  // gives dv = 160 px/s, which must lift the body higher than the unpushed one and be consumed once.
+  pushed.body->apply_impulse({0.0f, -20.0f});
+  pushed.body->apply_impulse({0.0f, -20.0f});
+  ARCANE_ASSERT_TRUE(pushed.body->pending_impulse.y == -40.0f);
+  plain.step();
+  pushed.step();
+  ARCANE_ASSERT_TRUE(pushed.body->pending_impulse.y == 0.0f);
+  ARCANE_ASSERT_TRUE(pushed.body->linear_velocity.y < plain.body->linear_velocity.y - 100.0f);
+  ARCANE_ASSERT_TRUE(pushed.y() < plain.y());
+
+  World set(100.0f, 40, true);
+  set.body->set_velocity({0.0f, -300.0f});
+  set.step();
+  ARCANE_ASSERT_TRUE(set.body->linear_velocity.y < -250.0f);
+}
+
 void test_serialization_round_trip() {
   arcane::ComponentRegistry registry;
   arcane::register_physics_components(registry);
@@ -221,6 +241,7 @@ int main() {
   test_coyote_window();
   test_buffered_jump_fires_on_landing();
   test_one_way();
+  test_impulse_and_set_velocity();
   test_serialization_round_trip();
   return 0;
 }

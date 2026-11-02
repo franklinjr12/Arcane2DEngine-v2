@@ -1,0 +1,64 @@
+{
+  "collision_layers": [
+    "world",
+    "player",
+    "enemy",
+    "pickup"
+  ],
+  "display": {
+    "design_height": 360,
+    "design_width": 640,
+    "scale_mode": "stretch"
+  },
+  "format": "arcane.project",
+  "hud": {
+    "elements": [],
+    "format": "arcane.hud",
+    "version": 2
+  },
+  "input_actions": {
+    "actions": [
+      {
+        "bindings": [
+          {
+            "code": 65,
+            "device": "keyboard"
+          },
+          {
+            "code": 263,
+            "device": "keyboard"
+          }
+        ],
+        "name": "move_left"
+      },
+      {
+        "bindings": [
+          {
+            "code": 68,
+            "device": "keyboard"
+          },
+          {
+            "code": 262,
+            "device": "keyboard"
+          }
+        ],
+        "name": "move_right"
+      },
+      {
+        "bindings": [
+          {
+            "code": 32,
+            "device": "keyboard"
+          }
+        ],
+        "name": "jump"
+      }
+    ],
+    "format": "arcane.input",
+    "version": 2
+  },
+  "main_scene": "scenes/main.scene.json",
+  "module": "",
+  "name": "layers_example",
+  "version": 2
+}

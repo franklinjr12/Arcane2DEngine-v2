@@ -1,0 +1,101 @@
+{
+  "format": "arcane.prefab",
+  "next_id": 7,
+  "nodes": [
+    {
+      "components": [
+        {
+          "id": 2,
+          "properties": {
+            "atlas": 0,
+            "flip_x": false,
+            "flip_y": false,
+            "height": 10.0,
+            "region": "",
+            "texture": 1617945095526466553,
+            "tint": [
+              1.0,
+              0.9,
+              0.3,
+              1.0
+            ],
+            "width": 10.0
+          },
+          "type": "Sprite"
+        },
+        {
+          "id": 3,
+          "properties": {
+            "body_type": 2,
+            "fixed_rotation": true,
+            "gravity_scale": 0.0,
+            "linear_velocity": [
+              0.0,
+              0.0
+            ]
+          },
+          "type": "RigidBody2D"
+        },
+        {
+          "id": 4,
+          "properties": {
+            "density": 1.0,
+            "friction": 0.6,
+            "height": 8.0,
+            "is_sensor": true,
+            "layer": 3,
+            "mask": 5,
+            "mirror_with_sprite": false,
+            "offset": [
+              0.0,
+              0.0
+            ],
+            "one_way": false,
+            "radius": 16.0,
+            "restitution": 0.0,
+            "shape_type": 0,
+            "width": 8.0
+          },
+          "type": "Collider2D"
+        },
+        {
+          "id": 5,
+          "properties": {
+            "active": true,
+            "damage": 1.0,
+            "ignore_own_hierarchy": true,
+            "rehit_interval": 0.5
+          },
+          "type": "Hitbox"
+        },
+        {
+          "id": 6,
+          "properties": {
+            "direction": [
+              1.0,
+              0.0
+            ],
+            "lifetime": 2.0,
+            "pierce": 0,
+            "speed": 360.0,
+            "stop_on_solid": true
+          },
+          "type": "Projectile"
+        }
+      ],
+      "id": 1,
+      "name": "Bullet",
+      "parent_id": 0,
+      "position": [
+        0.0,
+        0.0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ]
+    }
+  ],
+  "version": 1
+}

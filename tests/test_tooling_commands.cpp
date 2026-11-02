@@ -1,0 +1,533 @@
+// Headless tests for arcane_tooling: the command registry, typed property
+// commands against a builtin type (Camera2D, Sprite) and a native module
+// type (sample_game's Spinner), undo/redo, validation failures that must
+// not write anything, module-load failure, conflict detection and context
+// lifetime (the module stays loaded until the context is destroyed).
+#include <filesystem>
+#include <fstream>
+#include <sstream>
+#include <utility>
+#include <vector>
+
+#include "arcane/audio.hpp"
+#include "arcane/builtin_components.hpp"
+#include "arcane/canonical_json.hpp"
+#include "arcane/module.hpp"
+#include "arcane/physics.hpp"
+#include "arcane/scene.hpp"
+#include "arcane_editor/project_session.hpp"
+#include "arcane_tooling/command.hpp"
+#include "test_assert.hpp"
+
+namespace {
+
+using namespace arcane::tooling;
+namespace fs = std::filesystem;
+
+std::string slurp(const fs::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  std::ostringstream ss;
+  ss << in.rdbuf();
+  return ss.str();
+}
+
+void spit(const fs::path& path, const std::string& text) {
+  std::ofstream out(path, std::ios::binary);
+  out << text;
+}
+
+struct TempProject {
+  fs::path dir = fs::temp_directory_path() / "arcane_tooling_test";
+  fs::path scene() const { return dir / "scenes" / "main.scene.json"; }
+  ~TempProject() {
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+  }
+
+  // One node (id 1) holding Spinner (module), Camera2D and Sprite (builtin).
+  TempProject() {
+    std::error_code ec;
+    fs::remove_all(dir, ec);
+    auto module = arcane::GameModule::load(ARCANE_SAMPLE_GAME_PATH);
+    ARCANE_ASSERT_TRUE(module.has_value());
+    {
+      arcane::ComponentRegistry registry;
+      arcane::register_builtin_components(registry);
+      arcane::register_audio_components(registry);
+      arcane::register_physics_components(registry);
+      module->api()->register_types(registry);
+      auto session = arcane::editor::ProjectSession::create(dir, "Tooling", registry);
+      ARCANE_ASSERT_TRUE(session.has_value());
+      arcane::Node* node = session->scene().create_node("Player");
+      session->scene().add_component(node, "Spinner", registry);
+      session->scene().add_component(node, "Camera2D", registry);
+      session->scene().add_component(node, "Sprite", registry);
+      session->scene().add_component(node, "AudioSource", registry);
+      session->scene().add_component(node, "Collider2D", registry);
+      session->scene().add_component(node, "PlatformerController2D", registry);
+      ARCANE_ASSERT_TRUE(session->save(registry).has_value());
+    }  // session and registry die before the module
+  }
+};
+
+std::unique_ptr<ProjectContext> open(const TempProject& project) {
+  auto context = ProjectContext::open(project.dir, ARCANE_SAMPLE_GAME_PATH);
+  if (!context) std::fprintf(stderr, "open failed: %s\n", context.error().message.c_str());
+  ARCANE_ASSERT_TRUE(context.has_value());
+  return std::move(*context);
+}
+
+Invocation set(const char* component, const char* name, Json value, const char* node = "id:1") {
+  return {"prop.set", {{"node", node}, {"component", component}, {"name", name}, {"value", std::move(value)}}};
+}
+
+Json get(CommandRegistry& registry, ProjectContext& context, const char* component, const char* name) {
+  auto result = registry.execute(context, {"prop.get", {{"node", "id:1"}, {"component", component}, {"name", name}}});
+  ARCANE_ASSERT_TRUE(result.has_value());
+  return result->value["value"];
+}
+
+CommandRegistry make_registry() {
+  CommandRegistry registry;
+  register_property_commands(registry);
+  register_audio_commands(registry);
+  return registry;
+}
+
+void test_module_property_set_persist_undo_redo() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  CommandHistory history;
+  const std::string original = slurp(project.scene());
+  {
+    auto context = open(project);
+    ExecuteOptions persist{.persist = true};
+
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "spinner");
+    Invocation call = set("Spinner", "speed_degrees_per_second", 90.5);
+    auto result = registry.execute(*context, call, persist);
+    ARCANE_ASSERT_TRUE(result.has_value());
+    ARCANE_ASSERT_TRUE(result->value["changed"] == true);
+    ARCANE_ASSERT_TRUE(result->inverse.has_value());
+    history.record(call, *result);
+    Invocation label = set("Spinner", "label", "hello");
+    auto labeled = registry.execute(*context, label, persist);
+    ARCANE_ASSERT_TRUE(labeled.has_value());
+    history.record(label, *labeled);
+    ARCANE_ASSERT_TRUE(!context->dirty());
+  }
+  {
+    // Reopened from disk: both edits persisted.
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "speed_degrees_per_second") == 90.5);
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "hello");
+    ARCANE_ASSERT_TRUE(history.undo_depth() == 2);
+    ARCANE_ASSERT_TRUE(history.undo(registry, *context).has_value());  // memory only
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "spinner");
+    ARCANE_ASSERT_TRUE(context->dirty());
+    ARCANE_ASSERT_TRUE(history.redo(registry, *context).has_value());
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "hello");
+    ARCANE_ASSERT_TRUE(history.undo(registry, *context).has_value());
+    ARCANE_ASSERT_TRUE(history.undo(registry, *context).has_value());
+    ARCANE_ASSERT_TRUE(!history.can_undo() && history.can_redo());
+    ARCANE_ASSERT_TRUE(context->save().has_value());
+  }
+  ARCANE_ASSERT_TRUE(slurp(project.scene()) == original);  // undo restored the exact bytes
+}
+
+void test_builtin_types_and_value_kinds() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  auto context = open(project);
+  const ExecuteOptions persist{.persist = true};
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", "zoom", 2), persist).has_value());
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Camera2D", "zoom") == 2.0);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", "deadzone", Json::array({1.5, 2})), persist).has_value());
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Camera2D", "deadzone") == Json::array({1.5, 2.0}));
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", "primary", true), persist).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", "target", 1), persist).has_value());  // existing node
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Sprite", "tint", Json::array({0.1, 0.2, 0.3, 1})), persist).has_value());
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Sprite", "tint") == Json::array({0.1, 0.2, 0.3, 1.0}));
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Sprite", "texture", 77), persist).has_value());
+
+  // Selectors: by component id and by node path.
+  auto listed = registry.execute(*context, {"prop.list", {{"node", "path:/Player"}, {"component", "Sprite"}}});
+  ARCANE_ASSERT_TRUE(listed.has_value());
+  ARCANE_ASSERT_TRUE(listed->value["properties"].size() == 8);
+  const unsigned component_id = listed->value["component_id"];
+  auto by_id = registry.execute(*context, {"prop.get", {{"node", "id:1"}, {"component", component_id}, {"name", "texture"}}});
+  ARCANE_ASSERT_TRUE(by_id.has_value() && by_id->value["value"] == 77);
+
+  // Same value again: no change, no inverse, nothing written.
+  auto again = registry.execute(*context, set("Camera2D", "zoom", 2.0), persist);
+  ARCANE_ASSERT_TRUE(again.has_value() && again->value["changed"] == false && !again->inverse);
+}
+
+void test_failures_change_nothing() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  const std::string original = slurp(project.scene());
+  auto context = open(project);
+  const ExecuteOptions persist{.persist = true};
+
+  struct Case {
+    Invocation call;
+    const char* code;
+  };
+  const Case cases[] = {
+      {set("Spinner", "speed_degrees_per_second", "fast"), "VALUE_INVALID"},      // wrong type
+      {set("Spinner", "label", 5), "VALUE_INVALID"},
+      {set("Camera2D", "deadzone", Json::array({1})), "VALUE_INVALID"},          // wrong arity
+      {set("Camera2D", "zoom", 1e300), "VALUE_INVALID"},                          // not a binary32
+      {set("Camera2D", "primary", 1), "VALUE_INVALID"},
+      {set("Camera2D", "target", 999), "NODE_NOT_FOUND"},                         // dangling reference
+      {set("Camera2D", "target", -1), "VALUE_INVALID"},
+      {set("Spinner", "nope", 1.0), "PROPERTY_UNKNOWN"},
+      {set("Nothing", "x", 1.0), "COMPONENT_NOT_FOUND"},
+      {set("Spinner", "label", "x", "id:42"), "NODE_NOT_FOUND"},
+      {set("Spinner", "label", "x", "path:/Nobody"), "NODE_NOT_FOUND"},
+      {set("Spinner", "label", "x", "42"), "ARGS_INVALID"},
+      {{"prop.set", {{"node", "id:1"}, {"component", "Spinner"}, {"name", "label"}}}, "ARGS_INVALID"},   // missing value
+      {{"prop.set", {{"node", "id:1"}, {"component", "Spinner"}, {"name", "label"}, {"value", "x"}, {"extra", 1}}}, "ARGS_INVALID"},
+      {{"no.such.command", Json::object()}, "UNKNOWN_COMMAND"},
+  };
+  for (const Case& c : cases) {
+    auto result = registry.execute(*context, c.call, persist);
+    if (result || result.error().code != c.code) {
+      std::fprintf(stderr, "case %s expected %s\n", c.call.command.c_str(), c.code);
+    }
+    ARCANE_ASSERT_TRUE(!result.has_value() && result.error().code == c.code);
+    ARCANE_ASSERT_TRUE(exit_code(result.error()) != 0);
+    ARCANE_ASSERT_TRUE(error_json(result.error())["error"]["code"] == c.code);
+  }
+  ARCANE_ASSERT_TRUE(slurp(project.scene()) == original);
+  ARCANE_ASSERT_TRUE(!context->dirty());
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "spinner");
+}
+
+void test_dry_run_and_conflict_roll_back() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  const std::string original = slurp(project.scene());
+  auto context = open(project);
+
+  auto dry = registry.execute(*context, set("Spinner", "label", "dry"), ExecuteOptions{.persist = true, .dry_run = true});
+  ARCANE_ASSERT_TRUE(dry.has_value() && dry->value["changed"] == true);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "spinner");
+  ARCANE_ASSERT_TRUE(!context->dirty() && slurp(project.scene()) == original);
+
+  // Somebody else edits the scene: the save is refused, memory goes back, their file survives.
+  const std::string external = original + " ";
+  spit(project.scene(), external);
+  auto conflict = registry.execute(*context, set("Spinner", "label", "mine"), ExecuteOptions{.persist = true});
+  ARCANE_ASSERT_TRUE(!conflict.has_value() && conflict.error().code == "CONFLICT");
+  ARCANE_ASSERT_TRUE(exit_code(conflict.error()) == 5);
+  ARCANE_ASSERT_TRUE(slurp(project.scene()) == external);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Spinner", "label") == "spinner");
+}
+
+void test_open_failures_write_nothing() {
+  TempProject project;
+  const std::string original = slurp(project.scene());
+
+  auto missing_module = ProjectContext::open(project.dir, (project.dir / "no_such_module.so").string());
+  ARCANE_ASSERT_TRUE(!missing_module.has_value() && missing_module.error().code == "MODULE_LOAD_FAILED");
+  ARCANE_ASSERT_TRUE(exit_code(missing_module.error()) == 6);
+
+  // Without the module the scene's Spinner type is unknown: refuse, never drop it.
+  auto no_module = ProjectContext::open(project.dir);
+  ARCANE_ASSERT_TRUE(!no_module.has_value() && no_module.error().code == "SCHEMA_INVALID");
+
+  auto no_project = ProjectContext::open(project.dir / "elsewhere", ARCANE_SAMPLE_GAME_PATH);
+  ARCANE_ASSERT_TRUE(!no_project.has_value() && no_project.error().code == "PROJECT_NOT_FOUND");
+  ARCANE_ASSERT_TRUE(exit_code(no_project.error()) == 3);
+
+  // A scene carrying a property the module does not declare is refused, not loaded leniently.
+  std::string unknown = original;
+  const std::size_t at = unknown.find("\"label\"");
+  ARCANE_ASSERT_TRUE(at != std::string::npos);
+  unknown.insert(at, "\"bogus\": 1,\n          ");
+  spit(project.scene(), unknown);
+  auto refused = ProjectContext::open(project.dir, ARCANE_SAMPLE_GAME_PATH);
+  ARCANE_ASSERT_TRUE(!refused.has_value() && refused.error().code == "SCHEMA_INVALID");
+  ARCANE_ASSERT_TRUE(slurp(project.scene()) == unknown);
+}
+
+void test_context_lifetime_and_registry_listing() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  for (int i = 0; i < 3; ++i) {  // module is loaded and unloaded each time, after scene and registry
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("Spinner", "label", "x" + std::to_string(i))).has_value());
+  }
+  const auto specs = registry.list();
+  ARCANE_ASSERT_TRUE(specs.size() == 4 && specs[0]->name == "audio.backend" && specs[1]->name == "prop.get" &&
+                     specs[3]->name == "prop.set");
+  ARCANE_ASSERT_TRUE(specs[3]->mutating && !specs[1]->mutating && !specs[0]->mutating);
+}
+
+// Every authored Camera2D setting goes through prop.set, persists, and a reopened project replays the same
+// deterministic shake as the in-memory camera.
+void test_camera2d_settings_round_trip() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    const std::pair<const char*, Json> settings[] = {
+        {"zoom", 2}, {"smoothing", 4}, {"deadzone", Json::array({3, 4})}, {"bounds_enabled", true},
+        {"bounds_min", Json::array({-500, -400})}, {"bounds_max", Json::array({500, 400})}, {"pixel_snap", true},
+        {"shake_amplitude", 8}, {"shake_duration", 1}, {"shake_seed", 42}};
+    for (const auto& [name, value] : settings) {
+      ARCANE_ASSERT_TRUE(registry.execute(*context, set("Camera2D", name, value), persist).has_value());
+    }
+  }
+  auto replay = [&](ProjectContext& context) {
+    auto* camera = static_cast<arcane::Camera2D*>(context.scene().find_node(1)->find_component("Camera2D"));
+    context.scene().update(0.25f);  // starts components (and the shake), then advances one tick
+    std::vector<arcane::Vec2> centers;
+    for (int i = 0; i < 4; ++i) {
+      context.scene().update(0.25f);
+      centers.push_back(camera->view_center(100, 100));
+    }
+    return centers;
+  };
+  auto first_context = open(project);
+  auto second_context = open(project);
+  const auto first = replay(*first_context);
+  const auto second = replay(*second_context);
+  ARCANE_ASSERT_TRUE(first.size() == second.size());
+  for (std::size_t i = 0; i < first.size(); ++i)
+    ARCANE_ASSERT_TRUE(first[i].x == second[i].x && first[i].y == second[i].y);
+  ARCANE_ASSERT_TRUE(first[0].x != first[1].x || first[0].y != first[1].y);  // actually shaking
+  ARCANE_ASSERT_TRUE(get(registry, *first_context, "Camera2D", "shake_seed") == 42);
+  // Out-of-range values fail validation and change nothing.
+  auto bad = registry.execute(*first_context, set("Camera2D", "shake_seed", 1.5), persist);
+  ARCANE_ASSERT_TRUE(!bad.has_value());
+}
+
+// Audio settings persist through prop.set; audio.backend never opens a device
+// unless asked, so the headless answer is the null backend.
+void test_audio_settings_and_backend() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "volume", 0.25), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "loop", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("AudioSource", "play_on_start", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(!registry.execute(*context, set("AudioSource", "volume", "loud"), persist).has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "volume") == 0.25);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "loop") == true);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "AudioSource", "play_on_start") == true);
+
+  auto backend = registry.execute(*context, {"audio.backend", Json::object()});
+  ARCANE_ASSERT_TRUE(backend.has_value());
+  ARCANE_ASSERT_TRUE(backend->value["backend"] == "null");
+  ARCANE_ASSERT_TRUE(backend->value["probed"] == false);
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"audio.backend", {{"probe_device", "yes"}}}).has_value());
+}
+
+// One-way platform settings are ordinary properties: set, persist, reload.
+void test_one_way_settings_round_trip() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  ExecuteOptions persist{.persist = true};
+  {
+    auto context = open(project);
+    ARCANE_ASSERT_TRUE(get(registry, *context, "Collider2D", "one_way") == false);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("Collider2D", "one_way", true), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("PlatformerController2D", "drop_duration", 0.25), persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, set("PlatformerController2D", "down_action", "crouch"), persist).has_value());
+    ARCANE_ASSERT_TRUE(!registry.execute(*context, set("Collider2D", "one_way", "yes"), persist).has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "Collider2D", "one_way") == true);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "PlatformerController2D", "drop_duration") == 0.25);
+  ARCANE_ASSERT_TRUE(get(registry, *context, "PlatformerController2D", "down_action") == "crouch");
+  ARCANE_ASSERT_TRUE(slurp(project.scene()).find("\"one_way\": true") != std::string::npos);
+}
+
+// project.get / project.set: in-memory edit, saved with the project, inverse, validation, dry run.
+void test_project_get_set() {
+  TempProject project;
+  CommandRegistry registry;
+  register_project_commands(registry);
+  ExecuteOptions persist{.persist = true};
+  const fs::path file = project.dir / "project.json";
+  const std::string original = slurp(file);
+  spit(project.dir / "scenes" / "other.scene.json", slurp(project.scene()));  // reopening needs the new main_scene
+  Json before;
+  {
+    auto context = open(project);
+    auto got = registry.execute(*context, {"project.get", Json::object()});
+    ARCANE_ASSERT_TRUE(got.has_value());
+    before = got->value;
+    ARCANE_ASSERT_TRUE(before["name"] == "Tooling" && before["main_scene"].is_string() && before["module"].is_string());
+    ARCANE_ASSERT_TRUE(!got->inverse.has_value());
+
+    // Invalid input changes nothing, even next to a valid field.
+    const Json bad[] = {{{"name", ""}},
+                        {{"main_scene", "/abs/main.scene.json"}},
+                        {{"main_scene", "../main.scene.json"}},
+                        {{"main_scene", "scenes/main.scene.txt"}},
+                        {{"name", "Good"}, {"main_scene", "scenes/../x.json"}},
+                        {{"module", "../m.so"}},
+                        Json::object()};
+    for (const Json& args : bad) {
+      auto r = registry.execute(*context, {"project.set", args}, persist);
+      ARCANE_ASSERT_TRUE(!r.has_value() && r.error().code == "VALUE_INVALID");
+      ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+      ARCANE_ASSERT_TRUE(!context->dirty() && slurp(file) == original);
+    }
+
+    // Collision layers: validated, saved, undone by the inverse.
+    for (const Json& layers : {Json::array({"a", "a"}), Json::array({"Bad"}), Json::array({""})}) {
+      auto r = registry.execute(*context, {"project.set", {{"collision_layers", layers}}}, persist);
+      ARCANE_ASSERT_TRUE(!r.has_value() && r.error().code == "VALUE_INVALID");
+    }
+    auto layered = registry.execute(*context, {"project.set", {{"collision_layers", Json::array({"world", "player", "enemy"})}}}, persist);
+    ARCANE_ASSERT_TRUE(layered.has_value() && layered->inverse.has_value());
+    ARCANE_ASSERT_TRUE(slurp(file).find("\"collision_layers\"") != std::string::npos);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value["collision_layers"].size() == 3);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, *layered->inverse, persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+    ARCANE_ASSERT_TRUE(slurp(file) == original);
+
+    // Dry run leaves project.json and memory alone.
+    Json change = {{"name", "Renamed"}, {"main_scene", "scenes/other.scene.json"}};
+    auto dry = registry.execute(*context, {"project.set", change}, ExecuteOptions{.persist = true, .dry_run = true});
+    ARCANE_ASSERT_TRUE(dry.has_value() && dry->value["changed"] == true);
+    ARCANE_ASSERT_TRUE(slurp(file) == original);
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+
+    auto set_result = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(set_result.has_value() && set_result->value["changed"] == true);
+    ARCANE_ASSERT_TRUE(set_result->value["previous"]["name"] == "Tooling" && set_result->inverse.has_value());
+    ARCANE_ASSERT_TRUE(set_result->value["project"]["main_scene"] == "scenes/other.scene.json");
+    // Same values again: no-op without inverse.
+    auto again = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(again.has_value() && again->value["changed"] == false && !again->inverse.has_value());
+  }
+  {
+    auto context = open(project);
+    auto got = registry.execute(*context, {"project.get", Json::object()});
+    ARCANE_ASSERT_TRUE(got->value["name"] == "Renamed" && got->value["main_scene"] == "scenes/other.scene.json");
+    ARCANE_ASSERT_TRUE(slurp(file).find("Renamed") != std::string::npos);
+    // Running the inverse restores the old values.
+    Json change = {{"name", "Again"}};
+    auto r = registry.execute(*context, {"project.set", change}, persist);
+    ARCANE_ASSERT_TRUE(r.has_value() && r->inverse.has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, *r->inverse, persist).has_value());
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value["name"] == "Renamed");
+    ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.set", {{"name", "Tooling"}, {"main_scene", before["main_scene"]}}}, persist)
+                           .has_value());
+  }
+  auto context = open(project);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, {"project.get", Json::object()})->value == before);
+}
+
+}  // namespace
+
+void test_save_is_all_or_nothing() {
+  TempProject project;
+  CommandRegistry registry = make_registry();
+  register_hud_commands(registry);
+  auto context = open(project);
+  const fs::path project_file = project.dir / "project.json";
+  const std::string project_before = slurp(project_file), scene_before = slurp(project.scene());
+  ARCANE_ASSERT_TRUE(registry.execute(*context, {"hud.add", {{"type", "button"}}}).has_value());
+  ARCANE_ASSERT_TRUE(registry.execute(*context, set("Sprite", "width", 77.0)).has_value());
+  ARCANE_ASSERT_TRUE(context->project_dirty() && context->dirty());
+
+  context->set_fail_commit_index_for_testing(1);
+  auto failed = context->save();
+  ARCANE_ASSERT_TRUE(!failed.has_value() && failed.error().code == "IO_ERROR");
+  ARCANE_ASSERT_TRUE(slurp(project_file) == project_before && slurp(project.scene()) == scene_before);
+  ARCANE_ASSERT_TRUE(context->project_dirty() && context->dirty());
+  ARCANE_ASSERT_TRUE(!fs::exists(project.dir / "project.json.arcane-tmp"));
+
+  context->set_fail_commit_index_for_testing(-1);
+  ARCANE_ASSERT_TRUE(context->save().has_value());
+  ARCANE_ASSERT_TRUE(slurp(project_file) != project_before && slurp(project.scene()) != scene_before);
+  ARCANE_ASSERT_TRUE(!context->project_dirty() && !context->dirty());
+}
+
+void test_node_set_persistent() {
+  TempProject project;
+  CommandRegistry registry;
+  register_scene_commands(registry);
+  auto context = open(project);
+  auto added = registry.execute(*context, {"node.add", {{"name", "Child"}, {"parent", "id:1"}}});
+  ARCANE_ASSERT_TRUE(added.has_value());
+  const std::string child = "id:" + std::to_string(added->value["id"].get<std::uint64_t>());
+
+  auto info = registry.execute(*context, {"node.info", {{"node", "id:1"}}});
+  ARCANE_ASSERT_TRUE(info.has_value() && info->value["persistent"] == false);
+
+  // Dry run changes nothing.
+  auto dry = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", true}}}, {.dry_run = true});
+  ARCANE_ASSERT_TRUE(dry.has_value() && context->scene().find_node(1)->persistent() == false);
+
+  auto set_true = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", true}}});
+  ARCANE_ASSERT_TRUE(set_true.has_value() && context->scene().find_node(1)->persistent());
+  ARCANE_ASSERT_TRUE(set_true->value["previous"] == false && set_true->inverse.has_value());
+  info = registry.execute(*context, {"node.info", {{"node", "id:1"}}});
+  ARCANE_ASSERT_TRUE(info->value["persistent"] == true);
+
+  // The inverse restores the previous value; setting the same value yields no inverse.
+  ARCANE_ASSERT_TRUE(registry.execute(*context, *set_true->inverse).has_value());
+  ARCANE_ASSERT_TRUE(!context->scene().find_node(1)->persistent());
+  auto same = registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", false}}});
+  ARCANE_ASSERT_TRUE(same.has_value() && !same->inverse.has_value());
+
+  // Non-root and non-boolean values are refused and change nothing.
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"node.set_persistent", {{"node", child}, {"value", true}}}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"node.set_persistent", {{"node", "id:1"}, {"value", "yes"}}}).has_value());
+  ARCANE_ASSERT_TRUE(!context->scene().find_node(1)->persistent());
+}
+
+void test_display_get_set_undo() {
+  TempProject project;
+  CommandRegistry registry;
+  register_debug_commands(registry);
+  const fs::path file = project.dir / "project.json";
+  const std::string original = slurp(file);
+  ARCANE_ASSERT_TRUE(original.find("\"display\"") == std::string::npos);
+  auto context = open(project);
+  auto got = registry.execute(*context, {"display.get", Json::object()});
+  ARCANE_ASSERT_TRUE(got.has_value() && got->value["design_width"] == 0 && got->value["scale_mode"] == "letterbox");
+  // Half-set sizes and out-of-range values change nothing.
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"design_width", 640}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"design_width", 4}, {"design_height", 4}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(!registry.execute(*context, {"display.set", {{"scale_mode", "zoom"}}}, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(slurp(file) == original);
+  auto set = registry.execute(*context, {"display.set", {{"design_width", 640}, {"design_height", 360}, {"scale_mode", "stretch"}}},
+                              {.persist = true});
+  ARCANE_ASSERT_TRUE(set.has_value() && set->value["changed"] == true && set->inverse.has_value());
+  ARCANE_ASSERT_TRUE(slurp(file).find("\"stretch\"") != std::string::npos);
+  auto same = registry.execute(*context, {"display.set", {{"design_width", 640}}}, {.persist = true});
+  ARCANE_ASSERT_TRUE(same.has_value() && same->value["changed"] == false && !same->inverse);
+  ARCANE_ASSERT_TRUE(registry.execute(*context, *set->inverse, {.persist = true}).has_value());
+  ARCANE_ASSERT_TRUE(slurp(file) == original);
+}
+
+int main() {
+  test_display_get_set_undo();
+  test_node_set_persistent();
+  test_module_property_set_persist_undo_redo();
+  test_builtin_types_and_value_kinds();
+  test_failures_change_nothing();
+  test_dry_run_and_conflict_roll_back();
+  test_open_failures_write_nothing();
+  test_context_lifetime_and_registry_listing();
+  test_camera2d_settings_round_trip();
+  test_audio_settings_and_backend();
+  test_one_way_settings_round_trip();
+  test_project_get_set();
+  test_save_is_all_or_nothing();
+  return 0;
+}

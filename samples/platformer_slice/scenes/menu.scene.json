@@ -1,0 +1,121 @@
+{
+  "format_version": 1,
+  "next_id": 8,
+  "nodes": [
+    {
+      "id": 1,
+      "name": "Menu",
+      "parent_id": 0,
+      "position": [
+        0,
+        0
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 2,
+          "type": "MenuController",
+          "properties": {
+            "title": "PLATFORMER SLICE",
+            "play_scene": "scenes/main.scene.json"
+          }
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Sky",
+      "parent_id": 1,
+      "position": [
+        400,
+        300
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 4,
+          "type": "Sprite",
+          "properties": {
+            "texture": 12108252429286753327,
+            "width": 128.0,
+            "height": 600.0,
+            "tint": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ]
+          }
+        },
+        {
+          "id": 5,
+          "type": "ParallaxLayer",
+          "properties": {
+            "factor": [
+              0.3,
+              1.0
+            ],
+            "repeat_x": true,
+            "repeat_y": false
+          }
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "MenuCamera",
+      "parent_id": 1,
+      "position": [
+        400,
+        300
+      ],
+      "rotation_radians": 0.0,
+      "scale": [
+        1.0,
+        1.0
+      ],
+      "components": [
+        {
+          "id": 7,
+          "type": "Camera2D",
+          "properties": {
+            "primary": true,
+            "zoom": 1.0,
+            "target": 0,
+            "smoothing": 0.0,
+            "deadzone": [
+              0.0,
+              0.0
+            ],
+            "look_ahead": [
+              0.0,
+              0.0
+            ],
+            "bounds_tilemap": 0,
+            "bounds_enabled": false,
+            "bounds_min": [
+              0.0,
+              0.0
+            ],
+            "bounds_max": [
+              0.0,
+              0.0
+            ],
+            "pixel_snap": false,
+            "shake_amplitude": 0.0,
+            "shake_duration": 0.0,
+            "shake_seed": 1
+          }
+        }
+      ]
+    }
+  ]
+}

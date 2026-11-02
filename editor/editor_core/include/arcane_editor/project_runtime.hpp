@@ -38,6 +38,7 @@ class ProjectRuntime {
 
   ComponentRegistry& registry() noexcept { return registry_; }
   ProjectSession& session() noexcept { return *session_; }
+  const ProjectSession& session() const noexcept { return *session_; }
 
   // nullptr if the project declares no module.
   const GameApi* module_api() const noexcept { return module_ ? module_->api() : nullptr; }

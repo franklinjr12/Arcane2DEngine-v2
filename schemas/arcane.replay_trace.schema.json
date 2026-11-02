@@ -1,0 +1,27 @@
+{
+  "$id": "https://arcane2d.local/schemas/arcane.replay_trace.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "arcane.replay_trace"
+    },
+    "hashes": {
+      "items": {
+        "pattern": "^[0-9a-f]{16}$",
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "version": {
+      "const": 1
+    }
+  },
+  "required": [
+    "format",
+    "version",
+    "hashes"
+  ],
+  "title": "Arcane replay state-hash trace (v1)",
+  "type": "object"
+}

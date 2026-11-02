@@ -60,6 +60,13 @@
           "solid": {
             "type": "boolean"
           },
+          "tags": {
+            "items": {
+              "pattern": "^[a-z0-9_]{1,32}$",
+              "type": "string"
+            },
+            "type": "array"
+          },
           "terrain": {
             "minimum": 0,
             "type": "integer"

@@ -1,0 +1,11 @@
+{
+  "data_version": 2,
+  "format": "arcane.save",
+  "values": {
+    "level": 3,
+    "music": true,
+    "player/name": "Ana",
+    "volume": 0.75
+  },
+  "version": 2
+}

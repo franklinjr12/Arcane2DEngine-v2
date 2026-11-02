@@ -1,0 +1,103 @@
+{
+  "format": "arcane.animgraph",
+  "initial": "idle",
+  "parameters": [
+    {
+      "default": 0.0,
+      "name": "moving",
+      "type": "bool"
+    },
+    {
+      "default": 0.0,
+      "name": "speed",
+      "type": "float"
+    },
+    {
+      "name": "hurt",
+      "type": "trigger"
+    }
+  ],
+  "states": [
+    {
+      "clip": 4478366437428034728,
+      "events": [],
+      "name": "idle",
+      "speed": 1.0
+    },
+    {
+      "clip": 6756191263469248021,
+      "events": [
+        {
+          "frame": 0,
+          "name": "step"
+        },
+        {
+          "frame": 1,
+          "name": "step"
+        }
+      ],
+      "name": "run",
+      "speed": 1.0
+    },
+    {
+      "clip": 0,
+      "events": [],
+      "name": "hurt",
+      "speed": 1.0
+    }
+  ],
+  "transitions": [
+    {
+      "conditions": [
+        {
+          "op": "fired",
+          "param": "hurt"
+        }
+      ],
+      "from": "*",
+      "priority": 10,
+      "to": "hurt"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_true",
+          "param": "moving"
+        }
+      ],
+      "from": "idle",
+      "priority": 0,
+      "to": "run"
+    },
+    {
+      "conditions": [
+        {
+          "op": "is_false",
+          "param": "moving"
+        }
+      ],
+      "from": "run",
+      "priority": 0,
+      "to": "idle"
+    },
+    {
+      "conditions": [],
+      "from": "hurt",
+      "priority": 0,
+      "to": "idle"
+    },
+    {
+      "conditions": [
+        {
+          "op": "gt",
+          "param": "speed",
+          "value": 10.0
+        }
+      ],
+      "from": "idle",
+      "priority": 1,
+      "to": "run"
+    }
+  ],
+  "version": 2
+}

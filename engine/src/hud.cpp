@@ -273,6 +273,36 @@ std::expected<Hud, std::string> load_hud(const std::string& text, bool strict_un
 }
 }  // namespace
 
+namespace {
+template <typename T>
+T* find_by_id(std::vector<HudElement>& elements, std::string_view id) {
+  for (HudElement& element : elements) {
+    if (auto* found = std::get_if<T>(&element); found && found->id == id) return found;
+  }
+  return nullptr;
+}
+}  // namespace
+
+HudText* Hud::find_text(std::string_view id) noexcept { return find_by_id<HudText>(elements_, id); }
+HudImage* Hud::find_image(std::string_view id) noexcept { return find_by_id<HudImage>(elements_, id); }
+HudProgressBar* Hud::find_bar(std::string_view id) noexcept { return find_by_id<HudProgressBar>(elements_, id); }
+HudButton* Hud::find_button(std::string_view id) noexcept { return find_by_id<HudButton>(elements_, id); }
+
+bool Hud::contains(std::string_view id) const {
+  return std::any_of(elements_.begin(), elements_.end(), [&](const HudElement& e) {
+    return std::visit([&](const auto& x) { return x.id == id; }, e);
+  });
+}
+
+bool Hud::remove(std::string_view id) {
+  const auto it = std::find_if(elements_.begin(), elements_.end(), [&](const HudElement& e) {
+    return std::visit([&](const auto& x) { return x.id == id; }, e);
+  });
+  if (it == elements_.end()) return false;
+  elements_.erase(it);
+  return true;
+}
+
 void Hud::ensure_unique_ids() {
   std::unordered_set<std::string> used;
   std::vector<bool> needs_id(elements_.size(), false);
@@ -385,18 +415,23 @@ void HudInput::mask_all(const std::vector<InputBinding>& bindings) {
   for (const InputBinding& b : bindings) masked_.mask(b.device, b.code);
 }
 
-void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin) {
+void HudInput::update(Hud& hud, const InputBackend& backend, int screen_width, int screen_height, Vec2 origin,
+                      Vec2 pointer_scale) {
   hud.clicks_.clear();
   masked_ = MaskedInputBackend(backend);
   pointer_consumed_ = false;
   auto& elements = hud.elements_;
   const int count = static_cast<int>(elements.size());
+  // Elements may have been removed since the last update: drop indices that no longer exist.
+  if (focus_ >= count) focus_ = -1;
+  if (pressed_button_ >= count) pressed_button_ = -1;
+  if (last_hovered_ >= count) last_hovered_ = -1;
 
   auto button_at = [&](int i) -> HudButton* { return i >= 0 && i < count ? std::get_if<HudButton>(&elements[i]) : nullptr; };
 
   // Hit-test (topmost = last drawn wins).
   const Vec2 mouse = backend.mouse_position();
-  const float px = mouse.x - origin.x, py = mouse.y - origin.y;
+  const float px = (mouse.x - origin.x) * pointer_scale.x, py = (mouse.y - origin.y) * pointer_scale.y;
   int hovered = -1;
   for (int i = 0; i < count; ++i) {
     const HudButton* b = button_at(i);

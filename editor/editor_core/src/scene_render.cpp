@@ -3,7 +3,9 @@
 #include <algorithm>
 #include <cmath>
 #include <functional>
+#include <string_view>
 
+#include "arcane/assets.hpp"
 #include "arcane/builtin_components.hpp"
 #include "arcane/node.hpp"
 
@@ -11,7 +13,9 @@ namespace arcane::editor {
 
 namespace {
 
+// Skips inactive subtrees (Node::active, runtime-only), so pooled instances are neither drawn nor found as cameras.
 void visit_preorder(Node* node, const std::function<void(Node*)>& visit) {
+  if (!node->active()) return;
   visit(node);
   for (const auto& child : node->children()) {
     visit_preorder(child.get(), visit);
@@ -135,7 +139,13 @@ void restart_particles(Scene& scene) {
 }
 
 void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures, int width, int height,
-                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera) {
+                   AnimationClipCache* clips, HudRenderer* hud_renderer, const Hud* hud, TilesetCache* tilesets, bool runtime_camera,
+                   AtlasCache* atlases, const DisplayViewport* viewport) {
+  const int fb_width = width, fb_height = height;
+  if (viewport) {
+    width = viewport->logical_width;
+    height = viewport->logical_height;
+  }
   CameraView cam = find_primary_camera(scene);
   bool found = false;
   if (runtime_camera) visit_scene_preorder(scene, [&](Node* node) {
@@ -149,7 +159,9 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
   const float cam_x = cam.x, cam_y = cam.y, cam_zoom = cam.zoom;
 
   renderer.set_camera(cam_x, cam_y, cam_zoom);
-  renderer.begin_frame(width, height, Color{0.12f, 0.12f, 0.16f, 1.0f});
+  const Color clear{0.12f, 0.12f, 0.16f, 1.0f};
+  if (viewport) renderer.begin_frame(fb_width, fb_height, *viewport, clear);
+  else renderer.begin_frame(width, height, clear);
 
   visit_scene_preorder(scene, [&](Node* node) {
     if (tilesets) {
@@ -167,20 +179,36 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     auto* sprite = static_cast<Sprite*>(node->find_component("Sprite"));
     if (!sprite) return;
     Texture* texture = textures.get(sprite->texture);
-    if (!texture) return;
 
     UvRect uv{};
+    bool animated_uv = false;
     if (clips) {
       auto* animated = static_cast<AnimatedSprite*>(node->find_component("AnimatedSprite"));
       if (const AnimationClip* clip = animated ? clips->get(animated->clip) : nullptr) {
         if (!clip->frames.empty()) {
           uv = clip->frames[select_frame_index(*clip, animated->elapsed_seconds())].uv;
+          animated_uv = true;
         }
       }
     }
+    if (!animated_uv && atlases && sprite->atlas != 0 && !sprite->region.empty()) {
+      const Atlas* atlas = atlases->get(sprite->atlas);
+      const AtlasRegion* region = atlas ? find_atlas_region(*atlas, sprite->region) : nullptr;
+      constexpr std::string_view kAssets = "assets/";
+      if (region && atlas->image.compare(0, kAssets.size(), kAssets) == 0) {
+        if (Texture* atlas_texture = textures.get(asset_id_for_relative_path(atlas->image.substr(kAssets.size())))) {
+          texture = atlas_texture;
+          uv = atlas_region_uv(*atlas, *region);
+        }
+      }
+    }
+    if (!texture) return;
+
+    if (sprite->flip_x) std::swap(uv.u0, uv.u1);
+    if (sprite->flip_y) std::swap(uv.v0, uv.v1);
 
     const auto world = node->world_transform();
-    renderer.draw(SpriteDraw{
+    SpriteDraw draw{
         .texture = texture,
         .x = world.position.x,
         .y = world.position.y,
@@ -189,7 +217,36 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
         .rotation_radians = world.rotation_radians,
         .tint = sprite->tint,
         .uv = uv,
-    });
+    };
+    const auto* parallax = static_cast<ParallaxLayer*>(node->find_component("ParallaxLayer"));
+    if (!parallax) {
+      renderer.draw(draw);
+      return;
+    }
+    // Shift by camera * (1 - factor), then repeat the sprite over the visible world rectangle.
+    draw.x += cam_x * (1.0f - parallax->factor.x);
+    draw.y += cam_y * (1.0f - parallax->factor.y);
+    const float view_w = static_cast<float>(width) / cam_zoom, view_h = static_cast<float>(height) / cam_zoom;
+    const float period_x = std::fabs(draw.width), period_y = std::fabs(draw.height);
+    constexpr int kMaxRepeats = 256;  // guards against a tiny sprite on a huge view
+    auto repeat_range = [&](bool repeat, float origin, float period, float cam, float view, int& first, int& last) {
+      first = last = 0;
+      if (!repeat || period < 1e-3f) return;
+      first = static_cast<int>(std::floor((cam - view * 0.5f - origin) / period));
+      last = static_cast<int>(std::floor((cam + view * 0.5f - origin) / period)) + 1;
+      if (last - first > kMaxRepeats) last = first + kMaxRepeats;
+    };
+    int x0, x1, y0, y1;
+    repeat_range(parallax->repeat_x, draw.x, period_x, cam_x, view_w, x0, x1);
+    repeat_range(parallax->repeat_y, draw.y, period_y, cam_y, view_h, y0, y1);
+    const float base_x = draw.x, base_y = draw.y;
+    for (int iy = y0; iy <= y1; ++iy) {
+      for (int ix = x0; ix <= x1; ++ix) {
+        draw.x = base_x + static_cast<float>(ix) * period_x;
+        draw.y = base_y + static_cast<float>(iy) * period_y;
+        renderer.draw(draw);
+      }
+    }
   });
 
   if (hud_renderer && hud) hud_renderer->draw(*hud, renderer, width, height);

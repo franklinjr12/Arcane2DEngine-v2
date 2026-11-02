@@ -4,6 +4,7 @@
 #include <cmath>
 #include <format>
 #include <fstream>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -380,6 +381,52 @@ std::expected<void, std::string> write_text_file_atomic(const std::filesystem::p
   auto staged = stage_text_file(path, text);
   if (!staged) return staged;
   return commit_staged_file(path);
+}
+
+std::expected<void, std::string> write_text_files_transactional(const std::vector<FileWrite>& files,
+                                                                const FileTransactionOptions& options) {
+  std::vector<std::optional<std::string>> previous;
+  for (const auto& file : files) {
+    std::error_code ec;
+    if (std::filesystem::exists(file.path, ec)) {
+      auto old_text = read_text_file(file.path);
+      if (!old_text) return std::unexpected(old_text.error());
+      previous.push_back(std::move(*old_text));
+    } else {
+      previous.push_back(std::nullopt);
+    }
+  }
+  auto discard_staged = [&](std::size_t from) {
+    std::error_code ec;
+    for (std::size_t i = from; i < files.size(); ++i) std::filesystem::remove(staging_path(files[i].path), ec);
+  };
+  for (const auto& file : files) {
+    if (auto staged = stage_text_file(file.path, file.text); !staged) {
+      discard_staged(0);
+      return staged;
+    }
+  }
+  for (std::size_t i = 0; i < files.size(); ++i) {
+    std::expected<void, std::string> committed;
+    if (static_cast<int>(i) == options.fail_commit_index) {
+      committed = std::unexpected(std::format("simulated failure committing '{}'", files[i].path.string()));
+    } else {
+      committed = commit_staged_file(files[i].path);
+    }
+    if (!committed) {
+      discard_staged(i);
+      for (std::size_t j = 0; j < i; ++j) {
+        if (previous[j]) {
+          (void)write_text_file_atomic(files[j].path, *previous[j]);
+        } else {
+          std::error_code ec;
+          std::filesystem::remove(files[j].path, ec);
+        }
+      }
+      return std::unexpected(std::format("rolled back: {}", committed.error()));
+    }
+  }
+  return {};
 }
 
 }  // namespace arcane

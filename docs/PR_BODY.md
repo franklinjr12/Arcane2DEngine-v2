@@ -1,178 +1,156 @@
 ## Franklin: how to test / validate
 
+This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff (4 commits: IN4, IN5, IN6 and this PR body). Jobs done tonight: IN4 (ENG-034), IN5 (ENG-035), IN6 (ENG-036). Queue is empty after these; IN1-IN3 belong to hermes PR #10.
+
+Verified on the final commit 7e2b867 (WRAP, 2026-11-01): gcc Debug incremental build OK, `ctest` 76/76 passed (perf label 2/2 passed); `arcane --project samples/<p> --module <p>.so run --frames 120` returns `ok:true` for platformer_slice, topdown_slice and sample_project. clang ASan/UBSan and mingw results are from the IN6 job on the same commit (not re-run by WRAP).
+
 **1. Step-by-step manual checks**
 
 Linux:
 ```
-scripts/build-and-test.sh          # gcc Debug + clang ASan/UBSan + mingw cross-build; expect gcc PASS and clang PASS
-ctest --test-dir .build-and-test/build-gcc -R "canonical|migration|scene_json|formats_v2|camera2d"   # expect all passed
-xvfb-run -a ctest --test-dir .build-and-test/build-gcc -R topdown --output-on-failure
-.build-and-test/build-gcc/bin/arcane_editor --project samples/topdown_slice
-.build-and-test/build-gcc/bin/arcane_player --project samples/topdown_slice
-.build-and-test/build-gcc/bin/arcane_editor --project samples/sample_project
-.build-and-test/build-gcc/bin/arcane_player --project samples/sample_project
+scripts/build-and-test.sh     # expect: gcc PASS, clang_san PASS, mingw PASS (build only)
+ctest --test-dir build-gcc -R "test_atomic_save|test_canonical_json|test_migration|test_editor_project|test_tooling_commands" --output-on-failure   # expect: all pass
 ```
-The editor opens the sample project; select a node, add Camera2D in the Inspector, and set its target node ID, zoom, bounds, or shake values. Save, click Play, and observe the camera follow and shake; click Stop to return to editing. The player opens the saved scene. Existing samples continue to load.
-For FE15, open the arena in the editor, select Arena and inspect the registered ArenaRules values; click Play and use WASD. The blue player moves in four directions and stops at the perimeter; the red enemy follows and contact lowers the health HUD and creates a burst. Stop returns to editing. The player command opens the same arena. Run `ctest --test-dir .build-and-test/build-gcc -R "topdown" --output-on-failure` under `xvfb-run -a` for the 600-step simulation, 120-frame player and packaged export checks.
-
-Windows / MSVC (PowerShell, from the repo root):
+Windows / MSVC (PowerShell, repo root):
 ```
-cmake -S . -B build -G "Visual Studio 18 2026" -A x64
+cmake -S . -B build -G "Visual Studio 18 2026" -A x64     # or "Visual Studio 17 2022"
 cmake --build build --config Debug
-ctest --test-dir build -C Debug --output-on-failure
+ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pass, including test_atomic_save
 ```
-Use `-G "Visual Studio 17 2022"` with VS 2022. JSON is forced to LF by `.gitattributes`; with
-`core.autocrlf=true` a CRLF checkout previously failed `test_migration`. Verified 2026-10-29 on
-VS 2026 (18.11) Debug: 38/38 CTest pass.
-Expected: all tests pass, in particular `test_canonical_json` and `test_migration` (the latter migrates
-both sample projects in a temp copy and compares against `tests/golden/*`).
+IN6 check: `ctest --test-dir build-gcc -L perf --output-on-failure` (Windows: `ctest --test-dir build -C Debug -L perf`); expect `perf_gate` passed (or skipped on a non-gcc/non-Debug build; it only compares against the committed `Debug-GNU` baseline) and `perf_gate_forced_slow` passed (it expects the gate to fail on 1000x slower timings). Refresh: `cmake --build build-gcc --target perf_baseline_update`.
+IN5 check: `ctest --test-dir build-gcc -R test_cli_contract --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_cli_contract`); expect pass.
+IN4 manual check (any platform): open a project in the editor, change something in the scene and project settings, File > Save. Expected: both saved, no `*.arcane-tmp` or `.arcane-commit` file left in the project folder.
 
-AF2 check: the same `test_migration` now also migrates the sample tileset/clip files and nested HUD/input
-(`tests/golden/*/assets/*.json`, `tests/golden/*/project.json`); `test_formats_v2` covers clips, tilesets
-(FE9 terrain), tile rows, HUD ids/images, input defaults and unsupported versions.
+GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_topdown_controller|test_navigation|test_spawner|test_combat|test_topdown_slice|test_topdown_commands" --output-on-failure` expects all six to pass. To play (needs a display or Xvfb): `build-gcc/bin/arcane_player --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so`, move with WASD and shoot with Space (the bullet flies where you last moved). The red enemy walks around the interior wall to reach you (each touch costs 1 health, shown in the HUD with a particle burst); three bullets kill it; at 0 health the scene restarts. CLI: `arcane --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so prefab info --node path:/Arena/Enemy`.
 
-Open a sample in the editor and save it (File > Save): `samples/sample_project/project.json` and the
-scene now start with `"format": "arcane.project"` / `"arcane.scene"` and `"version": 2`, keys sorted,
-two-space indent. Reopening it works; use `git diff` to see the migrated text, `git checkout samples`
-to restore the legacy copies.
-
-To launch the existing applications on Windows after the build:
-```
-.\build\bin\arcane_editor.exe --project samples/topdown_slice
-.\build\bin\arcane_player.exe --project samples/topdown_slice
-.\build\bin\arcane_editor.exe --project samples/sample_project
-.\build\bin\arcane_player.exe --project samples/sample_project
-```
-Open the sample project in the editor, add Camera2D to a node via the Inspector, set a target ID and shake settings, and use File > Save. Click Play and observe follow and shake; Stop returns to editing. Open the saved project in the player and observe the same camera. The `arcane` CLI is not available in this branch yet, so a CLI check cannot be run.
-
-FE12B: the `test_renderer_gl` test also creates and loads a texture with a Unicode filename; expect it to pass.
-
-Audio check (Linux or Windows): select a node in the editor, add `AudioSource`, assign a WAV from Assets, enable `play_on_start`, and click Play. With an available playback device, expect sound; set `loop` to hear it repeat and adjust `volume` to change its level. Stop ends playback. Run the player on the saved project to hear the same source. Without a device the application logs a warning and continues silently. Hidden runs use the null backend. The `arcane` CLI does not exist on this branch; a CLI command cannot be run.
-
-AF9 prerequisite check: open a temporary copy of a sample in the editor, change its scene file externally, then make an editor edit and use File > Save. Expect a save error and the external file to remain unchanged. Reopen the project before saving again. No `arcane` CLI exists yet, so CLI checks cannot be run.
-
-AF10: no `arcane run`, `test`, or `export` command is available yet; there is no AF10 manual CLI check to run.
+GP6 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_platformer_slice|test_schema_examples|test_cli|test_migration" --output-on-failure` expects all to pass; with Xvfb or a GL desktop also `-R "test_platformer_replay|test_render"` (the replay trace and the render golden are unchanged). Live: `build-gcc/bin/arcane_player --project samples/platformer_slice --module build-gcc/bin/platformer_slice_game.so`, press P/Escape (or gamepad Start): the game freezes and RESUME / RESTART / MENU buttons appear (D-pad down + A, or the mouse); MENU opens the menu scene, PLAY starts the level. Resize the window: the 640x360 view letterboxes with black bars and the buttons are still clicked where they are drawn.
 
 **2. What you can visibly see**
-- AF11 adds `AGENTS.md` with build, format and current authoring guidance, and expands the editor action inventory. No CLI or generated command reference is available.
-- AF9 prerequisite: saving reports external edits detected in the project or scene since opening or the last save.
-- AF8 prerequisite: opening legacy data remains compatible, but Save reports an error if the originally opened project or scene contains unknown data that would be lost.
-- AF7 adds no visible feature: clip, HUD and input commands and panel routing remain blocked by incomplete command and undo foundations.
-- AF6 prerequisite work adds a strict project-opening API for future tooling; it has no new editor screen or CLI command. `test_editor_project` checks that strict loading refuses an unknown legacy module property without changing the file.
-- FE15 adds a top-down arena with solid walls, chasing enemy, health HUD and hit particles, plus editable ArenaRules properties in scene JSON and the Inspector.
-- AudioSource playback is audible in visible editor Play and player sessions when a device opens; fallback is logged.
-- Camera2D appears in the Inspector; Play and player use its follow, bounds, zoom, shake and pixel snapping. Its settings appear in saved scene JSON.
-- Texture files with Unicode names can now be opened by the renderer on Windows; the regression test checks a Unicode filename.
-- New docs: `docs/formats/canonical-json.md`, `project.md`, `scene.md`, plus (AF2) `tileset.md`, `clip.md`, `hud.md`, `input.md`; JSON Schemas in `schemas/`.
-- AF2: Tilemap layers are now rows of ids in the scene file (not a `;`/`,` string); tileset/clip files and the project's HUD/input are `arcane.*` version 2; HUD elements all have ids and images keep an asset id.
-- Golden migrated files under `tests/golden/` (what a v2 project and scene look like).
-- Editor saves now write the canonical v2 format; old files still open.
-- No new GUI and no CLI yet (the `arcane` CLI is AF4).
+
+PX1: Hierarchy "Save as Prefab", Assets > Prefabs list that instantiates on click, `[P]` marker on instance nodes, Inspector prefab header with per-override Revert, "* overridden" tags and Break prefab link.
+
+GS2: the platformer sample now has sensor-trigger pickups/spikes/goal, checkpoints with pit respawn, a patrolling enemy, hero jump/fall/hurt animation states, pause (P/Escape), camera follow + parallax and a second level reached through the goal (score carries over), plus a replay test (`test_platformer_replay`, GL-labeled) and gaps in `docs/slice_platformer_gaps.md`.
+
+GS1: the top-down sample is now an arena with waves, coin pickups, HUD, pause, game over/restart, a 60 s replay test (`test_topdown_replay_60s`) and perf numbers in `docs/perf.md`.
+
+GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner, an enemy that paths around an interior wall, player health in the HUD, restart on death.
+
+GP6: the platformer pauses through a game time scale (physics, animation and enemies stop; the player stays put), with a centred Resume/Restart/Menu column navigable with the D-pad and A; the gamepad can also move (D-pad or left stick), jump (A) and pause (Start). `scenes/menu.scene.json` shows the title, `BEST <n>` and PLAY; winning or game over writes the best score (saves are on only in the windowed player and editor Play) and shows it as `BEST <n>` under the score. The window is resizable with letterbox bars at 640x360.
+
+GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
+
+AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
+
+AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
+IN6: `docs/perf_gate.md`, `docs/perf_baseline.json`, `ctest -L perf`.
+No UI change. New: `engine/include/arcane/atomic_save.hpp` and `test_atomic_save` (a simulated kill after every step of a save). Saves now briefly create a `.arcane-commit` file in the project root.
 
 **3. Enough to merge**
-- Minimum: Windows/MSVC configure + build + `ctest` green, play the top-down arena as above, review the FE15 CLI gap in `docs/slice_topdown_gaps.md`, and review the partial-job limitations. Review the FE13 CLI gap below as well.
-- Optional: open + save both samples in the editor and run the player on the saved project.
+Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises the Windows fsync/rename path). Optional: the editor save check.
 
 **4. Known risks**
-- AF11 is PARTIAL: AF3–AF10 prerequisites remain incomplete, so generated CLI documentation, registry coverage and drift gates, schema-example validation and the end-to-end CLI workflow were not delivered.
-- AF10 is PARTIAL and has no implementation: the shared command registry and CLI prerequisites are incomplete, so display-free fixed-frame run, project test and structured CLI export are unavailable. The existing export script still rewrites the module field with `sed`; the player still requires a display.
-- AF9 is PARTIAL: batch, asset import/reimport, recovery and CLI remain unavailable because AF3–AF8 prerequisites are incomplete. The save revision check is optimistic: a concurrent writer can race after the check, and project/scene saves are not transactional.
-- AF8 is PARTIAL: the shared registry and CLI, AF3–AF7 prerequisites, AF8 property/project commands, editor routing, undo and command-coverage enforcement remain unimplemented. The save guard and revision check do not make project and scene writes transactional.
-- AF7 is PARTIAL: clip reopening, clip/HUD/input commands, HUD image editing through commands, and panel undo/routing are not implemented. AF3, AF4 and AF5 remain prerequisites; the preserved AF3 WIP is not safe to integrate unchanged.
-- AF5 is PARTIAL: AF3 and AF4 remain unimplemented; scene/Inspector edits still bypass commands and generic undo, coalescing, save-point tracking and coverage lint are absent. See `docs/editor-command-inventory.md`.
-- KI1 is PARTIAL: the required shared command registry and CLI foundation are incomplete; impulse API, one-way platforms, clip reopening and player clip hot-reload remain unimplemented.
-- FE15 is partial: the missing AF3/AF4 CLI prevents CLI authoring, validation, fixed-frame run and export. The sample has not been visually inspected.
-- FE14 is partial: AF3/AF4 are absent, so shared CLI audio settings and diagnostics are unavailable. Real-device playback has not been manually verified.
-- FE13 is partial: AF3 registry and AF4 CLI remain incomplete; camera CLI commands, validation and shared GUI command routing are unavailable. The incomplete AF3 work is preserved on the local WIP branch.
-- **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran; Wine is unavailable). Audio playback, some command-line/project paths, ImGui settings paths and error messages still use narrow path conversions and may fail or display incorrectly for non-ASCII paths.
-- **UNTESTED on native Windows/MSVC** (only a mingw cross-build ran). Float formatting uses `std::to_chars` (MSVC and libstdc++ both support shortest round-trip); golden byte equality is the test to watch on MSVC.
-- `ProjectSession::save` now writes via a temp file + rename; on Windows a locked target file would make a save fail (reported as an error, old file kept).
-- Saving a compatible legacy project from the editor rewrites it to v2 (older engine builds cannot read v2). Save now refuses unknown fields detected in the project and scene at open; it detects ordinary external changes before saving but cannot prevent a race after its check.
+
+- PX1: the new prefab widgets (ImGui) are compile-checked only; the command/EditSession paths are tested headless. Propagation happens on load only and ignores added/removed nodes or components; prefab nesting is not supported. UNTESTED on native Windows/MSVC.
+
+- GP5: UNTESTED on native Windows/MSVC. Nobody played the top-down slice by hand: the GL tests (`test_export_topdown_slice`, `test_player_topdown_frames`) and the fixed-frame run only prove it loads and steps, and `test_topdown_slice` drives it with fake input. Not covered: enemy spawner waves, line of sight, knockback, melee swings, steering around other enemies (no separation in the slice).
+
+- GP6: UNTESTED on native Windows/MSVC. The gamepad bindings and D-pad/A navigation are tested with the fake input backend only, not with real hardware (Start is GLFW button 7, which `arcane::GamepadButtons` has no constant for). The menu scene is not the startup scene (see `docs/slice_platformer_gaps.md`). Resizing and the letterbox bars were not looked at on a real window. The level HUD's own RESTART button is disabled while the pause menu is open.
+
+- GP4: the Animation Graph panel (ImGui) is compile-checked only and its commands are tested headless; nobody clicked it. Flip visuals are not golden-tested (no sprite sheet with asymmetric art in the render goldens). Adding `Sprite`/`Collider2D` properties changed the canonical text of scenes that contain them (samples and `tests/golden/` were regenerated; old files still load). Rebuilding a mirrored collider on flip can emit one collision exit/enter. UNTESTED on native Windows/MSVC.
+
+- AF8C: the editor widgets (ImGui) were compile-checked and the command/EditSession paths are tested headless, but the panels themselves were not clicked through by a human. `transition.set`, `save.config_set` and `debug.set` changed from immediate `project.json` writes to in-memory edits (CLI output the same; `--dry-run` now allowed). Tileset/clip draft fields before Save are still unsaved panel state (documented, by design). UNTESTED on native Windows/MSVC.
+
+- AF10C `arcane render` is UNTESTED on native Windows/MSVC (GL offscreen FBO path ran only on Linux Mesa llvmpipe under Xvfb); the golden `tests/golden/render/platformer_slice_f30.png` is llvmpipe-specific and other GPUs may need a regenerated golden or higher tolerance.
+
+- UNTESTED on native Windows/MSVC for this PR (only the mingw cross-build ran).
+- The `.so` stays in the history of PR #7/#8 (commits 49962be, 2e78c85, eb931a1); history was not rewritten, so the repo size is unchanged. The file is only removed from the index.
+- Anyone who relied on the committed `.so` must build once so CMake copies it in.
+- UNTESTED on native Windows/MSVC (only mingw cross-build ran). On Windows `_commit` is used for fsync and directory fsync is skipped.
+- Opening a project removes stale `*.arcane-tmp` files under it; a second process saving into the same project at that moment would see its save fail (rolled back, no corruption). Concurrent writers are not supported.
+- Single-file saves (`write_text_file_atomic`) are unchanged (rename of a synced-less temp); only the multi-file paths (editor save, CLI save, migration) use the journal. `canonical_json.hpp` still carries the old "not crash-atomic" note on `write_text_files_transactional`, which is now unused by product code (hermes IN2 owns that file tonight).
 
 ---
 
-## Overnight wrap (2026-10-29 02:40 BRT)
-- Branch `engine-nightly-2026-10-28` HEAD `e464cfe`: gcc Debug build and CTest pass, 43/43 (headless and under `xvfb-run`). Clang ASan/UBSan and mingw were not re-run in this wrap; their last full results are in the job notes above.
-- Uncommitted FE18 prefab work (prefab link/override load and save, `engine/src/prefab.cpp`) did not compile (`arcane::Color` has no `operator==`). It was moved to WIP branch `engine-nightly-2026-10-28-wip-fe18` (not built, not tested), not committed to the job branch.
-- The older `engine-nightly-2026-10-28-wip` branch (tip `613fadb`, preserved AF3 tooling) was left untouched.
-- Status: AF1, AF2, FE1-FE5, FE7-FE12B, FD1-FD3 and WINFIX PASS. AF3-AF11, FE13-FE15, FE17 and KI1 are PARTIAL or not complete. FE18 is PARTIAL (WIP branch only). FE20-FE23, AF12 and FE16 were not started.
-- Native Windows/MSVC remains UNTESTED (mingw cross-build only).
+## Technical detail
 
-## AF11 — documentation and inventory (partial)
+### Test results per config (tonight's tip 7e2b867)
+- gcc Debug headless: ctest 76/76 passed (WRAP, 2026-11-01).
+- clang ASan/UBSan headless: PASS in the IN6 job (same tip).
+- mingw cross-build: OK in the IN6 job (build only, not run).
+- Native Windows/MSVC: not run. UNTESTED.
+- Samples (headless `arcane run`, 120 fixed frames): platformer_slice, topdown_slice, sample_project all `ok:true`.
 
-Added root agent guidance and reviewed editor actions. Registry-generated CLI reference and coverage gates, schema-example validation and the CLI workflow remain blocked by missing prerequisites. **UNTESTED on native Windows/MSVC.**
+### GP5: top-down controller, steering, combat, pooled spawner (docs/slice_topdown_gaps.md)
+- Engine components (all registered by `register_physics_components`): `TopDownController2D` (`topdown.hpp`), `SteeringAgent2D` + `NavGrid`/`find_path` grid A* (`navigation.hpp`), `Spawner2D` + `Node::set_active` (`spawner.hpp`), `Health`/`Hurtbox`/`Hitbox`/`Projectile` (`combat.hpp`). Decisions 82-85 and 86 in `docs/decisions.md`.
+- `samples/topdown_slice`: `project.json` gets `collision_layers` world/player/enemy/player_attack/enemy_attack and a `fire` action on Space. Player = TopDownController2D + Health(5) + Hurtbox (layer player). Enemy = `assets/enemy.prefab.json` (SteeringAgent2D to `Player` with pathfinding, Health(3), Hurtbox, Hitbox for contact damage); the scene instances it as `Enemy`. A short wall (column 9, rows 4-10) sits between player and enemy so A* matters. `BulletSpawner` pools `assets/bullet.prefab.json` (sensor collider, Hitbox 1, Projectile).
+- `ArenaRules` is now glue only: Space -> `Spawner2D::spawn` + `Projectile::launch(facing)`, HUD from the player's `Health`, a `Health` listener for the HitBurst and `GameContext::request_restart` on death. Properties: `player_speed`/`enemy_speed` are copied into the controller/agents at start, `bullet_speed` is new; `hit_radius`, `hit_cooldown` and `hit_damage` are removed (damage is the enemy Hitbox's). The scene was edited with `arcane batch`/`prefab save`/`prefab instantiate`.
+- The enemy's body collider is on layer `enemy` (mask world+player+player_attack) so bullets hit it; its contact Hitbox shares that collider, so `enemy_attack` is declared but no collider uses it yet. One collider per node means a separate attack collider would need a child body.
+- Tests: `test_topdown_slice` (left wall, A* detour, enemy hurts player, Space bullet damages and kills the enemy, HUD and particles), `test_topdown_commands` (3 properties), plus the component tests. `scripts/build-and-test.sh` result in the commit message / final report.
 
-# Engine nightly 2026-10-28 — AF1 (draft)
+### GP4: animation state machine, sprite flip, HUD lookup (slice gaps 4, 7, 10)
+- `arcane.animgraph` v2 (`docs/formats/animgraph.md`, `schemas/arcane.animgraph.schema.json`, example in `tests/golden/schema_examples/`): parameters (bool/float/trigger), states -> clip ids with speed and frame events, transitions with priority and conditions. `Animator` component drives the sibling `AnimatedSprite`; gameplay calls `set_bool/set_float/set_trigger`; events reach `Component::on_animation_event`. Migration re-checks graphs; `validate` checks them strictly.
+- Commands `animgraph.create/info/add_param/remove_param/add_state/set_state/remove_state/add_event/remove_event/add_transition/remove_transition/restore` (docs/commands.md, regenerated cli-reference.md). Editor: Animation Graph panel through `EditSession`.
+- `Sprite::flip_x/flip_y` (render swaps UVs), `Collider2D::mirror_with_sprite` (offset mirrored, shape rebuilt on change).
+- `Hud::find_text/find_bar/find_image/find_button`; HUD ids already existed. platformer_slice uses all three (module no longer has clip properties or negative scale).
+- Tests: `test_animgraph`, `test_animgraph_commands`, extended `test_platformer_slice`, `test_physics_components`, `test_schema_examples`, `test_migration`.
+### Delegated decisions tonight
+- Branch stacked on `engine-nightly-2026-10-30` (PR #9), not on hermes branches (docs/decisions.md).
+- IN6 baseline is per flavor (`Debug-GNU`); other flavors skip the perf gate rather than compare against foreign timings.
+- IN4 manifest name `.arcane-commit` and temp suffix `.arcane-tmp` chosen by us; recovery runs at every open.
 
-**Base:** master 580b0bf (PR #3 and #4 merged). **Head:** `engine-nightly-2026-10-28`.
+### UNTESTED on native Windows/MSVC
+Everything in this PR: the atomic-save fsync/rename path (`_commit`), the CLI contract test, the perf gate (skips on MSVC) and the new docs. Only the mingw cross-build ran.
 
-## AF1 — canonical project and scene compatibility
-- `arcane/canonical_json.hpp`: `canonicalize_json`, `read_text_file`, atomic/staged file writes; internal strict SAX parser (duplicate keys rejected) and canonical writer (`engine/src/canonical_json.*`).
-- Scene and project writers emit canonical v2 (`arcane.scene` / `arcane.project`, `version: 2`); readers accept v2 (strict) and legacy v1 (lenient as before). Stricter value typing everywhere (no silent `1.5`→int, no uncaught exceptions on bad types).
-- `arcane/migration.hpp`: `migrate_project_json`, `migrate_scene_json`, `migrate_project` (dry run, staged commit, rollback, idempotence verified on every result).
-- `ProjectSession::save` serializes before writing and uses atomic writes.
-- Docs `docs/formats/*`, schemas `schemas/*.schema.json`; decisions 51–60.
-- Tests: `test_canonical_json` (format rules, float policy, malformed/future/unknown), `test_migration` (both samples with their modules: semantic equality, byte-identical repeat, golden files, unknown property/field, future version, malformed, rollback on commit failure, missing module types).
+### GP1: gameplay context API (docs/slice_platformer_gaps.md items 1, 2, 5, 6)
+- `RigidBody2D::teleport(pos)` moves the node at once and queues a Box2D transform applied at the start of the next `PhysicsWorld::step` (velocity cleared), so it is safe inside any hook. `PhysicsWorld::step` now also drops bodies of destroyed nodes and creates bodies for nodes spawned since the last step (before this a destroyed node kept a ghost body).
+- `Component::scene()` / `Node::scene()` give gameplay its `Scene` (`destroy_node` stays deferred to the end of the tick; `create_node`/`add_component` work from hooks; new `Scene::find_node_by_name`). `Scene` move ctor/assignment are now out-of-line and re-point every node.
+- New `arcane/assets.hpp` (moved from `arcane_editor/asset_catalog`, editor keeps aliases): asset ids, listings and `find_asset_path`. New `arcane/game_context.hpp`: `GameContext` (project dir, `asset_path`, `play_sound` by id or by assets-relative path, `spawn_prefab`, `request_restart`), `active_game_context()`, `reload_scene_file`. `AudioSource::play()` and `play_one_shot(id)` use it; paths are absolute, so the working directory no longer matters. The player (window + `--headless`), `arcane run/test/render` and the editor's Play install a context.
+- Restart: the runner reloads the authored scene file between ticks (`FixedRunOptions::restart_scene_json` for the headless runners, `reload_scene_file` in the player, stop+play in the editor so it restarts from the editor's in-memory scene). The windowed player and the editor's Play mode own a `SceneManager` (PX2: `active_scene_manager()->request_switch(...)`, authored persistent roots carry across scenes); the headless runners (`--headless`, `arcane run`) do not yet. Restart stays a small request flag rather than a manager switch.
+- `platformer_slice`: coins use `destroy_node`, pit fall respawns with `teleport` (second fall = game over; test expects 2 hurt cues), Restart requests a real reload, sounds go through `play_sound("coin.wav")`.
+- No authored data or registry commands were added, so no schema/command rows were needed. New test `tests/test_game_context.cpp` (teleport, destroy/spawn vs bodies, scene pointer through moves, asset lookup + audio by id, restart); `test_platformer_slice` updated. Tests: gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC; real audio device playback untested.
+### IN6: headless bench regression gate (ENG-036)
+- `tests/perf_gate.cmake` (cmake -P) runs `arcane_bench` for scene/particles/physics at default sizes, 5 runs each, median `avg_frame_ms`, fails above baseline +30% (`docs/perf_baseline.json`). Tests `perf_gate` and `perf_gate_forced_slow` (WILL_FAIL, 1000x scale) carry label `perf`; baseline refresh target `perf_baseline_update`. Baseline is for flavor `Debug-GNU`; other flavors skip. Docs in new `docs/perf_gate.md` (hermes owns docs/perf.md and bench_main.cpp tonight, untouched).
+- UNTESTED on native Windows/MSVC (the gate skips there anyway: different flavor).
 
-## AF2 — tileset, clip, HUD, input and tile-row migration
-- `arcane.tileset` / `arcane.clip` v2 writers and strict readers (legacy v1 kept), `migrate_tileset_json` / `migrate_clip_json`.
-- Nested `arcane.hud` / `arcane.input` v2; HUD elements get stable string ids (assigned deterministically for legacy files), `HudImage::texture_asset` is persisted; strict range/duplicate checks for input.
-- Scene v2 `Tilemap.layers` is structured rows; old text form still reads and migrates (strictly).
-- `migrate_project` also migrates tileset/clip files (found by content, never renamed).
-- Schemas for the four new kinds, docs/formats, decisions 61–68, tests `test_formats_v2` + extended `test_migration` with goldens.
-- Not done (later jobs): resolving `HudImage::texture_asset` to a texture at Play (AF7); `solid_tiles` stays a string.
+### IN5: CLI exit-code and error contract test (ENG-035)
+- New `tests/test_cli_contract.cpp`: for every registry and offline command (generated list) runs `arcane <cmd> --args <invalid>` on a copy of `samples/sample_project`; asserts exit 2, `ok:false` with `code/message/file/path/hint`, `ARGS_INVALID`, single-line stdout, stderr diagnostic, and no project file changed. Also pins `exit_code()` for every code and checks each is listed in its row of `docs/cli-reference.md`. The exit table already existed in the generator, so no generator change.
+- Tests: gcc Debug and clang ASan/UBSan green, mingw build OK. UNTESTED on native Windows/MSVC.
 
-## FE17 — one-way platforms
+### AF10C: `arcane render`
+- New `tooling/src/render_commands.cpp` (command `render`), `render_offscreen` and masked `compare_images` in `engine/include/arcane/screenshot.hpp`, `run_on_copy` shared with `run`/`test` (optional `finish` callback), exit code 8 / `RENDER_UNAVAILABLE`.
+- Tests: `test_render_cli` (gl label: metadata, determinism, golden within tolerance 2, mismatch exit 4, size mismatch exit 4, mask) and `test_render_cli_nodisplay` (exit 8). Golden `tests/golden/render/platformer_slice_f30.png`.
+- Docs: `docs/commands.md` (Render), regenerated `docs/cli-reference.md`, `AGENTS.md`, acceptance-audit row 3, decisions row.
 
-`Collider2D.one_way` (static box; land from above, pass from below) and `PlatformerController2D.down_action` / `drop_duration` (hold down + jump to drop through). Canonical JSON gains `one_way`, `down_action`, `drop_duration` (golden scenes updated, additions only). Headless test `test_platformer` covers landing, drop-through and passing from below. Manual check: add a Collider2D to a static body in the editor, tick `one_way`, Play, jump up through it, land, press S+Space. Not done: tile-flag one-way, slopes, CLI commands (AF3/AF4 absent). **UNTESTED on native Windows/MSVC.**
-
-## Test results
-`scripts/build-and-test.sh`: gcc Debug PASS (39/39 tests; AF2 adds test_formats_v2), clang ASan/UBSan PASS (39/39), mingw-w64 cross-build PASS (build only, not run).
-
-## UNTESTED on native Windows/MSVC
-Everything above (mingw cross-build only), notably `std::to_chars` float formatting, `std::filesystem::rename` over an existing file, and the golden-file byte comparison.
-
-## AF4 prerequisite review
-AF3 is PARTIAL: its preserved WIP is not integrated and lacks property commands and tests. Its save path must be corrected to avoid partial multi-file writes and strict legacy loading must be enforced before authoring. AF4 has not been implemented. The existing branch was revalidated with `scripts/build-and-test.sh`: gcc and clang sanitizer tests passed, and the mingw cross-build passed.
-
-## FE12B — Windows hardening audit
-- Audited public headers, DLL exports, pimpl special members, non-ASCII literals, narrow paths and compiler-sensitive conversions. The four engine pimpl owners define their constructors, destructors and moves out of line; editor core is statically linked. Public non-inline engine APIs examined are exported. Shared GLFW/glad setup is unchanged.
-- Texture file loading opens native Windows paths with `_wfopen`, then passes the opened file to stb; `test_renderer_gl` loads a texture whose filename contains escaped Unicode characters.
-- `scripts/build-and-test.sh`: GCC Debug 39/39 PASS, Clang ASan/UBSan 39/39 PASS, MinGW cross-build PASS. No Wine installed; Windows executables were not run. **UNTESTED on native Windows/MSVC**. Narrow path handling remains in audio, some app paths and diagnostics, so this does not establish general Unicode path support.
+### HY1: branch sanity, build hygiene, PR body
+- Tip ac03c08 builds and passes `scripts/build-and-test.sh`: gcc Debug PASS, clang ASan/UBSan PASS, mingw cross-build PASS (build only, not run).
+- The old FE18 wip problem (Color `operator==` in prefab.cpp) is fixed at the tip: `Color` has a defaulted `operator==` in `engine/include/arcane/renderer.hpp`.
+- `git rm --cached samples/topdown_slice/topdown_slice_game.so`; `.gitignore` gets `/samples/topdown_slice/topdown_slice_game.so` and `.dll`. Other sample modules were already ignored.
+- `docs/decisions.md`: row for the branch choice.
 
 
-## FE13 Camera2D
+## GP3: camera follow, viewport size, parallax
 
-Registered canonical scene properties, fixed-tick following and deterministic shake, bounds and pixel snapping; see `docs/formats/scene.md`. AF3/AF4 are partial and absent: shared GUI commands, CLI creation/property/validation and CLI shake round-trip remain unimplemented. UNTESTED on native Windows/MSVC.
+- `Camera2D` (the existing follow camera) gained `look_ahead` (Vec2) and `bounds_tilemap` (node id; bounds = that Tilemap's world rectangle). No second `CameraFollow2D` component (see docs/decisions.md). Both are registered properties, so `prop.set`, the Inspector and JSON v2 already cover them; `docs/formats/scene.md` documents them.
+- New `ParallaxLayer` component (factor Vec2, repeat_x/repeat_y) next to a Sprite, drawn in `render_scene` shifted by `camera * (1 - factor)` and tiled over the view, correct with zoom. Sprites only, not Tilemaps.
+- `GameContext::viewport_size()` for modules (player, editor and `arcane render` set it; default 800x600).
+- platformer_slice: the module no longer moves the camera; `MainCamera` is a Camera2D following the Player (smoothing, dead zone, look-ahead, bounds 0..1280 x 0..600) and a `Sky` ParallaxLayer (new `assets/sky.png`, factor 0.3, repeat_x). Goldens `tests/golden/render/platformer_slice_f30.png` and `tests/golden/platformer_slice/scenes/main.scene.json` regenerated; `test_render_cli` also checks that changing the parallax factor changes the render.
+- UNTESTED on native Windows/MSVC (Linux gcc/clang/mingw only); the render golden assumes Mesa llvmpipe.
 
-FE13 verification: GCC Debug 40/40, Clang ASan/UBSan 40/40, MinGW cross-build passed; native Windows/MSVC and visual camera behavior are untested.
+## GP6: pause menu, menu scene, best score, design resolution (platformer slice)
 
-## FE14 audio
+- `SliceRules::set_paused` now calls `GameContext::set_time_scale(0/1)` (no more node deactivation); the runners keep updating components at dt 0, so `pause` and the HUD buttons are still read. Without a `GameContext` pausing is a no-op.
+- Pause/end-of-run menu: HUD buttons `pause_resume`, `pause_restart`, `pause_menu` (prefixed because the project HUD already owns `restart`) added with `Hud::add` and removed with `Hud::remove` on resume, restart, scene switch (`on_destroy`) and reload. The corner `restart` button is disabled while the menu is open so D-pad down starts at the first menu button (`HudInput` only focuses on a nav press, never on its own).
+- `MenuController` (module component, `scenes/menu.scene.json`): sets the level HUD elements aside, adds `menu_title`, `menu_best`, `menu_play`, and restores the level HUD in `on_destroy`; PLAY switches to `scenes/main.scene.json`. Reached from the pause menu's MENU and from the win/game-over menu.
+- Best score: `project.json` `save` (`arcane_platformer_slice`), slot `progress`, key `best_score`; written on the final level's goal or game over only if higher; save errors are logged (warning only when saves are enabled).
+- `project.json` also gets `display` 640x360 letterbox and gamepad bindings (D-pad/left stick move, A jump, Start pause). Replay trace and render golden stay valid (`arcane render` passes `--size` in the test); `tests/golden/platformer_slice/project.json` was regenerated for the new keys. `make_assets.py` generates `project.json` and the menu scene.
+- Tests: `test_platformer_slice` (time scale 0 pause, buttons appear/disappear, D-pad + A and mouse Resume, Restart/Menu/PLAY flow with the HUD swap, best score written/kept/raised under `ARCANE_SAVE_DIR`, saves off writes nothing). Top-down pause unchanged.
 
-Visible editor/player use miniaudio with a null fallback; hidden runs stay device-free. Streaming playback applies source gain, loop and bus gain. Tests exercise null selection and simulated fallback. CLI audio commands await AF3/AF4. **UNTESTED on native Windows/MSVC**, including audible playback.
+## PF1: rendering and entity performance
 
-## FE15 — top-down validation slice
-
-Canonical v2 project and scene with a registered native module, zero-gravity actors, tilemap walls, direct enemy chase, health HUD and hit burst. `test_topdown_slice` covers strict text edit/round trip and 600 headless fixed steps; player/export smoke tests use a virtual display. See `docs/slice_topdown_gaps.md` for limitations. **UNTESTED on native Windows/MSVC.**
-
-FE15 validation: GCC Debug 43/43 CTest, Clang ASan/UBSan 43/43 CTest, MinGW cross-build passed; no MinGW executables were run.
-
-## KI1 — carry-over issues
-
-No KI1 implementation was made: AF3 and AF4 are partial and absent, and the required shared command registry must be completed first. Physics impulse, one-way platforms, clip reopening and player clip hot-reload remain open. See the KI1 job handoff. **UNTESTED on native Windows/MSVC.**
-
-## AF5 — prerequisite and mutation inventory (partial)
-
-AF3 and AF4 remain incomplete. The editor mutation inventory records outstanding direct writes for AF5–AF8; no command routing or undo implementation is claimed. Native Windows/MSVC remains UNTESTED.
-
-## AF6 prerequisite progress
-
-ProjectSession and module-aware ProjectRuntime can opt into strict legacy scene loading. Their existing default remains compatible. The shared command registry, CLI, generic undo, and AF6 tilemap/tileset commands and editor routing are still missing; AF6 is PARTIAL. `scripts/build-and-test.sh` passed GCC Debug CTest, Clang ASan/UBSan CTest, and MinGW cross-build. UNTESTED on native Windows/MSVC.
-
-## AF8 prerequisite progress (partial)
-
-Compatible-loaded ProjectSession saves refuse unknown legacy project or scene data instead of silently discarding it. Headless tests exercise a real module property and a project field, preserving the original file and dirty state. The editor action inventory now classifies more widgets, but registry/CLI coverage and enforcement remain absent. `scripts/build-and-test.sh`: GCC Debug and Clang ASan/UBSan CTest passed; MinGW cross-build passed. **UNTESTED on native Windows/MSVC.**
-
-## AF9 prerequisite progress (partial)
-
-ProjectSession checks the bytes of both inputs before saving and rejects detected external changes, leaving the dirty flag set. This is not a lock and does not provide transactional multi-file writes. AF3–AF8 and AF9 command/CLI acceptance remain incomplete. **UNTESTED on native Windows/MSVC.**
+- Sprite batching (static index buffer, VBO orphaning, 16384-quad batches), view culling with `RenderStats::culled`, benchmark defaults 5000 sprites / 2000 particles / 500 bodies, `arcane_bench --render 1`. Tests: `test_render_bench`, `test_render_cull`, `test_debug`, `bench_cli_render_smoke`. Numbers in `docs/perf.md` come from llvmpipe under Xvfb; Windows not measured.
+### IN4: crash-atomic multi-file save (ENG-034)
+- New `arcane/atomic_save.hpp` + `engine/src/atomic_save.cpp`: `commit_files_atomic(root, files, options)` stages every file as `NAME.arcane-tmp` (fwrite + fsync), writes a manifest `ROOT/.arcane-commit` (itself via temp + rename = the commit point), renames the staged files, fsyncs the root, removes the manifest. `recover_pending_commit(root)` rolls a committed-but-unfinished save forward, or discards a missing/torn manifest and all stale `.arcane-tmp`. A kill therefore yields entirely old or entirely new files.
+- Ordinary failure while renaming still restores previous bytes and reports `rolled back: ...` (existing tests pass unchanged).
+- Call sites: `ProjectSession::save` (editor), `ProjectContext::save` (CLI/tooling), `migrate_project`; recovery runs in `ProjectSession::open` (so editor, player, CLI) and at the start of every commit.
+- Test `tests/test_atomic_save.cpp`: crash hook (`crash_at_step`) after each of the 2N+2 steps, recover, assert all-old before the commit point / all-new after, no leftovers; torn manifest; next save recovers; rollback; path outside root.
+- Tests: gcc Debug and clang ASan/UBSan green (ctest all passed), mingw cross-build OK.

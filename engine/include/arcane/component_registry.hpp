@@ -25,6 +25,12 @@ class ARCANE_API ComponentRegistry {
   void register_component(std::string type_name, Factory factory,
                             std::vector<PropertyDescriptor> properties);
 
+  // Entries registered while an owner is set carry it (and tag the components
+  // they create), so GameModule can tell whether module code is still in use.
+  // GameModule::register_types sets and clears this; builtins have no owner.
+  void set_registration_owner(std::shared_ptr<const void> owner) { registration_owner_ = std::move(owner); }
+  void clear_registration_owner() { registration_owner_.reset(); }
+
   bool contains(const std::string& type_name) const noexcept;
   std::unique_ptr<Component> create(const std::string& type_name) const;
   const std::vector<PropertyDescriptor>* properties_of(const std::string& type_name) const noexcept;
@@ -36,8 +42,10 @@ class ARCANE_API ComponentRegistry {
   struct Entry {
     Factory factory;
     std::vector<PropertyDescriptor> properties;
+    std::shared_ptr<const void> owner;
   };
   std::unordered_map<std::string, Entry> entries_;
+  std::shared_ptr<const void> registration_owner_;
 };
 
 }  // namespace arcane

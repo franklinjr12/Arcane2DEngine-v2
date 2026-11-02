@@ -3,6 +3,7 @@
 #include <expected>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #include "arcane/export.hpp"
 
@@ -29,5 +30,20 @@ ARCANE_API std::expected<void, std::string> stage_text_file(const std::filesyste
                                                             const std::string& text);
 ARCANE_API std::expected<void, std::string> commit_staged_file(const std::filesystem::path& path);
 ARCANE_API std::filesystem::path staging_path(const std::filesystem::path& path);
+
+struct FileWrite {
+  std::filesystem::path path;
+  std::string text;
+};
+struct FileTransactionOptions {
+  int fail_commit_index = -1;  // test hook: simulate a failure committing the Nth file
+};
+
+// Replaces several files as one unit for ordinary failures: every file is staged first, then
+// committed in order. If a commit fails, files already committed are restored to their previous
+// bytes (or removed if they did not exist) and the error starts with "rolled back:". Not
+// crash-atomic: a kill between two renames can leave a mix. Leaves no .arcane-tmp behind.
+ARCANE_API std::expected<void, std::string> write_text_files_transactional(
+    const std::vector<FileWrite>& files, const FileTransactionOptions& options = {});
 
 }  // namespace arcane

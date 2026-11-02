@@ -19,8 +19,11 @@ class ComponentRegistry;
 // regular grid of equally sized tiles. Tile ids are 1-based (id 0 = empty
 // cell), counted left-to-right, top-to-bottom. UVs come from the grid
 // (columns x rows) alone, so no texture size is needed to compute them.
-struct TileInfo { bool solid = false; int terrain = 0; };
+// `tags` are free gameplay labels such as "hazard" or "pickup" ([a-z0-9_]{1,32}, sorted and unique on save).
+struct TileInfo { bool solid = false; int terrain = 0; std::vector<std::string> tags; };
 struct TerrainRule { int terrain = 0; std::array<int, 16> tiles{}; };
+
+ARCANE_API bool is_valid_tile_tag(const std::string& tag) noexcept;
 
 struct Tileset {
   AssetId texture = 0;
@@ -30,6 +33,7 @@ struct Tileset {
   int tile_count = 1;
   std::vector<TileInfo> tiles;  // index = tile id - 1; missing entries use defaults
   std::vector<TerrainRule> terrains;
+  ARCANE_API bool has_tag(int tile_id, const std::string& tag) const noexcept;
   ARCANE_API int terrain_of(int tile_id) const noexcept;
   ARCANE_API int tile_for_mask(int terrain, int mask) const noexcept;
 };
@@ -87,6 +91,9 @@ class ARCANE_API Tilemap : public Component {
   Vec2 cell_to_local(int cx, int cy) const noexcept { return {static_cast<float>(cx) * tile_width, static_cast<float>(cy) * tile_height}; }
 
   bool is_solid(int tile_id) const;
+  // Cell and tile id under a world position on `layer` (tile id 0 = empty); false if outside the grid.
+  struct TileHit { int cx = 0, cy = 0, tile_id = 0; };
+  bool tile_at_world(const WorldTransform2D& node_world, Vec2 world, int layer, TileHit& hit) const noexcept;
   // Static collision boxes: horizontal runs of solid cells (any layer) merged per row.
   std::vector<TileRect> solid_rects() const;
 
