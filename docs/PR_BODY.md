@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests), IN14 (ENG-044, platformer slopes).
 
 **1. Step-by-step manual checks**
 
@@ -21,6 +21,8 @@ IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (fa
 IN11: no UI change; `arcane/log.hpp` gains `log_set_min_level`, `log_set_category_level`, `log_would_log`, `log_add_sink`/`log_remove_sink`, `log_set_stderr_enabled`, `log_flush`, and `log_set_file(path, LogFileOptions{max_bytes,max_files,timestamps})`. File lines are `LEVEL|category|message` (no wall-clock unless enabled). Tests: `ctest -R test_logger`.
 IN12: no UI change; `arcane/property.hpp` gains `describe_components(registry)` (types sorted by name, properties in registration order with type and default), `get_property_by_name`/`set_property_by_name` (unknown type/property and wrong value type are errors, data untouched) and `value_fits_type`. `tests/test_property_roundtrip.cpp` sets non-default values on every registered type (built-ins + sample_game), saves, reloads and compares values and bytes. Run `ctest -R test_property_roundtrip`. component_registry.* untouched.
 IN13: no UI change; `ctest -R test_canonical_json` now runs 12,000 seeded fuzz iterations (~0.6 s: random nesting, unicode escapes, int64/uint64 extremes, binary32 edge floats, shuffled keys; checks idempotence, value round trip, sorted keys, truncation and random byte damage). One real bug found and fixed in `engine/src/canonical_json.cpp`: deeply nested input (e.g. 200000 `[`) overflowed the stack and crashed; nesting deeper than 512 levels is now an error. Documented in `docs/formats/canonical-json.md`.
+
+IN14: no UI change; `PlatformerController2D` walks up/down slopes (up to `max_slope_deg`, default 50) without sliding or launching, using a downward raycast through the active GameContext's PhysicsWorld. Coyote time / jump buffer / jump cut already existed; new cases in `tests/test_platformer.cpp` (`ctest -R test_platformer`). `max_slope_deg` is a C++ member only, not a serialized property (would alter goldens).
 
 **3. Enough to merge**
 Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.

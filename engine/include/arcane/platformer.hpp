@@ -30,6 +30,10 @@ class ARCANE_API PlatformerController2D : public Component {
   float max_fall_speed = 700.0f;     // px/s
   float coyote_time = 0.1f;          // seconds after leaving the ground a jump is still allowed
   float jump_buffer_time = 0.1f;     // seconds a jump press is remembered before landing
+  // Steepest ground the controller walks along (degrees). While grounded it casts a ray down through the active
+  // GameContext's PhysicsWorld, moves along the surface (no launch off crests, no slide at rest). 0 disables.
+  // Not a registered property yet: adding one changes the sample scenes/goldens (hermes-owned tonight).
+  float max_slope_deg = 50.0f;
   std::string left_action = "move_left";
   std::string right_action = "move_right";
   std::string jump_action = "jump";
