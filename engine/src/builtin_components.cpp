@@ -144,6 +144,13 @@ void register_builtin_components(ComponentRegistry& registry) {
           make_property<SpriteMaterial>("material", PropertyType::AssetId, &SpriteMaterial::material),
       });
   registry.register_component(
+      "PostProcess", [] { return std::make_unique<PostProcess>(); },
+      {
+          make_property<PostProcess>("material", PropertyType::AssetId, &PostProcess::material),
+          make_property<PostProcess>("order", PropertyType::Int, &PostProcess::order),
+          make_property<PostProcess>("enabled", PropertyType::Bool, &PostProcess::enabled),
+      });
+  registry.register_component(
       "Camera", [] { return std::make_unique<Camera>(); },
       {
           make_property<Camera>("zoom", PropertyType::Float, &Camera::zoom),

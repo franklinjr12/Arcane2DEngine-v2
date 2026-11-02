@@ -105,6 +105,9 @@ class ARCANE_API MaterialShader {
   std::uint32_t native_program() const noexcept;
   // Uploads the param values; the program must be in use.
   void apply_params() const;
+  // Sets up a fullscreen post-process pass: uses the program and sets an identity u_view_projection, u_texture = unit 0,
+  // u_time, u_resolution = width x height and the params. Blend state is left to the caller.
+  void bind_fullscreen(float time, int width, int height) const;
   // Uniform location of an engine uniform such as "u_time" (-1 if the shader does not use it).
   int uniform_location(const char* name) const;
 
@@ -143,6 +146,7 @@ class ARCANE_API SpriteRenderer {
   void set_material(const MaterialShader* shader);
   // Game time in seconds for the u_time uniform of material shaders; kept across frames.
   void set_time(float seconds);
+  float time() const noexcept;
   // Draws everything batched so far (using the current camera). Lets callers
   // change the camera mid-frame, e.g. world pass then screen-space HUD pass.
   void flush();

@@ -37,6 +37,8 @@ GP5: the top-down sample plays with WASD + Space: bullets from a pooled spawner,
 
 GP6: the platformer pauses through a game time scale (physics, animation and enemies stop; the player stays put), with a centred Resume/Restart/Menu column navigable with the D-pad and A; the gamepad can also move (D-pad or left stick), jump (A) and pause (Start). `scenes/menu.scene.json` shows the title, `BEST <n>` and PLAY; winning or game over writes the best score (saves are on only in the windowed player and editor Play) and shows it as `BEST <n>` under the score. The window is resizable with letterbox bars at 640x360.
 
+GP7: render order (`RenderOrder`: layer, order, y-sort), GLSL sprite materials (`arcane.material` v2 + `SpriteMaterial`) and fullscreen post-process (`PostProcess` components, run before the HUD) in `render_scene`, with goldens `layers.png`, `material.png` and `postprocess.png` (`test_render_gp7`, `test_render_layers`, `test_material`). Look at the three PNGs in `tests/golden/render/`.
+
 GP4: new Animation Graph editor panel; `hero.animgraph.json` driving the hero's idle/run clips; the hero mirrors when moving left (sprite flip, collider follows); Sprite has `flip_x`/`flip_y` and Collider2D `mirror_with_sprite` in the Inspector.
 
 AF8C: the new Project Settings sections and undoable Tileset/Clip Save described above.
@@ -52,6 +54,7 @@ Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises 
 
 - PX1: the new prefab widgets (ImGui) are compile-checked only; the command/EditSession paths are tested headless. Propagation happens on load only and ignores added/removed nodes or components; prefab nesting is not supported. UNTESTED on native Windows/MSVC.
 
+- GP7: the render goldens assume Mesa llvmpipe under Xvfb; Windows and real GPUs are untested (shader compile, FBO ping-pong, blend state). Post-process under a letterboxed viewport runs over the whole framebuffer and only scissors the output (bars stay black), so blur-like effects see the bars. No editor UI for materials or post-process beyond the Inspector, and there is no hot-reload check beyond the mtime polling.
 - GP5: UNTESTED on native Windows/MSVC. Nobody played the top-down slice by hand: the GL tests (`test_export_topdown_slice`, `test_player_topdown_frames`) and the fixed-frame run only prove it loads and steps, and `test_topdown_slice` drives it with fake input. Not covered: enemy spawner waves, line of sight, knockback, melee swings, steering around other enemies (no separation in the slice).
 
 - GP6: UNTESTED on native Windows/MSVC. The gamepad bindings and D-pad/A navigation are tested with the fake input backend only, not with real hardware (Start is GLFW button 7, which `arcane::GamepadButtons` has no constant for). The menu scene is not the startup scene (see `docs/slice_platformer_gaps.md`). Resizing and the letterbox bars were not looked at on a real window. The level HUD's own RESTART button is disabled while the pause menu is open.

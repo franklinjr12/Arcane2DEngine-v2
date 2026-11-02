@@ -95,9 +95,35 @@ void test_round_trip() {
   ARCANE_ASSERT_TRUE(ro && ro->layer == 3 && ro->order == -2 && ro->y_sort && ro->y_sort_offset == 4.5f);
 }
 
+void test_post_process_order() {
+  Fixture f;
+  const auto pass = [&](const char* name, int order, bool enabled, arcane::Node* parent = nullptr) {
+    auto* p = static_cast<arcane::PostProcess*>(f.scene.add_component(f.node(name, parent), "PostProcess", f.registry));
+    p->order = order;
+    p->enabled = enabled;
+    return p;
+  };
+  ARCANE_ASSERT_TRUE(arcane::editor::collect_post_process(f.scene).empty());
+  auto* late = pass("late", 5, true);
+  auto* off = pass("off", 0, false);
+  auto* early_a = pass("early_a", 1, true);
+  auto* group = f.node("group");
+  auto* early_b = pass("early_b", 1, true, group);
+  auto* hidden_group = f.node("hidden_group");
+  pass("hidden", -3, true, hidden_group);
+  hidden_group->set_active(false);
+  (void)off;
+  const auto chain = arcane::editor::collect_post_process(f.scene);
+  ARCANE_ASSERT_TRUE(chain.size() == 3);
+  ARCANE_ASSERT_TRUE(chain[0] == early_a && chain[1] == early_b && chain[2] == late);
+  const auto* defaults = static_cast<arcane::PostProcess*>(f.scene.add_component(f.node("d"), "PostProcess", f.registry));
+  ARCANE_ASSERT_TRUE(defaults->material == 0 && defaults->order == 0 && defaults->enabled);
+}
+
 }  // namespace
 
 int main() {
+  test_post_process_order();
   test_default_is_preorder();
   test_layer_and_order();
   test_y_sort();

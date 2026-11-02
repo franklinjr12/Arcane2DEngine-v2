@@ -78,3 +78,13 @@ is cached as "no material" and logged once.
 `u_view_projection`, `u_texture` (unit 0), `u_time` (`SpriteRenderer::set_time`; the player passes frame count / 60),
 `u_resolution` (logical view size) and the param uniforms, and the blend function: alpha `SRC_ALPHA, ONE_MINUS_SRC_ALPHA`,
 additive `SRC_ALPHA, ONE`, opaque with blending off. State returns to the default after each draw.
+
+## Runtime (post-process)
+
+`PostProcess` components (`scene.md`) run materials as fullscreen passes (`PostProcessChain`, `arcane/post_process.hpp`). The
+world is drawn into an RGBA8 texture the size of the frame; each pass then draws a quad covering the frame with
+`u_texture` = the previous pass, `v_color` white, `v_uv` 0..1 over the frame (GL convention: `v_uv.y` = 0 at the bottom of
+the screen, unlike sprite UVs), `u_resolution` = frame size in pixels, `u_time` = the renderer's time and the params
+(`MaterialShader::bind_fullscreen`). Intermediate passes draw with blending off; the last pass draws into the framebuffer
+that was bound when the frame began (cleared to black first) with the material's `blend`. Afterwards the viewport, scissor and
+sprite blend state are what `SpriteRenderer::begin_frame` leaves, so the HUD can draw straight after. Edge samples clamp.

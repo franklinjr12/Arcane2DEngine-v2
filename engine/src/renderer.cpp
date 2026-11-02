@@ -286,6 +286,16 @@ std::uint32_t MaterialShader::native_program() const noexcept { return impl_->pr
 
 int MaterialShader::uniform_location(const char* name) const { return glGetUniformLocation(impl_->program, name); }
 
+void MaterialShader::bind_fullscreen(float time, int width, int height) const {
+  static constexpr float kIdentity[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
+  glUseProgram(impl_->program);
+  glUniformMatrix4fv(uniform_location("u_view_projection"), 1, GL_FALSE, kIdentity);
+  glUniform1i(uniform_location("u_texture"), 0);
+  glUniform1f(uniform_location("u_time"), time);
+  glUniform2f(uniform_location("u_resolution"), static_cast<float>(width), static_cast<float>(height));
+  apply_params();
+}
+
 void MaterialShader::apply_params() const {
   for (const auto& param : impl_->params) {
     if (param.location < 0) continue;  // optimized out by the GLSL compiler
@@ -539,6 +549,8 @@ void SpriteRenderer::set_material(const MaterialShader* shader) {
 }
 
 void SpriteRenderer::set_time(float seconds) { impl_->time = seconds; }
+
+float SpriteRenderer::time() const noexcept { return impl_->time; }
 
 void SpriteRenderer::set_culling(bool enabled) { impl_->culling = enabled; }
 

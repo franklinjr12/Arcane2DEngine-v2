@@ -110,6 +110,16 @@ class ARCANE_API SpriteMaterial : public Component {
   AssetId material = 0;
 };
 
+// One fullscreen pass of the scene's post-process chain (docs/formats/material.md): `material` is an arcane.material
+// whose shader reads u_texture (the previous pass) and writes frag_color. Active, enabled PostProcess components form
+// the chain, sorted by `order` ascending and then scene order. Applied to the world only, before the HUD.
+class ARCANE_API PostProcess : public Component {
+ public:
+  AssetId material = 0;
+  int order = 0;
+  bool enabled = true;
+};
+
 // Registers Sprite and Camera into `registry` under the type names "Sprite"
 // and "Camera". Call this once per ComponentRegistry before loading any
 // scene JSON or calling a game module's register_types, so both built-in

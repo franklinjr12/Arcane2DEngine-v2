@@ -117,13 +117,56 @@ void main() {
   add_sprite(scene, env, "plain_ref", 55, 40, 36, Color{0, 0.5f, 0, 1});
 }
 
+void add_post_process(arcane::Scene& scene, Env& env, const char* name, arcane::AssetId material, int order, bool enabled = true) {
+  auto* pass = static_cast<arcane::PostProcess*>(scene.add_component(scene.create_node(name), "PostProcess", env.registry));
+  pass->material = material;
+  pass->order = order;
+  pass->enabled = enabled;
+}
+
+// Colored sprites plus a chain whose scene order differs from its `order`: invert (order 1) runs before the
+// edge-darkening uv-shift pass (order 5, listed first in the scene); a disabled grayscale pass must be skipped.
+// Inverting after the darkening would give light edges instead of dark ones.
+void build_postprocess(arcane::Scene& scene, Env& env) {
+  using arcane::Color;
+  const arcane::AssetId invert = write_material(env, "invert", R"(
+void main() {
+  vec4 c = texture(u_texture, v_uv) * v_color;
+  frag_color = vec4(1.0 - c.rgb, c.a);
+}
+)", arcane::Material{});
+  const arcane::AssetId shift = write_material(env, "shift", R"(
+void main() {
+  vec2 d = v_uv - vec2(0.5);
+  float vignette = 1.0 - dot(d, d) * strength;
+  frag_color = vec4(texture(u_texture, v_uv + vec2(offset, 0.0)).rgb * vignette, 1.0);
+}
+)", arcane::Material{.params = {{"offset", {0.1f}}, {"strength", {2.0f}}}});
+  const arcane::AssetId gray = write_material(env, "gray", R"(
+void main() {
+  float l = dot(texture(u_texture, v_uv).rgb, vec3(0.3, 0.6, 0.1));
+  frag_color = vec4(l, l, l, 1.0);
+}
+)", arcane::Material{});
+  env.materials.set_project_dir(env.project_dir);
+  env.materials.set_assets(arcane::list_animation_clip_assets(env.project_dir / "assets"));
+
+  add_sprite(scene, env, "red", -50, -25, 40, Color{1, 0, 0, 1});
+  add_sprite(scene, env, "green", 0, 10, 40, Color{0, 1, 0, 1});
+  add_sprite(scene, env, "blue", 50, -25, 40, Color{0, 0, 1, 1});
+  add_sprite(scene, env, "yellow", 50, 35, 30, Color{1, 1, 0, 1});
+  add_post_process(scene, env, "shift_pass", shift, 5);
+  add_post_process(scene, env, "gray_off", gray, 3, false);
+  add_post_process(scene, env, "invert_pass", invert, 1);
+}
+
 struct Case {
   const char* name;
   std::function<void(arcane::Scene&, Env&)> build;
 };
 
 const std::vector<Case>& cases() {
-  static const std::vector<Case> list = {{"layers", build_layers}, {"material", build_material}};
+  static const std::vector<Case> list = {{"layers", build_layers}, {"material", build_material}, {"postprocess", build_postprocess}};
   return list;
 }
 }  // namespace

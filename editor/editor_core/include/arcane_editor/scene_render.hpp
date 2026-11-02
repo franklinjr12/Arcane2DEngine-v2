@@ -9,11 +9,13 @@
 
 #include "arcane/animation.hpp"
 #include "arcane/atlas.hpp"
+#include "arcane/builtin_components.hpp"
 #include "arcane/display.hpp"
 #include "arcane/hud.hpp"
 #include "arcane/log.hpp"
 #include "arcane/material.hpp"
 #include "arcane/particles.hpp"
+#include "arcane/post_process.hpp"
 #include "arcane/renderer.hpp"
 #include "arcane/scene.hpp"
 #include "arcane/tilemap.hpp"
@@ -224,6 +226,9 @@ class MaterialCache {
     return dropped;
   }
 
+  // The post-process chain render_scene uses for scenes with PostProcess components (GL objects are created lazily).
+  PostProcessChain& post_process_chain() { return chain_; }
+
   const MaterialShader* get(AssetId id) {
     if (id == 0) return nullptr;
     auto it = shaders_.find(id);
@@ -257,6 +262,7 @@ class MaterialCache {
     return MaterialShader::compile(body.str(), *material);
   }
 
+  PostProcessChain chain_;
   std::vector<AssetEntry> assets_;
   std::filesystem::path project_dir_;
   std::map<AssetId, std::optional<MaterialShader>> shaders_;
@@ -297,6 +303,10 @@ void restart_particles(Scene& scene);
 // A node without RenderOrder is layer 0, order 0, not y-sorted. Pure: needs no GL context.
 std::vector<Node*> collect_render_order(Scene& scene);
 
+// The PostProcess components of the active nodes (inactive subtrees skipped) that are `enabled`, sorted by `order`
+// ascending and then scene preorder: the fullscreen passes render_scene applies. Pure: needs no GL context.
+std::vector<PostProcess*> collect_post_process(Scene& scene);
+
 // Finds the primary Camera in the scene (if any) and renders every Sprite
 // via `renderer`, using `textures` to resolve each Sprite::texture asset id
 // to a GPU texture (sprites whose texture doesn't resolve are skipped). A
@@ -321,6 +331,12 @@ std::vector<Node*> collect_render_order(Scene& scene);
 //
 // A node with a SpriteMaterial that resolves through `materials` draws its Sprite with that shader (the batch breaks
 // at the material change); otherwise, or if `materials` is null, the built-in shader is used.
+//
+// If `materials` is non-null and at least one PostProcess (collect_post_process) resolves to a compiled shader, the
+// world pass (clear through the last world draw) is rendered into the cache's PostProcessChain and the passes run on
+// it (materials that do not resolve are skipped). The HUD is drawn afterwards, so it is not post-processed. With
+// `viewport` the passes cover the whole framebuffer but the output is confined to the viewport rectangle and the
+// bars stay black.
 //
 // If `hud` and `hud_renderer` are both non-null, the HUD is drawn in screen
 // space after the world, in the same frame.

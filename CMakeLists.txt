@@ -107,6 +107,7 @@ add_library(arcane_runtime SHARED
   engine/src/module.cpp
   engine/src/window.cpp
   engine/src/renderer.cpp
+  engine/src/post_process.cpp
   engine/src/node.cpp
   engine/src/scene.cpp
   engine/src/assets.cpp

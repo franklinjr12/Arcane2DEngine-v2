@@ -84,6 +84,10 @@ the migration instead of dropping cells. Writing always pads short layers to ful
 
 `SpriteMaterial` sits on a node with a `Sprite` and draws it with a GLSL shader instead of the built-in one: `material` (AssetId of a `*.material.json`, `docs/formats/material.md`; 0 = none, the default). If the material is missing, invalid or its shader does not compile, the sprite draws plainly and the error is logged once. One material per node; the renderer breaks its draw batch whenever the material changes between two sprites.
 
+## PostProcess
+
+`PostProcess` is one fullscreen pass over the rendered world: `material` (AssetId of a `*.material.json`, `docs/formats/material.md`; 0 = none), `order` (Int, default 0) and `enabled` (Bool, default true). The enabled components of active nodes (inactive subtrees skipped) form the chain, sorted by `order` ascending and then scene order, and `render_scene` runs them over the world before the HUD, which is therefore not post-processed. A pass whose material is missing, invalid or does not compile is skipped (logged once); a scene without any resolvable pass renders exactly as before. With a letterboxed viewport the passes cover the whole framebuffer, but the output is confined to the viewport rectangle and the bars stay black.
+
 ## ParallaxLayer
 
 `ParallaxLayer` sits on a node with a `Sprite` and draws it shifted by `camera * (1 - factor)` per axis (`factor` Vec2, default `[0.5, 0.5]`): 1 moves with the world, 0 stays fixed on screen. `repeat_x` / `repeat_y` tile the sprite (its scaled width/height is the period) across the whole visible rectangle, so it works with any `Camera2D.zoom` and viewport size. Layers draw in scene order like any Sprite (or by `RenderOrder`): put background nodes before the level. Modules can read the view size with `GameContext::viewport_size()`.

@@ -118,6 +118,16 @@ std::vector<Node*> collect_render_order(Scene& scene) {
   return nodes;
 }
 
+std::vector<PostProcess*> collect_post_process(Scene& scene) {
+  std::vector<PostProcess*> passes;
+  visit_scene_preorder(scene, [&](Node* node) {
+    auto* pass = static_cast<PostProcess*>(node->find_component("PostProcess"));
+    if (pass && pass->enabled) passes.push_back(pass);
+  });
+  std::stable_sort(passes.begin(), passes.end(), [](const PostProcess* a, const PostProcess* b) { return a->order < b->order; });
+  return passes;
+}
+
 CameraView find_primary_camera(Scene& scene) {
   CameraView view;
   visit_scene_preorder(scene, [&](Node* node) {
@@ -187,6 +197,14 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     }
   });
   const float cam_x = cam.x, cam_y = cam.y, cam_zoom = cam.zoom;
+
+  std::vector<const MaterialShader*> passes;
+  if (materials) {
+    for (const PostProcess* pass : collect_post_process(scene)) {
+      if (const MaterialShader* shader = materials->get(pass->material)) passes.push_back(shader);
+    }
+  }
+  if (!passes.empty()) materials->post_process_chain().begin(fb_width, fb_height, viewport);
 
   renderer.set_camera(cam_x, cam_y, cam_zoom);
   const Color clear{0.12f, 0.12f, 0.16f, 1.0f};
@@ -285,6 +303,11 @@ void render_scene(Scene& scene, SpriteRenderer& renderer, TextureCache& textures
     }
   };
   for (Node* node : collect_render_order(scene)) draw_node(node);
+
+  if (!passes.empty()) {
+    renderer.flush();
+    materials->post_process_chain().apply(passes, renderer.time());
+  }
 
   if (hud_renderer && hud) hud_renderer->draw(*hud, renderer, width, height);
 
