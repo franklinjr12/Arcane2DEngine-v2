@@ -18,8 +18,18 @@ namespace arcane {
 // can be read and edited as text. Floats are binary32, like everywhere else.
 using SaveValue = std::variant<bool, int, float, std::string>;
 
+// Slot metadata, stored in the optional "meta" object of the file and readable without the values. The caller
+// injects `timestamp` (e.g. Unix seconds) so saves stay deterministic; the engine never reads a clock.
+struct SaveMeta {
+  std::string display_name;
+  float play_time_seconds = 0.0f;
+  long long timestamp = 0;
+  bool empty() const noexcept { return display_name.empty() && play_time_seconds == 0.0f && timestamp == 0; }
+};
+
 struct ARCANE_API SaveData {
   int data_version = 1;  // the game's save layout version, not the file format version
+  SaveMeta meta;         // written only when not empty
   std::map<std::string, SaveValue> values;
 
   void set(std::string key, SaveValue value) { values[std::move(key)] = std::move(value); }
@@ -94,5 +104,24 @@ ARCANE_API std::expected<void, std::string> delete_save_game(const std::filesyst
 
 // Slot names that have a save file in `dir`, sorted. Empty if `dir` is missing.
 ARCANE_API std::vector<std::string> list_save_slots(const std::filesystem::path& dir);
+
+// What a save menu needs about one slot, without loading its values.
+struct SaveSlotInfo {
+  std::string slot;
+  SaveMeta meta;
+  int file_version = 2;     // the 'version' of the file the info came from
+  int data_version = 1;
+  bool from_backup = false;  // the slot file was unusable; the info is from the .bak
+  std::string error;         // non-empty if neither the slot file nor the .bak could be read (other fields unset)
+};
+
+// Reads only the header and "meta" of the slot file (values are not validated); falls back to the .bak like
+// load_save_game_recovering. A file from a newer engine is an error and does not fall back.
+ARCANE_API std::expected<SaveSlotInfo, std::string> read_save_slot_info(const std::filesystem::path& dir,
+                                                                        std::string_view slot);
+
+// Info for every slot in `dir`, sorted by meta.timestamp (oldest first), then slot name. Slots that cannot be
+// read are kept, with `error` set and timestamp 0.
+ARCANE_API std::vector<SaveSlotInfo> list_save_slot_infos(const std::filesystem::path& dir);
 
 }  // namespace arcane
