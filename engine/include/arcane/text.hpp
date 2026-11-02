@@ -32,37 +32,6 @@ ARCANE_API float font_line_height(float pixel_size) noexcept;
 // Advance of one code point (fallback box width if the glyph is missing).
 ARCANE_API float glyph_advance(char32_t cp, float pixel_size) noexcept;
 
-// Text layout: word wrap, alignment and line height (CPU-only, deterministic).
-// Positions are the top-left of each glyph cell (pen x, line top y) in pixels
-// for an em of `pixel_size`; add the atlas offsets to draw. Invalid UTF-8 and
-// missing glyphs become the fallback glyph, so every input yields a layout.
-enum class TextAlign { Left, Center, Right };
-
-struct TextLayoutOptions {
-  float max_width = 0.0f;    // wrap width in pixels; <= 0 disables wrapping
-  TextAlign align = TextAlign::Left;  // relative to max_width (or the widest line when not wrapping)
-  float line_height = 0.0f;  // line pitch in pixels; <= 0 uses font_line_height()
-};
-
-struct LaidOutGlyph {
-  char32_t cp = 0;     // code point as drawn (U+FFFD for invalid input)
-  float x = 0, y = 0;
-  float advance = 0;
-  bool fallback = false;  // true when the font lacks a glyph and the box is drawn
-  int line = 0;
-};
-
-struct TextLayout {
-  std::vector<LaidOutGlyph> glyphs;  // spaces and newlines take room but are not listed
-  std::vector<float> line_widths;    // ink-advance width of each line (trailing spaces trimmed on wrap)
-  float width = 0, height = 0;       // width = max_width when wrapping, else widest line
-};
-
-// Wrap breaks at spaces; a word wider than max_width is split between
-// characters (every line holds at least one character, so it always ends).
-// Spaces at a soft break are dropped; '\n' forces a break.
-ARCANE_API TextLayout layout_text(std::string_view text, float pixel_size, const TextLayoutOptions& options = {});
-
 // Glyph rectangle in an atlas plus its placement, in atlas pixels at
 // FontAtlas::pixel_size. x_offset/y_offset position the top-left of the
 // bitmap relative to the pen at the baseline (y grows downward).

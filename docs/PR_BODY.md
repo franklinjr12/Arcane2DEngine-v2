@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests), IN14 (ENG-044, platformer slopes).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests), IN14 (ENG-044, platformer slopes).
 
 **1. Step-by-step manual checks**
 
@@ -14,8 +14,6 @@ ctest --test-dir build -C Debug -R "test_input|test_tween" --output-on-failure  
 
 **2. What you can visibly see**
 No UI change. IN8: `Tween` components accept 7 new easing names (`back_in`, `back_in_out`, `elastic_in|out|in_out`, `bounce_in`, `bounce_in_out`); new `TweenSystem::start_sequence/start_parallel/start_node_sequence/start_node_parallel` and `cancel(id, snap_to_end)`. IN7: new runtime API in `arcane/input.hpp`: `InputActionMap::rebind`, `clear_bindings(name, device)`, `capture_defaults`/`reset_to_defaults`, and `InputRecording`; new cases in `tests/test_input.cpp`.
-
-IN9: no UI change; new `arcane::layout_text()` in `arcane/text.hpp` (word wrap, break long words, left/center/right, line height, UTF-8 + missing-glyph fallback), cases in `tests/test_text.cpp` (`ctest -R test_text`). HUD is not wired to it (hermes owns hud.cpp).
 
 IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (falls back to `<slot>.save.json.bak`, reports why), `delete_save_game`, `save_backup_path`; `write_save_game` keeps the previous good file as `.bak` and refuses to overwrite a file from a newer engine. Tests: `ctest -R test_save_game`.
 IN11: no UI change; `arcane/log.hpp` gains `log_set_min_level`, `log_set_category_level`, `log_would_log`, `log_add_sink`/`log_remove_sink`, `log_set_stderr_enabled`, `log_flush`, and `log_set_file(path, LogFileOptions{max_bytes,max_files,timestamps})`. File lines are `LEVEL|category|message` (no wall-clock unless enabled). Tests: `ctest -R test_logger`.
@@ -31,6 +29,7 @@ Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manu
 - UNTESTED on native Windows/MSVC (only the mingw cross-build ran).
 - IN8: easing endpoints are now exact (`ease(e,0)==0`, `ease(e,1)==1`); `Easing` enumerator values were renumbered (names, which are what files store, are unchanged). `cancel`/`cancel_node` gained a defaulted `snap_to_end` parameter.
 - Additive API only; input map file format and loader unchanged.
+- ENG-039 (text layout) was dropped from this PR: the board row is owned by another agent; the commit is preserved on branch side/eng-039-in9-2026-11-01.
 
 ---
 
