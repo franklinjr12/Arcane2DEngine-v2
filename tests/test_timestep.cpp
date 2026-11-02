@@ -60,5 +60,67 @@ int main() {
   ARCANE_ASSERT_TRUE(!bad.set_time_scale(std::nan("")));
   ARCANE_ASSERT_TRUE(bad.time_scale() == 1.0);
 
+  // (a) time_scale 0.5: half as many steps.
+  arcane::FixedTimestep half(60.0, 5);
+  ARCANE_ASSERT_TRUE(half.set_time_scale(0.5));
+  int half_total = 0;
+  for (int i = 0; i < 60; ++i) half_total += half.advance(1.0 / 60.0);
+  // Floating-point rounding may leave the last step just short.
+  ARCANE_ASSERT_TRUE(half_total == 30 || half_total == 29);
+
+  // (b) time_scale 0: unscaled time advances, scaled time does not.
+  arcane::FixedTimestep zero(60.0, 5);
+  ARCANE_ASSERT_TRUE(zero.set_time_scale(0.0));
+  for (int i = 0; i < 10; ++i) zero.advance(0.1);
+  ARCANE_ASSERT_TRUE(std::fabs(zero.unscaled_elapsed_seconds() - 1.0) < 1e-9);
+  ARCANE_ASSERT_TRUE(zero.scaled_elapsed_seconds() == 0.0);
+  ARCANE_ASSERT_TRUE(zero.unscaled_delta_seconds() == 0.1);
+
+  // (c) pause/resume: frozen alpha, no catch-up spiral.
+  arcane::FixedTimestep p(60.0, 5);
+  ARCANE_ASSERT_TRUE(!p.paused());
+  ARCANE_ASSERT_TRUE(p.advance(1.0 / 120.0) == 0);
+  const double alpha0 = p.alpha();
+  const double acc0 = p.accumulator_seconds();
+  const double un0 = p.unscaled_elapsed_seconds();
+  p.pause();
+  ARCANE_ASSERT_TRUE(p.paused());
+  ARCANE_ASSERT_TRUE(p.time_scale() == 1.0);
+  for (int i = 0; i < 100; ++i) ARCANE_ASSERT_TRUE(p.advance(0.1) == 0);
+  ARCANE_ASSERT_TRUE(p.alpha() == alpha0);
+  ARCANE_ASSERT_TRUE(p.accumulator_seconds() == acc0);
+  ARCANE_ASSERT_TRUE(p.clamped_frames() == 0 && p.dropped_seconds() == 0.0);
+  ARCANE_ASSERT_TRUE(std::fabs(p.unscaled_elapsed_seconds() - un0 - 10.0) < 1e-6);
+  p.resume();
+  ARCANE_ASSERT_TRUE(!p.paused());
+  ARCANE_ASSERT_TRUE(p.advance(1.0 / 120.0) == 1);
+  ARCANE_ASSERT_TRUE(p.advance(1.0 / 60.0) == 1);
+
+  // (d) scale 2 with a huge delta is still capped and the excess dropped.
+  arcane::FixedTimestep big(60.0, 5);
+  ARCANE_ASSERT_TRUE(big.set_time_scale(2.0));
+  ARCANE_ASSERT_TRUE(big.advance(10.0) == 5);
+  ARCANE_ASSERT_TRUE(big.accumulator_seconds() == 0.0);
+  ARCANE_ASSERT_TRUE(big.clamped_frames() == 1 && big.dropped_seconds() > 19.0);
+
+  // (e) invalid deltas while paused are rejected and counted.
+  arcane::FixedTimestep pb(60.0, 5);
+  pb.set_paused(true);
+  pb.advance(0.5);
+  const double unb = pb.unscaled_elapsed_seconds();
+  ARCANE_ASSERT_TRUE(pb.advance(-1.0) == 0);
+  ARCANE_ASSERT_TRUE(pb.advance(std::nan("")) == 0);
+  ARCANE_ASSERT_TRUE(pb.rejected_deltas() == 2);
+  ARCANE_ASSERT_TRUE(pb.unscaled_elapsed_seconds() == unb);
+  ARCANE_ASSERT_TRUE(pb.unscaled_delta_seconds() == 0.5);
+
+  // (f) set_time_scale while paused is accepted and applies after resume.
+  arcane::FixedTimestep ps(60.0, 5);
+  ps.pause();
+  ARCANE_ASSERT_TRUE(ps.set_time_scale(2.0));
+  ARCANE_ASSERT_TRUE(ps.advance(1.0 / 60.0) == 0);
+  ps.resume();
+  ARCANE_ASSERT_TRUE(ps.advance(1.0 / 60.0) == 2);
+
   return 0;
 }
