@@ -491,7 +491,19 @@ void test_fuzz_round_trip() {
   }
   const auto elapsed = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
   std::printf("canonical fuzz: %d iterations in %.2f s\n", iterations, elapsed);
-  ARCANE_ASSERT_TRUE(elapsed < 5.0);
+  // No wall-clock budget under sanitizers (ASan builds run several times slower).
+#if defined(__SANITIZE_ADDRESS__)
+  constexpr bool kSanitized = true;
+#elif defined(__has_feature)
+#if __has_feature(address_sanitizer)
+  constexpr bool kSanitized = true;
+#else
+  constexpr bool kSanitized = false;
+#endif
+#else
+  constexpr bool kSanitized = false;
+#endif
+  if (!kSanitized) ARCANE_ASSERT_TRUE(elapsed < 5.0);
 }
 
 void test_bad_utf8_and_malformed_rejected() {
