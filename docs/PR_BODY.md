@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout).
 
 **1. Step-by-step manual checks**
 
@@ -14,6 +14,8 @@ ctest --test-dir build -C Debug -R "test_input|test_tween" --output-on-failure  
 
 **2. What you can visibly see**
 No UI change. IN8: `Tween` components accept 7 new easing names (`back_in`, `back_in_out`, `elastic_in|out|in_out`, `bounce_in`, `bounce_in_out`); new `TweenSystem::start_sequence/start_parallel/start_node_sequence/start_node_parallel` and `cancel(id, snap_to_end)`. IN7: new runtime API in `arcane/input.hpp`: `InputActionMap::rebind`, `clear_bindings(name, device)`, `capture_defaults`/`reset_to_defaults`, and `InputRecording`; new cases in `tests/test_input.cpp`.
+
+IN9: no UI change; new `arcane::layout_text()` in `arcane/text.hpp` (word wrap, break long words, left/center/right, line height, UTF-8 + missing-glyph fallback), cases in `tests/test_text.cpp` (`ctest -R test_text`). HUD is not wired to it (hermes owns hud.cpp).
 
 **3. Enough to merge**
 Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.
