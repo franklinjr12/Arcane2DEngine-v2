@@ -19,8 +19,13 @@ constexpr std::pair<Easing, std::string_view> kEasingNames[] = {
     {Easing::Linear, "linear"},       {Easing::QuadIn, "quad_in"},     {Easing::QuadOut, "quad_out"},
     {Easing::QuadInOut, "quad_in_out"}, {Easing::CubicIn, "cubic_in"}, {Easing::CubicOut, "cubic_out"},
     {Easing::CubicInOut, "cubic_in_out"}, {Easing::SineIn, "sine_in"}, {Easing::SineOut, "sine_out"},
-    {Easing::SineInOut, "sine_in_out"}, {Easing::BackOut, "back_out"}, {Easing::BounceOut, "bounce_out"},
+    {Easing::SineInOut, "sine_in_out"}, {Easing::BackIn, "back_in"}, {Easing::BackOut, "back_out"},
+    {Easing::BackInOut, "back_in_out"}, {Easing::ElasticIn, "elastic_in"}, {Easing::ElasticOut, "elastic_out"},
+    {Easing::ElasticInOut, "elastic_in_out"}, {Easing::BounceIn, "bounce_in"}, {Easing::BounceOut, "bounce_out"},
+    {Easing::BounceInOut, "bounce_in_out"},
 };
+
+constexpr float kBackC1 = 1.70158f;
 
 float bounce_out(float t) noexcept {
   constexpr float n = 7.5625f, d = 2.75f;
@@ -41,6 +46,7 @@ bool node_alive(const Scene* scene, NodeId id) {
 
 float ease(Easing easing, float t) noexcept {
   t = std::clamp(t, 0.0f, 1.0f);
+  if (t == 0.0f || t == 1.0f) return t;  // exact endpoints for every curve
   constexpr float pi = std::numbers::pi_v<float>;
   switch (easing) {
     case Easing::Linear: return t;
@@ -57,11 +63,27 @@ float ease(Easing easing, float t) noexcept {
     case Easing::SineIn: return 1.0f - std::cos(t * pi * 0.5f);
     case Easing::SineOut: return std::sin(t * pi * 0.5f);
     case Easing::SineInOut: return 0.5f * (1.0f - std::cos(pi * t));
+    case Easing::BackIn: return (kBackC1 + 1.0f) * t * t * t - kBackC1 * t * t;
     case Easing::BackOut: {
-      constexpr float c1 = 1.70158f, c3 = c1 + 1.0f;
       const float u = t - 1.0f;
-      return 1.0f + c3 * u * u * u + c1 * u * u;
+      return 1.0f + (kBackC1 + 1.0f) * u * u * u + kBackC1 * u * u;
     }
+    case Easing::BackInOut: {
+      const float c2 = kBackC1 * 1.525f;
+      if (t < 0.5f) { const float u = 2.0f * t; return 0.5f * u * u * ((c2 + 1.0f) * u - c2); }
+      const float u = 2.0f * t - 2.0f;
+      return 0.5f * (u * u * ((c2 + 1.0f) * u + c2) + 2.0f);
+    }
+    case Easing::ElasticIn: return -std::exp2(10.0f * t - 10.0f) * std::sin((10.0f * t - 10.75f) * (2.0f * pi / 3.0f));
+    case Easing::ElasticOut: return std::exp2(-10.0f * t) * std::sin((10.0f * t - 0.75f) * (2.0f * pi / 3.0f)) + 1.0f;
+    case Easing::ElasticInOut: {
+      const float c5 = 2.0f * pi / 4.5f;
+      const float s = std::sin((20.0f * t - 11.125f) * c5);
+      return t < 0.5f ? -0.5f * std::exp2(20.0f * t - 10.0f) * s : 0.5f * std::exp2(-20.0f * t + 10.0f) * s + 1.0f;
+    }
+    case Easing::BounceIn: return 1.0f - bounce_out(1.0f - t);
+    case Easing::BounceInOut:
+      return t < 0.5f ? 0.5f * (1.0f - bounce_out(1.0f - 2.0f * t)) : 0.5f * (1.0f + bounce_out(2.0f * t - 1.0f));
     case Easing::BounceOut: return bounce_out(t);
   }
   return t;
@@ -141,11 +163,18 @@ bool write_node_tween_target(Node& node, std::string_view target, float value) {
 // --- TweenSystem -----------------------------------------------------------
 
 struct TweenSystem::Impl {
+  // A single tween is a chain of one step. `offset` is when the step's own
+  // clock starts, in seconds since the chain started.
+  struct Step {
+    TweenSpec spec;
+    std::function<void(float)> apply;
+    double offset = 0.0;
+    bool done = false;
+  };
   struct Entry {
     TweenId id = 0;
-    TweenSpec spec;
+    std::vector<Step> steps;
     double elapsed = 0.0;
-    std::function<void(float)> apply;
     std::function<void()> on_complete;
     Scene* scene = nullptr;  // set with `node` for node-bound tweens
     NodeId node = kInvalidNodeId;
@@ -154,6 +183,48 @@ struct TweenSystem::Impl {
   // Stable addresses: callbacks may start or cancel tweens mid-update.
   std::vector<std::unique_ptr<Entry>> entries;
   TweenId next_id = 1;
+
+  Entry* add(std::vector<TweenStep>&& steps, bool sequence, std::function<void()>&& on_complete) {
+    auto entry = std::make_unique<Entry>();
+    entry->id = next_id++;
+    entry->on_complete = std::move(on_complete);
+    double offset = 0.0;
+    for (TweenStep& s : steps) {
+      entry->steps.push_back({s.spec, std::move(s.apply), sequence ? offset : 0.0, false});
+      offset += double(std::max(s.spec.delay, 0.0f)) + double(std::max(s.spec.duration, 0.0f)) * std::max(s.spec.loops, 0);
+    }
+    entries.push_back(std::move(entry));
+    return entries.back().get();
+  }
+
+  Entry* find(TweenId id) {
+    for (auto& e : entries) {
+      if (e->id == id && !e->dead) return e.get();
+    }
+    return nullptr;
+  }
+
+  static void snap(Entry& e) {
+    for (Step& s : e.steps) {
+      if (s.done || !s.apply || (s.spec.loops == 0 && s.spec.duration > 0.0f)) continue;
+      s.apply(evaluate_tween(s.spec, double(s.spec.delay) + double(s.spec.duration) * std::max(s.spec.loops, 1) + 1.0).value);
+    }
+  }
+
+  static void kill(Entry& e, bool snap_to_end) {
+    e.dead = true;
+    if (snap_to_end) snap(e);
+  }
+
+  TweenId start_chain(std::vector<TweenStep> steps, bool sequence, std::function<void()> on_complete) {
+    if (steps.empty()) return 0;
+    if (sequence) {
+      for (std::size_t i = 0; i + 1 < steps.size(); ++i) {
+        if (steps[i].spec.loops == 0 && steps[i].spec.duration > 0.0f) return 0;
+      }
+    }
+    return add(std::move(steps), sequence, std::move(on_complete))->id;
+  }
 };
 
 TweenSystem::TweenSystem() : impl_(std::make_unique<Impl>()) {}
@@ -163,14 +234,17 @@ TweenSystem& TweenSystem::operator=(TweenSystem&&) noexcept = default;
 
 TweenId TweenSystem::start(const TweenSpec& spec, std::function<void(float)> apply,
                            std::function<void()> on_complete) {
-  auto entry = std::make_unique<Impl::Entry>();
-  entry->id = impl_->next_id++;
-  entry->spec = spec;
-  entry->apply = std::move(apply);
-  entry->on_complete = std::move(on_complete);
-  const TweenId id = entry->id;
-  impl_->entries.push_back(std::move(entry));
-  return id;
+  std::vector<TweenStep> steps;
+  steps.push_back({spec, std::move(apply)});
+  return impl_->add(std::move(steps), false, std::move(on_complete))->id;
+}
+
+TweenId TweenSystem::start_sequence(std::vector<TweenStep> steps, std::function<void()> on_complete) {
+  return impl_->start_chain(std::move(steps), true, std::move(on_complete));
+}
+
+TweenId TweenSystem::start_parallel(std::vector<TweenStep> steps, std::function<void()> on_complete) {
+  return impl_->start_chain(std::move(steps), false, std::move(on_complete));
 }
 
 TweenId TweenSystem::start_node(Scene& scene, NodeId node, std::string_view target, const TweenSpec& spec,
@@ -188,17 +262,47 @@ TweenId TweenSystem::start_node(Scene& scene, NodeId node, std::string_view targ
   return id;
 }
 
-bool TweenSystem::cancel(TweenId id) {
-  for (auto& e : impl_->entries) {
-    if (e->id == id && !e->dead) { e->dead = true; return true; }
+namespace {
+std::vector<TweenStep> node_steps(Scene& scene, NodeId node, const std::vector<NodeTweenStep>& steps) {
+  std::vector<TweenStep> out;
+  const Node* found = scene.find_node(node);
+  if (found == nullptr || found->pending_destroy()) return out;
+  for (const NodeTweenStep& s : steps) {
+    if (!read_node_tween_target(*found, s.target)) return {};
+    out.push_back({s.spec, [&scene, node, name = s.target](float value) {
+                     if (Node* n = scene.find_node(node)) write_node_tween_target(*n, name, value);
+                   }});
   }
-  return false;
+  return out;
+}
+}  // namespace
+
+TweenId TweenSystem::start_node_sequence(Scene& scene, NodeId node, const std::vector<NodeTweenStep>& steps,
+                                         std::function<void()> on_complete) {
+  const TweenId id = impl_->start_chain(node_steps(scene, node, steps), true, std::move(on_complete));
+  if (id != 0) { impl_->entries.back()->scene = &scene; impl_->entries.back()->node = node; }
+  return id;
 }
 
-std::size_t TweenSystem::cancel_node(NodeId node) {
+TweenId TweenSystem::start_node_parallel(Scene& scene, NodeId node, const std::vector<NodeTweenStep>& steps,
+                                         std::function<void()> on_complete) {
+  const TweenId id = impl_->start_chain(node_steps(scene, node, steps), false, std::move(on_complete));
+  if (id != 0) { impl_->entries.back()->scene = &scene; impl_->entries.back()->node = node; }
+  return id;
+}
+
+bool TweenSystem::cancel(TweenId id, bool snap_to_end) {
+  Impl::Entry* e = impl_->find(id);
+  if (e == nullptr) return false;
+  Impl::kill(*e, snap_to_end);
+  return true;
+}
+
+std::size_t TweenSystem::cancel_node(NodeId node, bool snap_to_end) {
   std::size_t count = 0;
+  if (node == kInvalidNodeId) return 0;
   for (auto& e : impl_->entries) {
-    if (e->node == node && node != kInvalidNodeId && !e->dead) { e->dead = true; ++count; }
+    if (e->node == node && !e->dead) { Impl::kill(*e, snap_to_end); ++count; }
   }
   return count;
 }
@@ -218,10 +322,18 @@ void TweenSystem::update(float dt) {
     if (e.dead) continue;
     if (e.scene != nullptr && !node_alive(e.scene, e.node)) { e.dead = true; continue; }
     e.elapsed += dt;
-    const TweenValue v = evaluate_tween(e.spec, e.elapsed);
-    if (!v.started) continue;
-    if (e.apply) e.apply(v.value);
-    if (v.finished && !e.dead) {
+    bool all_done = true;
+    for (std::size_t s = 0; s < e.steps.size() && !e.dead; ++s) {
+      Impl::Step& step = e.steps[s];
+      if (step.done) continue;
+      const TweenValue v = evaluate_tween(step.spec, e.elapsed - step.offset);
+      if (v.started) {
+        if (step.apply) step.apply(v.value);
+        step.done = v.finished;
+      }
+      if (!step.done) all_done = false;
+    }
+    if (all_done && !e.dead) {
       e.dead = true;
       if (e.on_complete) e.on_complete();
     }
