@@ -1,5 +1,16 @@
 {
   "baselines": {
+    "Debug-GNU/aarch64": {
+      "arch": "aarch64",
+      "cases": {
+        "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 0.629981},
+        "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.03949},
+        "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 0.632148}
+      },
+      "flavor": "Debug-GNU",
+      "runs": 5,
+      "threshold_percent": 20
+    },
     "Debug-GNU/x86_64": {
       "arch": "x86_64",
       "cases": {
