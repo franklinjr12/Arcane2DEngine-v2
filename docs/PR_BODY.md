@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink).
 
 **1. Step-by-step manual checks**
 
@@ -18,6 +18,7 @@ No UI change. IN8: `Tween` components accept 7 new easing names (`back_in`, `bac
 IN9: no UI change; new `arcane::layout_text()` in `arcane/text.hpp` (word wrap, break long words, left/center/right, line height, UTF-8 + missing-glyph fallback), cases in `tests/test_text.cpp` (`ctest -R test_text`). HUD is not wired to it (hermes owns hud.cpp).
 
 IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (falls back to `<slot>.save.json.bak`, reports why), `delete_save_game`, `save_backup_path`; `write_save_game` keeps the previous good file as `.bak` and refuses to overwrite a file from a newer engine. Tests: `ctest -R test_save_game`.
+IN11: no UI change; `arcane/log.hpp` gains `log_set_min_level`, `log_set_category_level`, `log_would_log`, `log_add_sink`/`log_remove_sink`, `log_set_stderr_enabled`, `log_flush`, and `log_set_file(path, LogFileOptions{max_bytes,max_files,timestamps})`. File lines are `LEVEL|category|message` (no wall-clock unless enabled). Tests: `ctest -R test_logger`.
 
 **3. Enough to merge**
 Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.
