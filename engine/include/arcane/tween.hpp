@@ -17,15 +17,18 @@ namespace arcane {
 class ComponentRegistry;
 class Scene;
 
-// Easing curves: map progress t in [0,1] to eased progress (0 -> 0, 1 -> 1).
-// BackOut overshoots and BounceOut bounces, so results may leave [0,1].
+// Easing curves: map progress t in [0,1] to eased progress. The endpoints are
+// exact for every curve (f(0) == 0, f(1) == 1). Back and Elastic overshoot and
+// Bounce bounces, so their results may leave [0,1]. Names are the snake_case
+// of the enumerator ("back_in_out").
 enum class Easing {
   Linear,
   QuadIn, QuadOut, QuadInOut,
   CubicIn, CubicOut, CubicInOut,
   SineIn, SineOut, SineInOut,
-  BackOut,
-  BounceOut,
+  BackIn, BackOut, BackInOut,
+  ElasticIn, ElasticOut, ElasticInOut,
+  BounceIn, BounceOut, BounceInOut,
 };
 
 ARCANE_API float ease(Easing easing, float t) noexcept;
@@ -66,6 +69,19 @@ ARCANE_API bool write_node_tween_target(Node& node, std::string_view target, flo
 using TweenId = std::uint64_t;
 using TimerId = std::uint64_t;
 
+// One member of a chain. `spec.delay` is a delay before this step starts
+// animating (after the previous step finished, in a sequence).
+struct TweenStep {
+  TweenSpec spec;
+  std::function<void(float)> apply;
+};
+
+// Same for a chain bound to one node: animates the named node property.
+struct NodeTweenStep {
+  std::string target;
+  TweenSpec spec;
+};
+
 // Runs tweens and nothing else. It is advanced by the caller with the fixed
 // timestep (Scene::update's dt), so tweens are deterministic and match
 // physics timing (docs/decisions.md). A tween bound to a node is dropped
@@ -89,8 +105,27 @@ class ARCANE_API TweenSystem {
   TweenId start_node(Scene& scene, NodeId node, std::string_view target, const TweenSpec& spec,
                      std::function<void()> on_complete = {});
 
-  bool cancel(TweenId id);
-  std::size_t cancel_node(NodeId node);
+  // Chains. A sequence runs its steps one after another (step N+1 starts on
+  // the fixed step where step N reaches its end; the timeline is computed, so
+  // there is no drift). A parallel group starts all steps together. Either
+  // way `on_complete` runs once, after the last step finishes, and the whole
+  // chain is one TweenId. Returns 0 and starts nothing if `steps` is empty or,
+  // for a sequence, a step other than the last repeats forever (loops == 0).
+  TweenId start_sequence(std::vector<TweenStep> steps, std::function<void()> on_complete = {});
+  TweenId start_parallel(std::vector<TweenStep> steps, std::function<void()> on_complete = {});
+  // Chains on one node; returns 0 if the node or any target does not exist.
+  TweenId start_node_sequence(Scene& scene, NodeId node, const std::vector<NodeTweenStep>& steps,
+                              std::function<void()> on_complete = {});
+  TweenId start_node_parallel(Scene& scene, NodeId node, const std::vector<NodeTweenStep>& steps,
+                              std::function<void()> on_complete = {});
+
+  // Cancel stops a tween or a whole chain (unstarted steps never run) and
+  // never calls on_complete. With snap_to_end every step is first applied at
+  // its final value in step order (steps that repeat forever are skipped), so
+  // the animated properties end where a finished chain would leave them.
+  bool cancel(TweenId id, bool snap_to_end = false);
+  // Cancels every tween and chain bound to `node`; returns how many.
+  std::size_t cancel_node(NodeId node, bool snap_to_end = false);
   bool active(TweenId id) const;
   std::size_t active_count() const;
 

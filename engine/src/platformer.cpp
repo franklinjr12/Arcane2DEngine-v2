@@ -5,6 +5,7 @@
 #include <memory>
 
 #include "arcane/component_registry.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/input.hpp"
 #include "arcane/node.hpp"
 #include "arcane/physics.hpp"
@@ -16,6 +17,15 @@ namespace {
 float move_toward(float value, float target, float max_delta) {
   if (std::fabs(target - value) <= max_delta) return target;
   return value + (target > value ? max_delta : -max_delta);
+}
+
+// Half the collider height below the node origin (pixels), 0 without a collider.
+float feet_offset(Node& node) {
+  const auto* collider = dynamic_cast<Collider2D*>(node.find_component("Collider2D"));
+  if (!collider) return 0.0f;
+  const float half = collider->shape_type == static_cast<int>(ColliderShapeType::Circle) ? collider->radius
+                                                                                          : collider->height * 0.5f;
+  return half + collider->offset.y;
 }
 
 }  // namespace
@@ -73,6 +83,22 @@ void PlatformerController2D::on_update(float fixed_dt) {
   }
 
   body->gravity_scale = body->linear_velocity.y > 0.0f ? base_gravity_scale_ * fall_gravity_scale : base_gravity_scale_;
+
+  // Slopes: on walkable inclined ground follow the surface and cancel gravity so the body neither slides at rest
+  // nor is launched off a crest. Skipped on the frame a jump starts.
+  const GameContext* context = active_game_context();
+  if (max_slope_deg > 0.0f && body->grounded && !jumping_ && context && context->physics()) {
+    const Vec2 position = node()->world_transform().position;
+    const float feet = position.y + feet_offset(*node()) + 1.0f;
+    if (const auto hit = context->physics()->raycast({position.x, feet}, {position.x, feet + 16.0f})) {
+      const float cos_limit = std::cos(max_slope_deg * 3.14159265f / 180.0f);
+      const float up = -hit->normal.y;
+      if (hit->normal.x != 0.0f && up >= cos_limit && up > 0.0f && std::fabs(hit->normal.x) > 0.01f) {
+        body->linear_velocity.y = body->linear_velocity.x * hit->normal.x / up;
+        body->gravity_scale = 0.0f;
+      }
+    }
+  }
   body->linear_velocity.y = std::min(body->linear_velocity.y, max_fall_speed);
 }
 

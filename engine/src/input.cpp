@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include <algorithm>
+#include <cstring>
 #include <cmath>
 #include <format>
 #include <json.hpp>
@@ -204,6 +205,100 @@ void InputActionMap::clear_bindings(std::string_view action_name) {
       return;
     }
   }
+}
+
+void InputActionMap::clear_bindings(std::string_view action_name, InputDevice device) {
+  for (auto& action : actions_) {
+    if (action.name == action_name) std::erase_if(action.bindings, [&](const InputBinding& b) { return b.device == device; });
+  }
+}
+
+std::vector<std::string> InputActionMap::rebind(std::string_view action_name, InputBinding binding, bool allow_conflict) {
+  if (!allow_conflict) {
+    auto conflicts = find_conflicts(action_name, binding);
+    if (!conflicts.empty()) return conflicts;
+  }
+  for (auto& action : actions_) {
+    if (action.name != action_name) continue;
+    // Take over the first same-device slot (keeps order), drop the others.
+    bool placed = false;
+    std::erase_if(action.bindings, [&](InputBinding& b) {
+      if (b.device != binding.device) return false;
+      if (placed) return true;
+      b = binding;
+      placed = true;
+      return false;
+    });
+    if (!placed) action.bindings.push_back(binding);
+    return {};
+  }
+  add_binding(action_name, binding);  // unknown action: create it
+  return {};
+}
+
+void InputActionMap::capture_defaults() {
+  defaults_ = actions_;
+  has_defaults_ = true;
+}
+
+bool InputActionMap::reset_to_defaults() {
+  if (!has_defaults_) return false;
+  actions_ = defaults_;
+  state_.clear();
+  return true;
+}
+
+bool InputActionMap::reset_to_defaults(std::string_view action_name) {
+  if (!has_defaults_) return false;
+  for (const auto& def : defaults_) {
+    if (def.name == action_name) {
+      set_action(def);
+      return true;
+    }
+  }
+  return false;
+}
+
+void InputActionMap::append_state_bytes(std::string& out) const {
+  for (const auto& action : actions_) {
+    ActionState st;
+    if (auto it = state_.find(action.name); it != state_.end()) st = it->second;
+    out.push_back(st.down ? 1 : 0);
+    out.push_back(st.down_previous ? 1 : 0);
+    char raw[sizeof(float)];
+    std::memcpy(raw, &st.value, sizeof raw);
+    out.append(raw, sizeof raw);
+  }
+}
+
+bool InputActionMap::load_state_bytes(std::string_view bytes) {
+  constexpr std::size_t kRecord = 2 + sizeof(float);
+  if (bytes.size() != actions_.size() * kRecord) return false;
+  for (std::size_t i = 0; i < actions_.size(); ++i) {
+    const char* p = bytes.data() + i * kRecord;
+    ActionState st;
+    st.down = p[0] != 0;
+    st.down_previous = p[1] != 0;
+    std::memcpy(&st.value, p + 2, sizeof(float));
+    state_[actions_[i].name] = st;
+  }
+  return true;
+}
+
+void InputRecording::record(const InputActionMap& map) {
+  std::string frame;
+  map.append_state_bytes(frame);
+  frames_.push_back(std::move(frame));
+}
+
+bool InputRecording::play(InputActionMap& map, std::size_t tick) const {
+  return tick < frames_.size() && map.load_state_bytes(frames_[tick]);
+}
+
+std::string InputRecording::bytes() const {
+  std::string all;
+  for (const auto& frame : frames_) all += frame;
+  return all;
 }
 
 void InputActionMap::update(const InputBackend& backend) {

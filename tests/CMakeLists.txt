@@ -305,6 +305,11 @@ add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
 add_test(NAME test_scene_flow COMMAND test_scene_flow)
 
+# --- IN10 versioned save slots: .bak recovery, future version refusal, upgrade hook ---
+add_executable(test_save_game test_save_game.cpp)
+target_link_libraries(test_save_game PRIVATE arcane_tooling)
+add_test(NAME test_save_game COMMAND test_save_game)
+
 # --- FE23 debug overlay data, debug.* / bench.run commands, headless benchmark -
 add_executable(test_debug test_debug.cpp)
 target_link_libraries(test_debug PRIVATE arcane_tooling)
@@ -386,3 +391,11 @@ set_tests_properties(perf_gate_forced_slow PROPERTIES WILL_FAIL TRUE ENVIRONMENT
 add_custom_target(perf_baseline_update
   COMMAND ${CMAKE_COMMAND} -DMODE=update ${ARCANE_PERF_GATE_ARGS}
   DEPENDS arcane_bench USES_TERMINAL)
+
+# --- property/component registry introspection and round trip ---------------
+add_executable(test_property_roundtrip test_property_roundtrip.cpp)
+target_link_libraries(test_property_roundtrip PRIVATE arcane_editor_core)
+target_compile_definitions(test_property_roundtrip PRIVATE
+  ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_property_roundtrip COMMAND test_property_roundtrip)

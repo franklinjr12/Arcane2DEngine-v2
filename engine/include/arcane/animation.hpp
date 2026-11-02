@@ -30,6 +30,9 @@ struct AnimationClip {
   std::string name;
   std::vector<AnimationFrame> frames;
   bool loop = true;
+  // Runtime-only (not serialized; the clip format is unchanged): play
+  // 0..n-1..0 instead of wrapping. Needs `loop`; ignored for <2 frames.
+  bool ping_pong = false;
 };
 
 // Total playback length of one pass through `clip` (sum of frame durations).
@@ -42,6 +45,22 @@ ARCANE_API float clip_duration(const AnimationClip& clip) noexcept;
 // 0 for a clip with no frames (callers must check frames.empty() themselves
 // before indexing).
 ARCANE_API std::size_t select_frame_index(const AnimationClip& clip, float elapsed_seconds) noexcept;
+
+// True once a non-looping clip has played through (elapsed past the end going
+// forward, or back at/before the start going in reverse). Looping and
+// ping-pong clips never finish.
+ARCANE_API bool clip_finished(const AnimationClip& clip, float elapsed_seconds) noexcept;
+
+// Frame events: indices of the frames *entered* while playback moved from
+// `from_seconds` to `to_seconds` (either direction, so speed < 0 works),
+// in the order they were entered. Each boundary crossing yields exactly one
+// entry even if one tick skips several frames or several whole loops; the
+// interval is (from, to] going forward and (to, from] going backward, so
+// consecutive ticks never report a boundary twice. Frame 0 at time 0 is not
+// "entered" by starting. Non-looping clips clamp to [0, duration], so the
+// last frame is reported once. At most 64 clip periods are reported per call.
+ARCANE_API std::vector<std::size_t> frame_events(const AnimationClip& clip, float from_seconds,
+                                                 float to_seconds);
 
 // Canonical clip v2 (`arcane.clip`, docs/formats/clip.md). The reader takes v2
 // (strict) and legacy format_version 1 (lenient about unknown fields).
@@ -68,10 +87,14 @@ class ARCANE_API AnimatedSprite : public Component {
   void on_update(float fixed_dt) override;
 
   float elapsed_seconds() const noexcept { return elapsed_seconds_; }
-  void reset() noexcept { elapsed_seconds_ = 0.0f; }
+  // Elapsed time before the latest on_update; pair with elapsed_seconds()
+  // for frame_events(). Non-finite dt/speed products are ignored.
+  float previous_elapsed_seconds() const noexcept { return previous_elapsed_seconds_; }
+  void reset() noexcept { elapsed_seconds_ = previous_elapsed_seconds_ = 0.0f; }
 
  private:
   float elapsed_seconds_ = 0.0f;
+  float previous_elapsed_seconds_ = 0.0f;
 };
 
 ARCANE_API void register_animation_components(ComponentRegistry& registry);
