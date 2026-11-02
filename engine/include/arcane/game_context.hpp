@@ -57,7 +57,8 @@ class ARCANE_API GameContext {
   bool layer_mask(const std::vector<std::string>& names, int& mask) const noexcept;
 
   // The tile at a world position on `layer` of the first Tilemap node (scene order) that has a non-empty tile there.
-  struct TileQuery {
+  // Exported separately: MSVC does not export nested classes of an exported class.
+  struct ARCANE_API TileQuery {
     Node* node = nullptr;
     int layer = 0, cx = 0, cy = 0, tile_id = 0;
     bool solid = false;
