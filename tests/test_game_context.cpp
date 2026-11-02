@@ -263,7 +263,11 @@ void test_save_helpers() {
   ARCANE_ASSERT_TRUE(!context.load_save("slot1"));
   ARCANE_ASSERT_TRUE(!context.write_save("slot1", arcane::SaveData{}));
 
+#ifdef _WIN32
+  _putenv_s("ARCANE_SAVE_DIR", dir.string().c_str());
+#else
   ::setenv("ARCANE_SAVE_DIR", dir.string().c_str(), 1);
+#endif
   arcane::SaveConfig config;
   config.game_id = "demo";
   config.data_version = 3;
@@ -281,7 +285,11 @@ void test_save_helpers() {
   config.game_id = "";
   context.set_save_config(config, true);
   ARCANE_ASSERT_TRUE(!context.load_save("slot1"));  // no game_id
+#ifdef _WIN32
+  _putenv_s("ARCANE_SAVE_DIR", "");
+#else
   ::unsetenv("ARCANE_SAVE_DIR");
+#endif
   std::filesystem::remove_all(dir);
 }
 

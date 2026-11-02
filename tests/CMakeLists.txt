@@ -357,14 +357,20 @@ add_executable(test_replay test_replay.cpp)
 target_link_libraries(test_replay PRIVATE arcane_tooling)
 add_test(NAME test_replay COMMAND test_replay)
 
-if(ARCANE_BUILD_SAMPLES)
-  add_test(NAME test_replay_player COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_player.sh
+# The scripted tests need bash. On Windows prefer Git Bash: System32\bash.exe is WSL and cannot run these binaries.
+find_program(ARCANE_BASH bash HINTS "$ENV{ProgramFiles}/Git/bin" "$ENV{ProgramW6432}/Git/bin")
+if(NOT ARCANE_BASH)
+  message(STATUS "bash not found: skipping the scripted replay/headless/CLI/render tests")
+endif()
+
+if(ARCANE_BUILD_SAMPLES AND ARCANE_BASH)
+  add_test(NAME test_replay_player COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_replay_player.sh
     $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${CMAKE_SOURCE_DIR}/samples/platformer_slice/replays/walk_jump.replay.json)
   set_tests_properties(test_replay_player PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
   # AF10B: display-free fixed-frame run; deliberately no gl label and no display.
-  add_test(NAME test_headless_player COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_headless_player.sh
+  add_test(NAME test_headless_player COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_headless_player.sh
     $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/sample_project $<TARGET_FILE:sample_game>
     ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${CMAKE_SOURCE_DIR}/samples/platformer_slice/replays/walk_jump.replay.json)
@@ -374,7 +380,7 @@ if(ARCANE_BUILD_SAMPLES)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ARCANE_TOPDOWN_STRICT_TRACE 1)  # the committed trace was recorded with GCC Debug
   endif()
-  add_test(NAME test_topdown_replay_60s COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_topdown_replay.sh
+  add_test(NAME test_topdown_replay_60s COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_topdown_replay.sh
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/topdown_slice $<TARGET_FILE:topdown_slice_game>
     ${ARCANE_TOPDOWN_STRICT_TRACE})
   set_tests_properties(test_topdown_replay_60s PROPERTIES TIMEOUT 120)
@@ -384,22 +390,22 @@ if(ARCANE_BUILD_SAMPLES)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(ARCANE_PLATFORMER_STRICT_TRACE 1)  # the committed trace was recorded with GCC Debug
   endif()
-  add_test(NAME test_platformer_replay COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_platformer_replay.sh
+  add_test(NAME test_platformer_replay COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_platformer_replay.sh
     $<TARGET_FILE:arcane_player> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${ARCANE_PLATFORMER_STRICT_TRACE})
   set_tests_properties(test_platformer_replay PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120
     ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
   # AF10B: author, run, test, export and run the export, all without a display.
-  add_test(NAME test_cli_e2e COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_e2e.sh
+  add_test(NAME test_cli_e2e COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_cli_e2e.sh
     $<TARGET_FILE:arcane> $<TARGET_FILE:arcane_player> $<TARGET_FILE:sample_game>
     ${CMAKE_COMMAND} ${CMAKE_BINARY_DIR} ${CMAKE_SOURCE_DIR}/samples/sample_project)
   set_tests_properties(test_cli_e2e PROPERTIES TIMEOUT 300)
   # AF10C: arcane render. Without a display it must fail cleanly with exit 8 (no gl label); the golden run needs GL.
-  add_test(NAME test_render_cli_nodisplay COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh nodisplay
+  add_test(NAME test_render_cli_nodisplay COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh nodisplay
     $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
-  set_tests_properties(test_render_cli_nodisplay PROPERTIES TIMEOUT 60 ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
-  add_test(NAME test_render_cli COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh gl
+  set_tests_properties(test_render_cli_nodisplay PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 60 ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+  add_test(NAME test_render_cli COMMAND ${ARCANE_BASH} ${CMAKE_CURRENT_SOURCE_DIR}/test_render_cli.sh gl
     $<TARGET_FILE:arcane> ${CMAKE_SOURCE_DIR}/samples/platformer_slice $<TARGET_FILE:platformer_slice_game>
     ${CMAKE_CURRENT_SOURCE_DIR}/golden/render/platformer_slice_f30.png)
   set_tests_properties(test_render_cli PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 120

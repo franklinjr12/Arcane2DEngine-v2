@@ -28,7 +28,8 @@ grep -q '"ok": *true' last.json || fail "arcane test not ok: $(cat last.json)"
 
 ok "$CMAKE" --install "$BUILD" --prefix "$W/rt" --component game
 ok "$ARCANE" "${G[@]}" export --out "$W/out" --runtime_dir "$W/rt"
-for f in arcane_player libarcane_runtime.so game/project.json game/scenes/main.scene.json; do
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) RUNTIME=arcane_runtime.dll ;; *) RUNTIME=libarcane_runtime.so ;; esac
+for f in arcane_player "$RUNTIME" game/project.json game/scenes/main.scene.json; do
   [ -e "$W/out/$f" ] || fail "missing in export: $f"
 done
 [ -e "$W/out/game/tests" ] || [ -e "$W/out/game/tests/walk.replay.json" ] && fail "tests/ must not be exported"

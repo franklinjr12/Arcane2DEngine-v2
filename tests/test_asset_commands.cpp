@@ -219,7 +219,7 @@ void test_hot_reload() {
 
 void test_batch_rejects_import() {
   Fixture f;
-  const std::string script = "{\"command\":\"asset.list\"}\n{\"command\":\"asset.import\",\"args\":{\"source\":\"" + f.s("hero.png") + "\"}}\n";
+  const std::string script = "{\"command\":\"asset.list\"}\n{\"command\":\"asset.import\",\"args\":{\"source\":\"" + (f.src / "hero.png").generic_string() + "\"}}\n";
   const auto before = snapshot(f.project);
   auto out = cli({"--project", f.project.string(), "batch", "-"}, script);
   ARCANE_ASSERT_TRUE(out.code == 7 && out.error_code() == "TRANSACTION_UNSUPPORTED");
