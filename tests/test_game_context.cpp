@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <string>
+#include <vector>
 
 #include "arcane/assets.hpp"
 #include "arcane/audio.hpp"
@@ -183,6 +185,114 @@ void test_restart_reloads_authored_scene() {
   arcane::set_active_game_context(nullptr);
 }
 
+// IN17: records lifecycle so destroy timing can be asserted.
+int g_destroyed = 0;
+int g_seen_after_destroy = 0;
+class Churn : public arcane::Component {
+ public:
+  arcane::NodeId victim = 0;
+  bool double_destroy = false;
+  void on_update(float) override {
+    if (victim == 0) return;
+    scene()->destroy_node(victim);
+    if (double_destroy) scene()->destroy_node(victim);
+    // Same tick: the id is already gone from lookups, but on_destroy has not run yet.
+    if (scene()->find_node(victim) == nullptr && g_destroyed == 0) ++g_seen_after_destroy;
+    victim = 0;
+  }
+};
+class Tracked : public arcane::Component {
+ public:
+  void on_destroy() override { ++g_destroyed; }
+};
+
+arcane::ComponentRegistry make_churn_registry() {
+  arcane::ComponentRegistry registry;
+  registry.register_component("Churn", [] { return std::make_unique<Churn>(); }, {});
+  registry.register_component("Tracked", [] { return std::make_unique<Tracked>(); }, {});
+  return registry;
+}
+
+void test_destroy_deferred_and_double_destroy_is_noop() {
+  auto registry = make_churn_registry();
+  g_destroyed = g_seen_after_destroy = 0;
+  arcane::Scene scene;
+  arcane::Node* driver = scene.create_node("Driver");
+  auto* churn = static_cast<Churn*>(scene.add_component(driver, "Churn", registry));
+  arcane::Node* victim = scene.create_node("Victim");
+  scene.add_component(victim, "Tracked", registry);
+  const arcane::NodeId id = victim->id();
+  churn->victim = id;
+  churn->double_destroy = true;
+  scene.update(kDt);
+  ARCANE_ASSERT_TRUE(g_seen_after_destroy == 1);  // lookup null while still inside the tick, on_destroy deferred
+  ARCANE_ASSERT_TRUE(g_destroyed == 1);           // ran once, at the end of the tick, despite two destroy calls
+  ARCANE_ASSERT_TRUE(scene.find_node(id) == nullptr);
+  scene.destroy_node(id);  // after the flush: still a no-op
+  scene.destroy_node(9999);
+  scene.update(kDt);
+  ARCANE_ASSERT_TRUE(g_destroyed == 1);
+}
+
+// Runs the same spawn/destroy churn and returns every id handed out, in order.
+std::vector<arcane::NodeId> run_churn(int count) {
+  auto registry = make_churn_registry();
+  arcane::Scene scene;
+  std::vector<arcane::NodeId> ids, live;
+  for (int i = 0; i < count; ++i) {
+    arcane::Node* node = scene.create_node("N" + std::to_string(i));
+    scene.add_component(node, "Tracked", registry);
+    ids.push_back(node->id());
+    live.push_back(node->id());
+    if (i % 3 == 2) {  // destroy two of every three, oldest first
+      scene.destroy_node(live[live.size() - 3]);
+      scene.destroy_node(live[live.size() - 2]);
+    }
+    if (i % 7 == 0) scene.update(kDt);
+  }
+  scene.update(kDt);
+  for (arcane::NodeId id : live) {
+    arcane::Node* node = scene.find_node(id);
+    if (node) ids.push_back(~id);  // survivors recorded too
+  }
+  return ids;
+}
+
+void test_spawn_destroy_churn_is_deterministic() {
+  g_destroyed = 0;
+  const auto first = run_churn(1000);
+  const int destroyed_first = g_destroyed;
+  g_destroyed = 0;
+  const auto second = run_churn(1000);
+  ARCANE_ASSERT_TRUE(first == second);
+  ARCANE_ASSERT_TRUE(destroyed_first == g_destroyed);
+  ARCANE_ASSERT_TRUE(first.size() > 1000);
+  for (std::size_t i = 1; i < 1000; ++i) ARCANE_ASSERT_TRUE(first[i] > first[i - 1]);  // ids strictly increase, never reused
+}
+
+void test_restart_clears_pending_destroys() {
+  auto registry = make_churn_registry();
+  g_destroyed = 0;
+  arcane::Scene authored;
+  authored.create_node("Keep");
+  auto json = authored.save_canonical_json(registry);
+  ARCANE_ASSERT_TRUE(json.has_value());
+  auto scene = arcane::Scene::load_from_json(*json, registry);
+  ARCANE_ASSERT_TRUE(scene.has_value());
+  arcane::Node* doomed = scene->create_node("Doomed");
+  scene->add_component(doomed, "Tracked", registry);
+  scene->destroy_node(doomed->id());  // pending, not yet flushed
+  auto fresh = arcane::Scene::load_from_json(*json, registry);
+  ARCANE_ASSERT_TRUE(fresh.has_value());
+  *scene = std::move(*fresh);  // what a restart does
+  const int destroyed_by_swap = g_destroyed;  // Scene replacement drops the old tree; it does not flush or queue anything
+  ARCANE_ASSERT_TRUE(scene->find_node_by_name("Doomed") == nullptr);
+  ARCANE_ASSERT_TRUE(scene->find_node_by_name("Keep") != nullptr);
+  scene->update(kDt);  // nothing pending survives into the new scene, so nothing is flushed late
+  ARCANE_ASSERT_TRUE(g_destroyed == destroyed_by_swap);
+  ARCANE_ASSERT_TRUE(scene->create_node("After")->id() == authored.next_id());  // ids restart from the authored counter
+}
+
 }  // namespace
 
 int main() {
@@ -192,5 +302,8 @@ int main() {
   test_scene_pointer_survives_moves();
   test_asset_lookup_and_audio_by_id();
   test_restart_reloads_authored_scene();
+  test_destroy_deferred_and_double_destroy_is_noop();
+  test_spawn_destroy_churn_is_deterministic();
+  test_restart_clears_pending_destroys();
   return 0;
 }
