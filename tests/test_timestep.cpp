@@ -65,8 +65,9 @@ int main() {
   ARCANE_ASSERT_TRUE(half.set_time_scale(0.5));
   int half_total = 0;
   for (int i = 0; i < 60; ++i) half_total += half.advance(1.0 / 60.0);
-  // Floating-point rounding may leave the last step just short.
-  ARCANE_ASSERT_TRUE(half_total == 30 || half_total == 29);
+  // 0.5 * (1/60) is exactly half of fixed_dt here, so the accumulated
+  // total reaches 30 full steps (verified by running).
+  ARCANE_ASSERT_TRUE(half_total == 30);
 
   // (b) time_scale 0: unscaled time advances, scaled time does not.
   arcane::FixedTimestep zero(60.0, 5);
