@@ -1,11 +1,16 @@
 # Headless bench regression gate (IN6, docs/perf_gate.md). Run with cmake -P:
 #   -DBENCH=path/to/arcane_bench -DBASELINE=docs/perf_baseline.json -DFLAVOR=Debug-GNU
-#   [-DMODE=check|update] [-DFORCE=ON]
+#   [-DARCH=aarch64] [-DMODE=check|update] [-DFORCE=ON]
+# The baseline entry key is "<FLAVOR>/<ARCH>". ARCH defaults to the host processor (lowercased,
+# amd64 -> x86_64, arm64 -> aarch64) so one file can hold entries for several machines.
 # check:  runs each case RUNS times, takes the median avg_frame_ms and fails if it is more than
-#         the baseline's threshold_percent above the baseline. A baseline recorded for another
-#         FLAVOR (build type + compiler + sanitizer) is skipped (exit code 77) unless FORCE=ON.
-# update: rewrites BASELINE from fresh medians for this FLAVOR.
-# ARCANE_PERF_GATE_SCALE=N (env) multiplies every measurement, to prove that a slow path fails.
+#         the entry's threshold_percent above the baseline. If there is no entry for the key, one is
+#         recorded into BASELINE (threshold 20), a WARNING is printed and the gate passes; commit it.
+#         FORCE=ON compares against another arch of the same FLAVOR (else the first entry) instead.
+# update: merges fresh medians for this key into BASELINE, keeping other entries.
+# ARCANE_PERF_GATE_SCALE=N (env) multiplies every measurement, to prove that a slow path fails;
+# ARCANE_PERF_GATE_SCALE_PERCENT=P (env, default 100) then scales it by P/100 (tests simulate +25%).
+# A BENCH ending in .cmake is run as "cmake -P BENCH -- args" (a fake bench for tests/perf_gate_test).
 # Times are handled as integer nanoseconds because cmake has no floating point.
 cmake_minimum_required(VERSION 3.19)
 
@@ -17,6 +22,21 @@ set(CASES scene particles physics)
 set(ARGS_scene --sprites 1000 --emitters 0 --bodies 0)
 set(ARGS_particles --sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0)
 set(ARGS_physics --sprites 0 --emitters 0 --bodies 200)
+
+if(NOT ARCH)
+  if(CMAKE_HOST_SYSTEM_PROCESSOR)
+    set(ARCH "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+  else()
+    cmake_host_system_information(RESULT ARCH QUERY OS_PLATFORM)
+  endif()
+endif()
+string(TOLOWER "${ARCH}" ARCH)
+if(ARCH STREQUAL "amd64")
+  set(ARCH x86_64)
+elseif(ARCH STREQUAL "arm64")
+  set(ARCH aarch64)
+endif()
+set(KEY "${FLAVOR}/${ARCH}")
 
 # "0.31090" -> 310900. Exponent forms (below a microsecond) count as 1 ns.
 function(ms_to_ns text out)
@@ -51,7 +71,12 @@ endfunction()
 function(median_ns case out)
   set(values "")
   foreach(i RANGE 1 ${RUNS})
-    execute_process(COMMAND "${BENCH}" ${ARGS_${case}} RESULT_VARIABLE rc OUTPUT_VARIABLE json ERROR_VARIABLE err)
+    if(BENCH MATCHES "\\.cmake$")
+      set(bench_cmd "${CMAKE_COMMAND}" -P "${BENCH}" --)
+    else()
+      set(bench_cmd "${BENCH}")
+    endif()
+    execute_process(COMMAND ${bench_cmd} ${ARGS_${case}} RESULT_VARIABLE rc OUTPUT_VARIABLE json ERROR_VARIABLE err)
     if(NOT rc EQUAL 0)
       message(FATAL_ERROR "arcane_bench failed for case ${case}: ${err}")
     endif()
@@ -59,6 +84,9 @@ function(median_ns case out)
     ms_to_ns("${ms}" ns)
     if(DEFINED ENV{ARCANE_PERF_GATE_SCALE})
       math(EXPR ns "${ns} * $ENV{ARCANE_PERF_GATE_SCALE}")
+    endif()
+    if(DEFINED ENV{ARCANE_PERF_GATE_SCALE_PERCENT})
+      math(EXPR ns "${ns} * $ENV{ARCANE_PERF_GATE_SCALE_PERCENT} / 100")
     endif()
     list(APPEND values ${ns})
   endforeach()
@@ -68,46 +96,91 @@ function(median_ns case out)
   set(${out} "${median}" PARENT_SCOPE)
 endfunction()
 
-if(MODE STREQUAL "update")
-  set(threshold 30)
-  set(body "")
-  set(sep "")
+# Measures every case and returns the JSON text of one baseline entry.
+function(measure_entry threshold out)
+  set(cases "{}")
   foreach(case ${CASES})
     median_ns(${case} ns)
     ns_to_ms(${ns} ms)
     string(REPLACE ";" " " argtext "${ARGS_${case}}")
-    string(APPEND body "${sep}    \"${case}\": {\"args\": \"${argtext}\", \"avg_frame_ms\": ${ms}}")
-    set(sep ",\n")
+    string(JSON cases SET "${cases}" ${case} "{\"args\": \"${argtext}\", \"avg_frame_ms\": ${ms}}")
     message(STATUS "${case}: ${ms} ms")
   endforeach()
-  file(WRITE "${BASELINE}"
-"{
-  \"cases\": {
-${body}
-  },
-  \"flavor\": \"${FLAVOR}\",
-  \"format\": \"arcane.perf_baseline\",
-  \"runs\": ${RUNS},
-  \"threshold_percent\": ${threshold},
-  \"version\": 1
-}
-")
-  message(STATUS "wrote ${BASELINE}")
+  set(${out} "{\"arch\": \"${ARCH}\", \"cases\": ${cases}, \"flavor\": \"${FLAVOR}\", \"runs\": ${RUNS}, \"threshold_percent\": ${threshold}}" PARENT_SCOPE)
+endfunction()
+
+# Reads BASELINE into `doc` as a v2 object (missing file: empty; v1 legacy: one x86_64 entry).
+set(doc "{\"baselines\": {}, \"format\": \"arcane.perf_baseline\", \"version\": 2}")
+if(EXISTS "${BASELINE}")
+  file(READ "${BASELINE}" text)
+  string(JSON version GET "${text}" version)
+  if(version EQUAL 1)
+    string(JSON lflavor GET "${text}" flavor)
+    string(JSON lcases GET "${text}" cases)
+    string(JSON lruns GET "${text}" runs)
+    string(JSON lthr GET "${text}" threshold_percent)
+    string(JSON doc SET "${doc}" baselines "${lflavor}/x86_64"
+      "{\"arch\": \"x86_64\", \"cases\": ${lcases}, \"flavor\": \"${lflavor}\", \"runs\": ${lruns}, \"threshold_percent\": ${lthr}}")
+  else()
+    set(doc "${text}")
+  endif()
+endif()
+
+function(record_entry threshold)
+  measure_entry(${threshold} entry)
+  string(JSON newdoc SET "${doc}" baselines "${KEY}" "${entry}")
+  file(WRITE "${BASELINE}" "${newdoc}\n")
+endfunction()
+
+string(JSON entry ERROR_VARIABLE entry_err GET "${doc}" baselines "${KEY}")
+set(have_entry TRUE)
+if(entry_err)
+  set(have_entry FALSE)
+endif()
+
+if(MODE STREQUAL "update")
+  set(threshold 20)
+  if(have_entry)
+    string(JSON threshold GET "${doc}" baselines "${KEY}" threshold_percent)
+  endif()
+  record_entry(${threshold})
+  message(STATUS "wrote ${KEY} to ${BASELINE}")
   return()
 endif()
 
-file(READ "${BASELINE}" base)
-string(JSON base_flavor GET "${base}" flavor)
-string(JSON threshold GET "${base}" threshold_percent)
-if(NOT base_flavor STREQUAL FLAVOR AND NOT FORCE)
-  message(STATUS "perf gate skipped: baseline is for '${base_flavor}', this build is '${FLAVOR}'")
-  message(STATUS "refresh with the perf_baseline_update target (docs/perf_gate.md)")
-  cmake_language(EXIT 77)
+set(use_key "${KEY}")
+if(NOT have_entry AND FORCE)
+  string(JSON count LENGTH "${doc}" baselines)
+  if(count GREATER 0)
+    set(use_key "")
+    math(EXPR last "${count} - 1")
+    foreach(i RANGE ${last})
+      string(JSON member MEMBER "${doc}" baselines ${i})
+      string(JSON mflavor GET "${doc}" baselines "${member}" flavor)
+      if(mflavor STREQUAL FLAVOR)
+        set(use_key "${member}")
+        break()
+      endif()
+    endforeach()
+    if(NOT use_key)
+      string(JSON use_key MEMBER "${doc}" baselines 0)
+    endif()
+    set(have_entry TRUE)
+  endif()
 endif()
+
+if(NOT have_entry)
+  record_entry(20)
+  message(WARNING "perf gate: no baseline for ${KEY}; recorded one into ${BASELINE} and passed. Review and commit it.")
+  return()
+endif()
+
+string(JSON threshold GET "${doc}" baselines "${use_key}" threshold_percent)
+string(JSON base_cases GET "${doc}" baselines "${use_key}" cases)
 
 set(failed "")
 foreach(case ${CASES})
-  string(JSON base_ms GET "${base}" cases ${case} avg_frame_ms)
+  string(JSON base_ms GET "${base_cases}" ${case} avg_frame_ms)
   ms_to_ns("${base_ms}" base_ns)
   median_ns(${case} ns)
   math(EXPR limit "${base_ns} * (100 + ${threshold}) / 100")

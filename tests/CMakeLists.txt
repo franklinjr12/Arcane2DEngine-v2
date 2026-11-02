@@ -440,13 +440,17 @@ if(ARCANE_SANITIZE)
   string(APPEND ARCANE_PERF_FLAVOR "-san")
 endif()
 set(ARCANE_PERF_GATE_ARGS -DBENCH=$<TARGET_FILE:arcane_bench> -DBASELINE=${CMAKE_SOURCE_DIR}/docs/perf_baseline.json
-    -DFLAVOR=${ARCANE_PERF_FLAVOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
+    -DFLAVOR=${ARCANE_PERF_FLAVOR} -DARCH=${CMAKE_SYSTEM_PROCESSOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
 add_test(NAME perf_gate COMMAND ${CMAKE_COMMAND} ${ARCANE_PERF_GATE_ARGS})
-# A 1000x slowdown must fail even when the baseline flavor differs (FORCE ignores the flavor check).
+# A 1000x slowdown must fail even when this arch has no baseline (FORCE compares against another entry).
 add_test(NAME perf_gate_forced_slow COMMAND ${CMAKE_COMMAND} -DFORCE=ON ${ARCANE_PERF_GATE_ARGS})
 set_tests_properties(perf_gate perf_gate_forced_slow PROPERTIES LABELS perf RUN_SERIAL TRUE)
-set_tests_properties(perf_gate PROPERTIES SKIP_RETURN_CODE 77)
 set_tests_properties(perf_gate_forced_slow PROPERTIES WILL_FAIL TRUE ENVIRONMENT ARCANE_PERF_GATE_SCALE=1000)
+# Deterministic gate test: fake bench, temp baseline, +19% passes, +21% fails, missing arch is recorded.
+add_test(NAME perf_gate_threshold COMMAND ${CMAKE_COMMAND} -DGATE=${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake
+  -DFAKE_BENCH=${CMAKE_CURRENT_SOURCE_DIR}/perf_gate_test/fake_bench.cmake
+  -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/perf_gate_test -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate_test/run.cmake)
+set_tests_properties(perf_gate_threshold PROPERTIES LABELS perf)
 # Refresh the baseline for this build: cmake --build DIR --target perf_baseline_update
 add_custom_target(perf_baseline_update
   COMMAND ${CMAKE_COMMAND} -DMODE=update ${ARCANE_PERF_GATE_ARGS}

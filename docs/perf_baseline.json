@@ -1,12 +1,17 @@
 {
-  "cases": {
-    "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 0.311137},
-    "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.028317},
-    "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 0.241507}
+  "baselines": {
+    "Debug-GNU/x86_64": {
+      "arch": "x86_64",
+      "cases": {
+        "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 0.311137},
+        "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.028317},
+        "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 0.241507}
+      },
+      "flavor": "Debug-GNU",
+      "runs": 5,
+      "threshold_percent": 30
+    }
   },
-  "flavor": "Debug-GNU",
   "format": "arcane.perf_baseline",
-  "runs": 5,
-  "threshold_percent": 30,
-  "version": 1
+  "version": 2
 }
