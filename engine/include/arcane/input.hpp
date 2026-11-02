@@ -175,11 +175,32 @@ class ARCANE_API InputActionMap {
   // Replaces bindings[slot]; false if out of range/unknown.
   bool replace_binding(std::string_view action_name, std::size_t slot, InputBinding binding);
   void set_player(std::string_view action_name, int player);
+  // Removes only the bindings of one device family from the action.
+  void clear_bindings(std::string_view action_name, InputDevice device);
+  // Replaces the action's bindings for `binding.device` with `binding` (other
+  // devices keep theirs; the action is created if missing). If another action
+  // already uses it, nothing changes and those names are returned, unless
+  // `allow_conflict` is set. Empty result = applied.
+  std::vector<std::string> rebind(std::string_view action_name, InputBinding binding, bool allow_conflict = false);
+  // Snapshots the current actions as the defaults reset_to_defaults() restores
+  // (call after building or loading the map).
+  void capture_defaults();
+  bool has_defaults() const noexcept { return has_defaults_; }
+  // Restores bindings/players of every action (or one) from the snapshot and
+  // clears per-frame state. False if no snapshot / unknown action.
+  bool reset_to_defaults();
+  bool reset_to_defaults(std::string_view action_name);
   // Names of OTHER actions that already use a binding that would fire on the
   // same physical input as `binding` for `action_name` (same device/code/
   // axis direction, and overlapping pads given each action's player).
   std::vector<std::string> find_conflicts(std::string_view action_name, const InputBinding& binding) const;
   const std::vector<InputAction>& actions() const noexcept { return actions_; }
+
+  // Appends this tick's per-action state (held, previous, value; actions in
+  // order, 6 bytes each) to `out`; load_state_bytes() restores it. Used by
+  // InputRecording for deterministic replay. False on a size mismatch.
+  void append_state_bytes(std::string& out) const;
+  bool load_state_bytes(std::string_view bytes);
 
   // Polls `backend` for every bound device code and updates held/pressed/
   // released state. Call exactly once per real frame (not once per fixed
@@ -217,8 +238,26 @@ class ARCANE_API InputActionMap {
   };
 
   std::vector<InputAction> actions_;
+  std::vector<InputAction> defaults_;
+  bool has_defaults_ = false;
   std::unordered_map<std::string, ActionState> state_;
   Vec2 mouse_position_{};
+};
+
+// Per-tick action states of a run, byte-comparable: record() after each
+// InputActionMap::update, then play() to drive a map with the same actions
+// from the recording instead of a backend.
+class ARCANE_API InputRecording {
+ public:
+  void record(const InputActionMap& map);
+  bool play(InputActionMap& map, std::size_t tick) const;
+  std::size_t ticks() const noexcept { return frames_.size(); }
+  // All ticks concatenated, for equality checks or saving.
+  std::string bytes() const;
+  friend bool operator==(const InputRecording&, const InputRecording&) = default;
+
+ private:
+  std::vector<std::string> frames_;
 };
 
 // Every physical input currently active on `backend` as a binding (keys,
