@@ -1,6 +1,6 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN9 (ENG-039, text layout), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests).
 
 **1. Step-by-step manual checks**
 
@@ -20,6 +20,7 @@ IN9: no UI change; new `arcane::layout_text()` in `arcane/text.hpp` (word wrap, 
 IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (falls back to `<slot>.save.json.bak`, reports why), `delete_save_game`, `save_backup_path`; `write_save_game` keeps the previous good file as `.bak` and refuses to overwrite a file from a newer engine. Tests: `ctest -R test_save_game`.
 IN11: no UI change; `arcane/log.hpp` gains `log_set_min_level`, `log_set_category_level`, `log_would_log`, `log_add_sink`/`log_remove_sink`, `log_set_stderr_enabled`, `log_flush`, and `log_set_file(path, LogFileOptions{max_bytes,max_files,timestamps})`. File lines are `LEVEL|category|message` (no wall-clock unless enabled). Tests: `ctest -R test_logger`.
 IN12: no UI change; `arcane/property.hpp` gains `describe_components(registry)` (types sorted by name, properties in registration order with type and default), `get_property_by_name`/`set_property_by_name` (unknown type/property and wrong value type are errors, data untouched) and `value_fits_type`. `tests/test_property_roundtrip.cpp` sets non-default values on every registered type (built-ins + sample_game), saves, reloads and compares values and bytes. Run `ctest -R test_property_roundtrip`. component_registry.* untouched.
+IN13: no UI change; `ctest -R test_canonical_json` now runs 12,000 seeded fuzz iterations (~0.6 s: random nesting, unicode escapes, int64/uint64 extremes, binary32 edge floats, shuffled keys; checks idempotence, value round trip, sorted keys, truncation and random byte damage). One real bug found and fixed in `engine/src/canonical_json.cpp`: deeply nested input (e.g. 200000 `[`) overflowed the stack and crashed; nesting deeper than 512 levels is now an error. Documented in `docs/formats/canonical-json.md`.
 
 **3. Enough to merge**
 Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.
@@ -32,6 +33,9 @@ Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manu
 ---
 
 ## Technical detail
+
+### IN13: canonical_json fuzz
+Fixed-seed mt19937_64 generator in `tests/test_canonical_json.cpp`; only `canonicalize_json` is public, so values are emitted as text with random whitespace/escapes/key order and checked against an nlohmann model. A leading UTF-8 BOM is accepted and dropped (nlohmann behaviour, left as is). Write/transaction path untouched.
 
 ### IN10: save slot recovery
 - `write_save_game`: old file valid -> copied atomically to `.bak` first; corrupt old file never replaces a good `.bak`; newer file `version` is refused untouched. Existing `load_save_game`/`read_save_game_file` and all error texts unchanged.
