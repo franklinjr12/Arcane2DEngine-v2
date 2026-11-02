@@ -20,7 +20,8 @@ always emit exactly this form, so diffs are minimal and re-formatting is idempot
 - Strings must be valid UTF-8; only `"`, `\`, and control characters are escaped.
 
 The parser is strict: duplicate object keys, trailing garbage, NaN/Infinity literals and invalid
-UTF-8 are rejected (the plain nlohmann parser would silently keep the last duplicate).
+UTF-8 are rejected (the plain nlohmann parser would silently keep the last duplicate). Nesting
+deeper than 512 levels is rejected (the writer recurses).
 
 ## Headers and versions
 
