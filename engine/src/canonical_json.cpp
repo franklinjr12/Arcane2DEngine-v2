@@ -33,6 +33,7 @@ class StrictBuilder : public nlohmann::json_sax<json> {
     return false;
   }
   bool start_object(std::size_t) override {
+    if (too_deep()) return false;
     if (!put(json::object())) return false;
     stack_.push_back(slot_);
     return true;
@@ -51,6 +52,7 @@ class StrictBuilder : public nlohmann::json_sax<json> {
     return true;
   }
   bool start_array(std::size_t) override {
+    if (too_deep()) return false;
     if (!put(json::array())) return false;
     stack_.push_back(slot_);
     return true;
@@ -65,6 +67,15 @@ class StrictBuilder : public nlohmann::json_sax<json> {
   }
 
  private:
+  // The writer and json's destructor recurse; real documents nest a handful of levels.
+  static constexpr std::size_t kMaxDepth = 512;
+
+  bool too_deep() {
+    if (stack_.size() < kMaxDepth) return false;
+    error = std::format("nesting deeper than {} levels", kMaxDepth);
+    return true;
+  }
+
   bool put(json&& value) {
     if (stack_.empty()) {
       root = std::move(value);

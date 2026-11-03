@@ -383,6 +383,6 @@ There are no `tween.*` commands. The builtin `Tween` component's properties (`ta
 `use_current_from`, `duration`, `delay`, `easing`, `loops`, `yoyo`, `autoplay`) are edited with
 `prop.list`/`prop.get`/`prop.set` like any component. `target` is one of `position.x`, `position.y`,
 `rotation`, `scale.x`, `scale.y`, `tint.r|g|b|a` (needs a `Sprite`); `easing` is one of `linear`,
-`quad_in|out|in_out`, `cubic_in|out|in_out`, `sine_in|out|in_out`, `back_out`, `bounce_out`. Unknown
+`quad_in|out|in_out`, `cubic_in|out|in_out`, `sine_in|out|in_out`, `back_in|out|in_out`, `elastic_in|out|in_out`, `bounce_in|out|in_out`. Unknown
 names are accepted by `prop.set` but make the tween do nothing. `loops` 0 repeats forever.
 

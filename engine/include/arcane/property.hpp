@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <expected>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -14,6 +15,7 @@
 namespace arcane {
 
 class Component;
+class ComponentRegistry;
 
 // Entity/asset references are stored as raw 64-bit IDs; PropertyType tells
 // the inspector/serializer how a given std::uint64_t value should be
@@ -58,5 +60,36 @@ PropertyDescriptor make_property(std::string name, PropertyType type, Member T::
       },
   };
 }
+
+// --- Read-only registry introspection and generic access by name -----------
+
+// True when `value` holds the alternative that `type` is stored as (Bool ->
+// bool, Int -> int, Float -> float, AssetId/EntityId -> std::uint64_t, ...).
+ARCANE_API bool value_fits_type(PropertyType type, const PropertyValue& value) noexcept;
+
+struct PropertyInfo {
+  std::string name;
+  PropertyType type;
+  PropertyValue default_value;  // what a freshly created component holds
+};
+
+struct ComponentInfo {
+  std::string type_name;
+  std::vector<PropertyInfo> properties;  // registration order
+};
+
+// Every registered component type, sorted by type name, with each property's
+// name, type and default (read from a fresh instance). Stable across runs.
+ARCANE_API std::vector<ComponentInfo> describe_components(const ComponentRegistry& registry);
+
+// Reads/writes one property of `component`, an instance of `type_name`. Unknown
+// type or property names and values of the wrong type are errors, and a failed
+// set leaves the component untouched.
+ARCANE_API std::expected<PropertyValue, std::string> get_property_by_name(
+    const ComponentRegistry& registry, const std::string& type_name, const Component& component,
+    std::string_view property);
+ARCANE_API std::expected<void, std::string> set_property_by_name(
+    const ComponentRegistry& registry, const std::string& type_name, Component& component,
+    std::string_view property, const PropertyValue& value);
 
 }  // namespace arcane

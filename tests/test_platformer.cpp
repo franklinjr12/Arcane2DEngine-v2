@@ -1,7 +1,11 @@
 #include <algorithm>
 #include <memory>
 
+#include <cmath>
+#include <filesystem>
+
 #include "arcane/component_registry.hpp"
+#include "arcane/game_context.hpp"
 #include "arcane/input.hpp"
 #include "arcane/node.hpp"
 #include "arcane/physics.hpp"
@@ -168,6 +172,67 @@ void test_buffered_jump_fires_on_landing() {
   ARCANE_ASSERT_TRUE(min_vy < -100.0f);  // jumped on landing without a second press
 }
 
+// A static 400x16 ramp (rotated by `degrees`, negative = rising to the right) with the player standing on it.
+// Returns after settling; `context` makes the controller's ground ray reach the physics world.
+struct SlopeWorld {
+  World w;
+  arcane::GameContext context;
+  explicit SlopeWorld(float degrees)
+      : w(283.0f, 1), context(std::filesystem::temp_directory_path(), w.registry) {
+    arcane::Node* ramp = w.scene.create_node("ramp");
+    ramp->local_transform().position = {100.0f, 300.0f};
+    ramp->local_transform().rotation_radians = degrees * 3.14159265f / 180.0f;
+    auto* ramp_body = static_cast<arcane::RigidBody2D*>(w.scene.add_component(ramp, "RigidBody2D", w.registry));
+    ramp_body->body_type = static_cast<int>(arcane::BodyType::Static);
+    auto* shape = static_cast<arcane::Collider2D*>(w.scene.add_component(ramp, "Collider2D", w.registry));
+    shape->width = 400.0f;
+    shape->height = 16.0f;
+    shape->friction = 0.0f;
+    w.physics.rebuild(w.scene);
+    context.set_physics(&w.physics);
+    arcane::set_active_game_context(&context);
+    w.step(30);
+  }
+  ~SlopeWorld() { arcane::set_active_game_context(nullptr); }
+};
+
+void test_defaults_unchanged() {
+  arcane::PlatformerController2D c;
+  ARCANE_ASSERT_TRUE(c.coyote_time == 0.1f && c.jump_buffer_time == 0.1f && c.jump_cut == 0.5f);
+  ARCANE_ASSERT_TRUE(c.max_slope_deg == 50.0f);
+}
+
+void test_slope_walk_stays_grounded() {
+  SlopeWorld s(-20.0f);
+  ARCANE_ASSERT_TRUE(s.w.body->grounded);
+  const float x0 = s.w.player->local_transform().position.x;
+  const float y0 = s.w.y();
+  s.w.key(arcane::Keys::kD, true);
+  for (int i = 0; i < 40; ++i) {
+    s.w.step();
+    ARCANE_ASSERT_TRUE(s.w.body->grounded);
+  }
+  ARCANE_ASSERT_TRUE(s.w.player->local_transform().position.x > x0 + 60.0f);
+  ARCANE_ASSERT_TRUE(s.w.y() < y0 - 20.0f);  // climbed
+
+  // Letting go: no sliding back down.
+  s.w.key(arcane::Keys::kD, false);
+  s.w.step(30);
+  const float rest_x = s.w.player->local_transform().position.x;
+  const float rest_y = s.w.y();
+  s.w.step(60);
+  ARCANE_ASSERT_TRUE(std::abs(s.w.player->local_transform().position.x - rest_x) < 1.0f);
+  ARCANE_ASSERT_TRUE(std::abs(s.w.y() - rest_y) < 1.0f);
+
+  // Walking down stays on the surface too (no airborne hops).
+  s.w.key(arcane::Keys::kA, true);
+  for (int i = 0; i < 40; ++i) {
+    s.w.step();
+    ARCANE_ASSERT_TRUE(s.w.body->grounded);
+  }
+  ARCANE_ASSERT_TRUE(s.w.y() > rest_y);
+}
+
 void test_one_way() {
   World landing(100.0f, 40, true);
   landing.step(120);
@@ -240,6 +305,8 @@ int main() {
   test_jump_cut_lowers_apex();
   test_coyote_window();
   test_buffered_jump_fires_on_landing();
+  test_defaults_unchanged();
+  test_slope_walk_stays_grounded();
   test_one_way();
   test_impulse_and_set_velocity();
   test_serialization_round_trip();

@@ -23,31 +23,121 @@ float clip_duration(const AnimationClip& clip) noexcept {
   return total;
 }
 
+namespace {
+
+// Playback timeline of a clip: `count` virtual frames over `period` seconds.
+// Ping-pong lists the frames forward then backward (0..n-1, n-1..0), so the
+// end frames are held twice as long, like a folded timeline.
+struct Timeline {
+  std::size_t frames;
+  std::size_t count;
+  bool ping_pong;
+  double period;
+  std::size_t frame_at(std::size_t j) const { return j < frames ? j : 2 * frames - 1 - j; }
+};
+
+Timeline make_timeline(const AnimationClip& clip) {
+  Timeline tl{clip.frames.size(), clip.frames.size(), clip.loop && clip.ping_pong && clip.frames.size() > 1,
+              static_cast<double>(clip_duration(clip))};
+  if (tl.ping_pong) {
+    tl.count *= 2;
+    tl.period *= 2.0;
+  }
+  return tl;
+}
+
+}  // namespace
+
 std::size_t select_frame_index(const AnimationClip& clip, float elapsed_seconds) noexcept {
   if (clip.frames.empty()) {
     return 0;
   }
   const float total = clip_duration(clip);
-  if (total <= 0.0f) {
+  if (!(total > 0.0f) || !std::isfinite(elapsed_seconds)) {
     return 0;
   }
 
-  float t = elapsed_seconds;
+  const Timeline tl = make_timeline(clip);
+  double t = elapsed_seconds;
   if (clip.loop) {
-    t = std::fmod(t, total);
-    if (t < 0.0f) t += total;
+    t = std::fmod(t, tl.period);
+    if (t < 0.0) t += tl.period;
   } else {
-    t = std::clamp(t, 0.0f, total);
+    t = std::clamp(t, 0.0, tl.period);
   }
 
-  float accumulated = 0.0f;
-  for (std::size_t i = 0; i < clip.frames.size(); ++i) {
+  double accumulated = 0.0;
+  for (std::size_t j = 0; j < tl.count; ++j) {
+    const std::size_t i = tl.frame_at(j);
     accumulated += clip.frames[i].duration_seconds;
     if (t < accumulated) {
       return i;
     }
   }
   return clip.frames.size() - 1;
+}
+
+bool clip_finished(const AnimationClip& clip, float elapsed_seconds) noexcept {
+  if (clip.loop || clip.frames.empty()) return false;
+  const float total = clip_duration(clip);
+  return elapsed_seconds >= total || elapsed_seconds <= 0.0f;
+}
+
+std::vector<std::size_t> frame_events(const AnimationClip& clip, float from_seconds, float to_seconds) {
+  std::vector<std::size_t> events;
+  if (clip.frames.empty() || !std::isfinite(from_seconds) || !std::isfinite(to_seconds) ||
+      from_seconds == to_seconds) {
+    return events;
+  }
+  const Timeline tl = make_timeline(clip);
+  if (!(tl.period > 0.0)) return events;
+
+  constexpr double kMaxPeriods = 64.0;
+  double from = from_seconds;
+  double to = to_seconds;
+  const bool forward = to > from;
+  if (!clip.loop) {
+    from = std::clamp(from, 0.0, tl.period);
+    to = std::clamp(to, 0.0, tl.period);
+  } else if (std::abs(to - from) > kMaxPeriods * tl.period) {
+    // Keep only the part of the move nearest the destination.
+    from = forward ? to - kMaxPeriods * tl.period : to + kMaxPeriods * tl.period;
+  }
+  const double lo = std::min(from, to);
+  const double hi = std::max(from, to);
+
+  // Start time of each virtual frame within one period.
+  std::vector<double> starts(tl.count);
+  double acc = 0.0;
+  for (std::size_t j = 0; j < tl.count; ++j) {
+    starts[j] = acc;
+    acc += clip.frames[tl.frame_at(j)].duration_seconds;
+  }
+
+  struct Hit {
+    double time;
+    std::size_t frame;
+  };
+  std::vector<Hit> hits;
+  const long first = clip.loop ? static_cast<long>(std::floor(lo / tl.period)) : 0;
+  const long last = clip.loop ? static_cast<long>(std::floor(hi / tl.period)) : 0;
+  for (long k = first; k <= last; ++k) {
+    for (std::size_t j = 0; j < tl.count; ++j) {
+      // Boundary j starts virtual frame j; the first one of a non-looping
+      // clip is the clip start, not a crossing.
+      if (!clip.loop && j == 0) continue;
+      if (tl.ping_pong && (j == 0 || j == tl.frames)) continue;  // turn-arounds repeat a frame
+      const double b = static_cast<double>(k) * tl.period + starts[j];
+      if (forward ? (b > from && b <= to) : (b > to && b <= from)) {
+        hits.push_back({b, forward ? tl.frame_at(j) : tl.frame_at(j == 0 ? tl.count - 1 : j - 1)});
+      }
+    }
+  }
+  std::sort(hits.begin(), hits.end(), [forward](const Hit& a, const Hit& b) {
+    return forward ? a.time < b.time : a.time > b.time;
+  });
+  for (const Hit& h : hits) events.push_back(h.frame);
+  return events;
 }
 
 std::expected<std::string, std::string> save_clip_canonical_json(const AnimationClip& clip) {
@@ -142,9 +232,10 @@ std::expected<std::string, std::string> migrate_clip_json(const std::string& tex
 }
 
 void AnimatedSprite::on_update(float fixed_dt) {
-  if (playing) {
-    elapsed_seconds_ += fixed_dt * speed;
-  }
+  previous_elapsed_seconds_ = elapsed_seconds_;
+  if (!playing) return;
+  const float advance = fixed_dt * speed;
+  if (std::isfinite(advance)) elapsed_seconds_ += advance;
 }
 
 void register_animation_components(ComponentRegistry& registry) {

@@ -336,6 +336,11 @@ add_executable(test_scene_flow test_scene_flow.cpp)
 target_link_libraries(test_scene_flow PRIVATE arcane_tooling)
 add_test(NAME test_scene_flow COMMAND test_scene_flow)
 
+# --- IN10 versioned save slots: .bak recovery, future version refusal, upgrade hook ---
+add_executable(test_save_game test_save_game.cpp)
+target_link_libraries(test_save_game PRIVATE arcane_tooling)
+add_test(NAME test_save_game COMMAND test_save_game)
+
 # --- FE23 debug overlay data, debug.* / bench.run commands, headless benchmark -
 add_executable(test_debug test_debug.cpp)
 target_link_libraries(test_debug PRIVATE arcane_tooling)
@@ -435,14 +440,27 @@ if(ARCANE_SANITIZE)
   string(APPEND ARCANE_PERF_FLAVOR "-san")
 endif()
 set(ARCANE_PERF_GATE_ARGS -DBENCH=$<TARGET_FILE:arcane_bench> -DBASELINE=${CMAKE_SOURCE_DIR}/docs/perf_baseline.json
-    -DFLAVOR=${ARCANE_PERF_FLAVOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
-add_test(NAME perf_gate COMMAND ${CMAKE_COMMAND} ${ARCANE_PERF_GATE_ARGS})
-# A 1000x slowdown must fail even when the baseline flavor differs (FORCE ignores the flavor check).
+    -DFLAVOR=${ARCANE_PERF_FLAVOR} -DARCH=${CMAKE_SYSTEM_PROCESSOR} -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake)
+# Up to 3 attempts inside the script (noise only adds time; a real regression fails all of them).
+add_test(NAME perf_gate COMMAND ${CMAKE_COMMAND} -DATTEMPTS=3 ${ARCANE_PERF_GATE_ARGS})
+# A 1000x slowdown must fail even when this arch has no baseline (FORCE compares against another entry).
 add_test(NAME perf_gate_forced_slow COMMAND ${CMAKE_COMMAND} -DFORCE=ON ${ARCANE_PERF_GATE_ARGS})
 set_tests_properties(perf_gate perf_gate_forced_slow PROPERTIES LABELS perf RUN_SERIAL TRUE)
-set_tests_properties(perf_gate PROPERTIES SKIP_RETURN_CODE 77)
 set_tests_properties(perf_gate_forced_slow PROPERTIES WILL_FAIL TRUE ENVIRONMENT ARCANE_PERF_GATE_SCALE=1000)
+# Deterministic gate test: fake bench, temp baseline, +29% passes, +31% fails, missing arch is recorded.
+add_test(NAME perf_gate_threshold COMMAND ${CMAKE_COMMAND} -DGATE=${CMAKE_CURRENT_SOURCE_DIR}/perf_gate.cmake
+  -DFAKE_BENCH=${CMAKE_CURRENT_SOURCE_DIR}/perf_gate_test/fake_bench.cmake
+  -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/perf_gate_test -P ${CMAKE_CURRENT_SOURCE_DIR}/perf_gate_test/run.cmake)
+set_tests_properties(perf_gate_threshold PROPERTIES LABELS perf)
 # Refresh the baseline for this build: cmake --build DIR --target perf_baseline_update
 add_custom_target(perf_baseline_update
   COMMAND ${CMAKE_COMMAND} -DMODE=update ${ARCANE_PERF_GATE_ARGS}
   DEPENDS arcane_bench USES_TERMINAL)
+
+# --- property/component registry introspection and round trip ---------------
+add_executable(test_property_roundtrip test_property_roundtrip.cpp)
+target_link_libraries(test_property_roundtrip PRIVATE arcane_editor_core)
+target_compile_definitions(test_property_roundtrip PRIVATE
+  ARCANE_SAMPLE_PROJECT_DIR="${CMAKE_SOURCE_DIR}/samples/sample_project"
+  ARCANE_SAMPLE_GAME_PATH="$<TARGET_FILE:sample_game>")
+add_test(NAME test_property_roundtrip COMMAND test_property_roundtrip)

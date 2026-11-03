@@ -146,6 +146,95 @@ void test_rebinding() {
   ARCANE_ASSERT_TRUE(map.actions()[0].bindings[0].code == Keys::kA && map.actions()[1].bindings.empty());
 }
 
+void test_rebind_api_and_reset() {
+  using namespace arcane;
+  InputActionMap map;
+  map.add_binding("jump", {InputDevice::Keyboard, Keys::kSpace});
+  map.add_binding("jump", {InputDevice::GamepadButton, GamepadButtons::kA});
+  map.add_binding("fire", {InputDevice::Keyboard, Keys::kA});
+  map.capture_defaults();
+
+  // Conflict is reported, not silently overwritten.
+  auto conflicts = map.rebind("jump", {InputDevice::Keyboard, Keys::kA});
+  ARCANE_ASSERT_TRUE(conflicts.size() == 1 && conflicts[0] == "fire");
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings.size() == 2 && map.actions()[0].bindings[0].code == Keys::kSpace);
+  ARCANE_ASSERT_TRUE(map.actions()[1].bindings[0].code == Keys::kA);
+
+  // Replace per device: keyboard changes, gamepad binding stays.
+  ARCANE_ASSERT_TRUE(map.rebind("jump", {InputDevice::Keyboard, Keys::kW}).empty());
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings.size() == 2);
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings[0].code == Keys::kW);
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings[1].device == InputDevice::GamepadButton);
+
+  // Explicit allow keeps both actions on the key.
+  ARCANE_ASSERT_TRUE(map.rebind("jump", {InputDevice::Keyboard, Keys::kA}, true).empty());
+  ARCANE_ASSERT_TRUE(map.find_conflicts("jump", {InputDevice::Keyboard, Keys::kA}).size() == 1);
+
+  map.clear_bindings("jump", InputDevice::Keyboard);
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings.size() == 1);
+  ARCANE_ASSERT_TRUE(map.rebind("new_action", {InputDevice::Keyboard, Keys::kD}).empty());
+
+  ARCANE_ASSERT_TRUE(map.reset_to_defaults("jump"));
+  ARCANE_ASSERT_TRUE(map.actions()[0].bindings.size() == 2 && map.actions()[0].bindings[0].code == Keys::kSpace);
+  ARCANE_ASSERT_TRUE(!map.reset_to_defaults("nope"));
+  ARCANE_ASSERT_TRUE(map.reset_to_defaults());
+  ARCANE_ASSERT_TRUE(map.actions().size() == 2 && map.actions()[1].bindings[0].code == Keys::kA);
+
+  InputActionMap fresh;
+  ARCANE_ASSERT_TRUE(!fresh.reset_to_defaults());
+}
+
+arcane::InputRecording run_script(arcane::InputActionMap& map, int ticks) {
+  using namespace arcane;
+  FakeInputBackend backend;
+  InputRecording rec;
+  std::uint32_t seed = 12345;
+  for (int t = 0; t < ticks; ++t) {
+    seed = seed * 1664525u + 1013904223u;
+    backend.set_down(InputDevice::Keyboard, Keys::kSpace, (seed >> 24) & 1);
+    backend.set_down(InputDevice::Keyboard, Keys::kD, (seed >> 25) & 1);
+    backend.set_gamepad_axis(0, GamepadAxes::kLeftX, static_cast<float>((seed >> 16) & 0xff) / 127.5f - 1.0f);
+    map.update(backend);
+    rec.record(map);
+  }
+  return rec;
+}
+
+void test_record_replay() {
+  using namespace arcane;
+  auto make = [] {
+    InputActionMap m;
+    m.add_binding("jump", {InputDevice::Keyboard, Keys::kSpace});
+    m.add_binding("right", {InputDevice::Keyboard, Keys::kD});
+    m.add_binding("right", {InputDevice::GamepadAxis, GamepadAxes::kLeftX, -1, 1});
+    return m;
+  };
+  InputActionMap a = make();
+  InputActionMap b = make();
+  const InputRecording first = run_script(a, 600);
+  const InputRecording second = run_script(b, 600);
+  ARCANE_ASSERT_TRUE(first.ticks() == 600 && first.bytes().size() > 0);
+  ARCANE_ASSERT_TRUE(first.bytes() == second.bytes());
+
+  // Playing the recording back reproduces every tick's action states.
+  InputActionMap c = make();
+  InputRecording replayed;
+  bool any_pressed = false;
+  for (std::size_t t = 0; t < first.ticks(); ++t) {
+    ARCANE_ASSERT_TRUE(first.play(c, t));
+    any_pressed = any_pressed || c.pressed("jump");
+    replayed.record(c);
+  }
+  ARCANE_ASSERT_TRUE(any_pressed);
+  ARCANE_ASSERT_TRUE(replayed.bytes() == first.bytes());
+  ARCANE_ASSERT_TRUE(!first.play(c, 600));
+
+  // A different binding set yields a different recording.
+  InputActionMap d = make();
+  d.rebind("jump", {InputDevice::Keyboard, Keys::kW});
+  ARCANE_ASSERT_TRUE(run_script(d, 600).bytes() != first.bytes());
+}
+
 }  // namespace
 
 int main() {
@@ -155,5 +244,7 @@ int main() {
   test_active_input_map_is_null_by_default();
   test_axes_and_players();
   test_rebinding();
+  test_rebind_api_and_reset();
+  test_record_replay();
   return 0;
 }

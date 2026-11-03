@@ -1,25 +1,16 @@
 ## Franklin: how to test / validate
 
-This PR (`engine-nightly-2026-10-31` -> `engine-nightly-2026-10-30`) is stacked on PR #9 (which is stacked on #8; #7 first). Merge order #7 -> #8 -> #9 -> this one. It shows only tonight's diff (4 commits: IN4, IN5, IN6 and this PR body). Jobs done tonight: IN4 (ENG-034), IN5 (ENG-035), IN6 (ENG-036). Queue is empty after these; IN1-IN3 belong to hermes PR #10.
-
-Verified on the final commit 7e2b867 (WRAP, 2026-11-01): gcc Debug incremental build OK, `ctest` 76/76 passed (perf label 2/2 passed); `arcane --project samples/<p> --module <p>.so run --frames 120` returns `ok:true` for platformer_slice, topdown_slice and sample_project. clang ASan/UBSan and mingw results are from the IN6 job on the same commit (not re-run by WRAP).
+This PR (`engine-nightly-2026-11-01` -> `engine-nightly-2026-10-31`) is stacked on PR #11 (merge order #7 -> #8 -> #9 -> #11 -> this). Tonight so far: IN7 (ENG-037, input rebinding + deterministic replay), IN8 (ENG-038, tween easings, chaining, cancel), IN10 (ENG-040, save slot recovery), IN11 (ENG-041, log level filter + deterministic file sink), IN12 (ENG-042, property registry introspection + round trip), IN13 (ENG-043, canonical_json fuzz + idempotence tests), IN14 (ENG-044, platformer slopes), IN15 (ENG-045, fixed timestep: step clamp counters, alpha in [0,1), time_scale, invalid dt rejected; additive API in time.hpp).
 
 **1. Step-by-step manual checks**
 
-Linux:
-```
-scripts/build-and-test.sh     # expect: gcc PASS, clang_san PASS, mingw PASS (build only)
-ctest --test-dir build-gcc -R "test_atomic_save|test_canonical_json|test_migration|test_editor_project|test_tooling_commands" --output-on-failure   # expect: all pass
-```
+Linux: `scripts/build-and-test.sh` (expect gcc PASS, clang_san PASS, mingw build only). Quick: `ctest --test-dir build-gcc -R test_input --output-on-failure`.
 Windows / MSVC (PowerShell, repo root):
 ```
 cmake -S . -B build -G "Visual Studio 18 2026" -A x64     # or "Visual Studio 17 2022"
 cmake --build build --config Debug
-ctest --test-dir build -C Debug --output-on-failure       # expect: all tests pass, including test_atomic_save
+ctest --test-dir build -C Debug -R "test_input|test_tween" --output-on-failure   # expect pass
 ```
-IN6 check: `ctest --test-dir build-gcc -L perf --output-on-failure` (Windows: `ctest --test-dir build -C Debug -L perf`); expect `perf_gate` passed (or skipped on a non-gcc/non-Debug build; it only compares against the committed `Debug-GNU` baseline) and `perf_gate_forced_slow` passed (it expects the gate to fail on 1000x slower timings). Refresh: `cmake --build build-gcc --target perf_baseline_update`.
-IN5 check: `ctest --test-dir build-gcc -R test_cli_contract --output-on-failure` (Windows: `ctest --test-dir build -C Debug -R test_cli_contract`); expect pass.
-IN4 manual check (any platform): open a project in the editor, change something in the scene and project settings, File > Save. Expected: both saved, no `*.arcane-tmp` or `.arcane-commit` file left in the project folder.
 
 GP5 extra check (any platform, no window): `ctest --test-dir build -C Debug -R "test_topdown_controller|test_navigation|test_spawner|test_combat|test_topdown_slice|test_topdown_commands" --output-on-failure` expects all six to pass. To play (needs a display or Xvfb): `build-gcc/bin/arcane_player --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so`, move with WASD and shoot with Space (the bullet flies where you last moved). The red enemy walks around the interior wall to reach you (each touch costs 1 health, shown in the HUD with a particle burst); three bullets kill it; at 0 health the scene restarts. CLI: `arcane --project samples/topdown_slice --module build-gcc/bin/topdown_slice_game.so prefab info --node path:/Arena/Enemy`.
 
@@ -44,9 +35,20 @@ AF8C: the new Project Settings sections and undoable Tileset/Clip Save described
 AF10C: the PNG above. HY1: no feature change. The 1.4 MB build artefact `samples/topdown_slice/topdown_slice_game.so` is no longer tracked, and `.gitignore` covers it (and the `.dll`).
 IN6: `docs/perf_gate.md`, `docs/perf_baseline.json`, `ctest -L perf`.
 No UI change. New: `engine/include/arcane/atomic_save.hpp` and `test_atomic_save` (a simulated kill after every step of a save). Saves now briefly create a `.arcane-commit` file in the project root.
+No UI change. IN8: `Tween` components accept 7 new easing names (`back_in`, `back_in_out`, `elastic_in|out|in_out`, `bounce_in`, `bounce_in_out`); new `TweenSystem::start_sequence/start_parallel/start_node_sequence/start_node_parallel` and `cancel(id, snap_to_end)`. IN7: new runtime API in `arcane/input.hpp`: `InputActionMap::rebind`, `clear_bindings(name, device)`, `capture_defaults`/`reset_to_defaults`, and `InputRecording`; new cases in `tests/test_input.cpp`.
+
+IN10: no UI change; `arcane/save_game.hpp` gains `load_save_game_recovering` (falls back to `<slot>.save.json.bak`, reports why), `delete_save_game`, `save_backup_path`; `write_save_game` keeps the previous good file as `.bak` and refuses to overwrite a file from a newer engine. Tests: `ctest -R test_save_game`.
+IN11: no UI change; `arcane/log.hpp` gains `log_set_min_level`, `log_set_category_level`, `log_would_log`, `log_add_sink`/`log_remove_sink`, `log_set_stderr_enabled`, `log_flush`, and `log_set_file(path, LogFileOptions{max_bytes,max_files,timestamps})`. File lines are `LEVEL|category|message` (no wall-clock unless enabled). Tests: `ctest -R test_logger`.
+IN12: no UI change; `arcane/property.hpp` gains `describe_components(registry)` (types sorted by name, properties in registration order with type and default), `get_property_by_name`/`set_property_by_name` (unknown type/property and wrong value type are errors, data untouched) and `value_fits_type`. `tests/test_property_roundtrip.cpp` sets non-default values on every registered type (built-ins + sample_game), saves, reloads and compares values and bytes. Run `ctest -R test_property_roundtrip`. component_registry.* untouched.
+IN13: no UI change; `ctest -R test_canonical_json` now runs 12,000 seeded fuzz iterations (~0.6 s: random nesting, unicode escapes, int64/uint64 extremes, binary32 edge floats, shuffled keys; checks idempotence, value round trip, sorted keys, truncation and random byte damage). One real bug found and fixed in `engine/src/canonical_json.cpp`: deeply nested input (e.g. 200000 `[`) overflowed the stack and crashed; nesting deeper than 512 levels is now an error. Documented in `docs/formats/canonical-json.md`.
+IN16 (ENG-046): no UI change; `arcane/animation.hpp` gains runtime-only `AnimationClip::ping_pong` (clip format unchanged), `clip_finished`, `frame_events(clip, from, to)` (frames entered, once per crossing, forward/reverse, multi-frame skips, capped at 64 periods) and `AnimatedSprite::previous_elapsed_seconds`; speed 0 freezes, negative reverses, non-finite advance ignored. Run `ctest -R test_animation`.
+IN17 (ENG-047): tests only, no UI change; `test_game_context` gains deferred destroy / double destroy / find-after-destroy, 1000-node deterministic spawn/destroy churn (run under ASan) and restart-drops-pending cases. Run `ctest -R test_game_context`.
+IN18 (ENG-048): save slots gain optional `meta` (display name, play time, injected timestamp), `read_save_slot_info` (header+meta only, falls back to .bak) and `list_save_slot_infos` (sorted by timestamp, then name). No UI. Run `ctest -R test_save_game`. Note: `schemas/arcane.save.schema.json` (hermes-owned) and docs/formats/save.md do not yet list `meta`.
+
+IN14: no UI change; `PlatformerController2D` walks up/down slopes (up to `max_slope_deg`, default 50) without sliding or launching, using a downward raycast through the active GameContext's PhysicsWorld. Coyote time / jump buffer / jump cut already existed; new cases in `tests/test_platformer.cpp` (`ctest -R test_platformer`). `max_slope_deg` is a C++ member only, not a serialized property (would alter goldens).
 
 **3. Enough to merge**
-Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises the Windows fsync/rename path). Optional: the editor save check.
+Minimum: Windows build + `test_input` / full ctest green. Optional: nothing manual.
 
 **4. Known risks**
 
@@ -68,17 +70,19 @@ Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises 
 - UNTESTED on native Windows/MSVC (only mingw cross-build ran). On Windows `_commit` is used for fsync and directory fsync is skipped.
 - Opening a project removes stale `*.arcane-tmp` files under it; a second process saving into the same project at that moment would see its save fail (rolled back, no corruption). Concurrent writers are not supported.
 - Single-file saves (`write_text_file_atomic`) are unchanged (rename of a synced-less temp); only the multi-file paths (editor save, CLI save, migration) use the journal. `canonical_json.hpp` still carries the old "not crash-atomic" note on `write_text_files_transactional`, which is now unused by product code (hermes IN2 owns that file tonight).
+- UNTESTED on native Windows/MSVC (only the mingw cross-build ran).
+- IN8: easing endpoints are now exact (`ease(e,0)==0`, `ease(e,1)==1`); `Easing` enumerator values were renumbered (names, which are what files store, are unchanged). `cancel`/`cancel_node` gained a defaulted `snap_to_end` parameter.
+- Additive API only; input map file format and loader unchanged.
+- IN17 (ENG-047) edited `tests/test_game_context.cpp`, which is on the hermes do-not-edit list; it is tests-only and the owner should review it.
+- Known engine gap (pinned by IN17, not fixed): replacing a Scene on restart does not call `on_destroy` for runtime nodes, although the `game_context.hpp` comment says it does. The fix needs `scene.cpp`, which was out of scope.
+- ENG-039 (text layout) was dropped from this PR: the board row is owned by another agent; the commit is preserved on branch side/eng-039-in9-2026-11-01.
 
 ---
 
 ## Technical detail
 
-### Test results per config (tonight's tip 7e2b867)
-- gcc Debug headless: ctest 76/76 passed (WRAP, 2026-11-01).
-- clang ASan/UBSan headless: PASS in the IN6 job (same tip).
-- mingw cross-build: OK in the IN6 job (build only, not run).
-- Native Windows/MSVC: not run. UNTESTED.
-- Samples (headless `arcane run`, 120 fixed frames): platformer_slice, topdown_slice, sample_project all `ok:true`.
+### IN13: canonical_json fuzz
+Fixed-seed mt19937_64 generator in `tests/test_canonical_json.cpp`; only `canonicalize_json` is public, so values are emitted as text with random whitespace/escapes/key order and checked against an nlohmann model. A leading UTF-8 BOM is accepted and dropped (nlohmann behaviour, left as is). Write/transaction path untouched.
 
 ### GP5: top-down controller, steering, combat, pooled spawner (docs/slice_topdown_gaps.md)
 - Engine components (all registered by `register_physics_components`): `TopDownController2D` (`topdown.hpp`), `SteeringAgent2D` + `NavGrid`/`find_path` grid A* (`navigation.hpp`), `Spawner2D` + `Node::set_active` (`spawner.hpp`), `Health`/`Hurtbox`/`Hitbox`/`Projectile` (`combat.hpp`). Decisions 82-85 and 86 in `docs/decisions.md`.
@@ -97,9 +101,17 @@ Minimum: the Windows build + ctest above is green (`test_atomic_save` exercises 
 - Branch stacked on `engine-nightly-2026-10-30` (PR #9), not on hermes branches (docs/decisions.md).
 - IN6 baseline is per flavor (`Debug-GNU`); other flavors skip the perf gate rather than compare against foreign timings.
 - IN4 manifest name `.arcane-commit` and temp suffix `.arcane-tmp` chosen by us; recovery runs at every open.
+### IN10: save slot recovery
+- `write_save_game`: old file valid -> copied atomically to `.bak` first; corrupt old file never replaces a good `.bak`; newer file `version` is refused untouched. Existing `load_save_game`/`read_save_game_file` and all error texts unchanged.
+- No checksum field: the `arcane.save` v2 schema is strict (schemas/* is hermes-owned tonight), so truncation/garbage is detected by the strict parse instead. Future data_version refused by `migrate_save_game` without fallback.
+- Tests: `tests/test_save_game.cpp` (list/delete, upgrade, truncated->.bak, garbage, future version, no temp leftovers). gcc PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC.
 
-### UNTESTED on native Windows/MSVC
-Everything in this PR: the atomic-save fsync/rename path (`_commit`), the CLI contract test, the perf gate (skips on MSVC) and the new docs. Only the mingw cross-build ran.
+### IN8: tween easings, chaining, cancel
+- Easing set complete: in/out/in-out for quad, cubic, sine, back, elastic, bounce (+linear). Endpoints exact for all.
+- Chains: a sequence/parallel group is one `TweenId`; step N+1 of a sequence starts on a computed timeline offset (no drift); per-step `spec.delay` supported; `on_complete` once after the last step. Sequence with a non-last endless step is rejected (returns 0).
+- Cancel: stops the rest of a chain, never calls `on_complete`; optional `snap_to_end` applies every step's final value (endless steps skipped); `cancel_node` covers chains bound to the node.
+- Tests: `tests/test_tween.cpp` per-easing table (endpoints, clamping, monotonic where expected, golden samples at 0.25/0.5/0.75 computed independently in Python), sequence/parallel timing at fixed dt, cancel/snap/cancel-in-callback/cancel_node tests.
+- gcc Debug PASS, clang ASan/UBSan PASS, mingw build PASS. UNTESTED on native Windows/MSVC.
 
 ### GP1: gameplay context API (docs/slice_platformer_gaps.md items 1, 2, 5, 6)
 - `RigidBody2D::teleport(pos)` moves the node at once and queues a Box2D transform applied at the start of the next `PhysicsWorld::step` (velocity cleared), so it is safe inside any hook. `PhysicsWorld::step` now also drops bodies of destroyed nodes and creates bodies for nodes spawned since the last step (before this a destroyed node kept a ghost body).
@@ -154,3 +166,12 @@ Everything in this PR: the atomic-save fsync/rename path (`_commit`), the CLI co
 - Call sites: `ProjectSession::save` (editor), `ProjectContext::save` (CLI/tooling), `migrate_project`; recovery runs in `ProjectSession::open` (so editor, player, CLI) and at the start of every commit.
 - Test `tests/test_atomic_save.cpp`: crash hook (`crash_at_step`) after each of the 2N+2 steps, recover, assert all-old before the commit point / all-new after, no leftovers; torn manifest; next save recovers; rollback; path outside root.
 - Tests: gcc Debug and clang ASan/UBSan green (ctest all passed), mingw cross-build OK.
+### IN7: input rebinding + deterministic replay
+- `rebind(action, binding, allow_conflict=false)`: replaces that device's bindings, reports conflicting actions instead of overwriting.
+- `capture_defaults()` / `reset_to_defaults([action])`: in-memory snapshot, not saved to file.
+- `InputRecording`: per-tick action states as bytes; 600-tick scripted run recorded twice and replayed gives identical bytes.
+
+## Test results (WRAP, final commit)
+- Final commit on this branch, gcc Debug (`build-gcc`, incremental build + headless CTest): 78/78 tests pass; `arcane --project samples/{platformer_slice,sample_project,topdown_slice} run --frames 60` returns `ok:true`.
+- Per-job runs (jobs/IN15..IN18/RESULT.md): gcc, clang ASan/UBSan and mingw cross-build reported PASS for each job. Clang and mingw were not re-run in WRAP.
+- Native Windows/MSVC: UNTESTED.
