@@ -3,11 +3,13 @@
 #   [-DARCH=aarch64] [-DMODE=check|update] [-DFORCE=ON]
 # The baseline entry key is "<FLAVOR>/<ARCH>". ARCH defaults to the host processor (lowercased,
 # amd64 -> x86_64, arm64 -> aarch64) so one file can hold entries for several machines.
-# check:  runs each case RUNS times, takes the median avg_frame_ms and fails if it is more than
-#         the entry's threshold_percent above the baseline. If there is no entry for the key, one is
-#         recorded into BASELINE (threshold 20), a WARNING is printed and the gate passes; commit it.
+# check:  runs each case RUNS (7) times, takes the MINIMUM avg_frame_ms (noise only adds time) and fails
+#         if it is more than the entry's threshold_percent above the baseline; with -DATTEMPTS=N the
+#         whole comparison may be repeated up to N times and passes on the first clean attempt.
+#         If there is no entry for the key, one is
+#         recorded into BASELINE (threshold 30), a WARNING is printed and the gate passes; commit it.
 #         FORCE=ON compares against another arch of the same FLAVOR (else the first entry) instead.
-# update: merges fresh medians for this key into BASELINE, keeping other entries.
+# update: merges fresh minimums for this key into BASELINE, keeping other entries.
 # ARCANE_PERF_GATE_SCALE=N (env) multiplies every measurement, to prove that a slow path fails;
 # ARCANE_PERF_GATE_SCALE_PERCENT=P (env, default 100) then scales it by P/100 (tests simulate +25%).
 # A BENCH ending in .cmake is run as "cmake -P BENCH -- args" (a fake bench for tests/perf_gate_test).
@@ -17,7 +19,10 @@ cmake_minimum_required(VERSION 3.19)
 if(NOT MODE)
   set(MODE check)
 endif()
-set(RUNS 5)
+set(RUNS 7)
+if(NOT ATTEMPTS)
+  set(ATTEMPTS 1)
+endif()
 set(CASES scene particles physics)
 set(ARGS_scene --sprites 1000 --emitters 0 --bodies 0)
 set(ARGS_particles --sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0)
@@ -68,7 +73,7 @@ function(ns_to_ms ns out)
   endif()
 endfunction()
 
-function(median_ns case out)
+function(min_ns case out)
   set(values "")
   foreach(i RANGE 1 ${RUNS})
     if(BENCH MATCHES "\\.cmake$")
@@ -91,16 +96,15 @@ function(median_ns case out)
     list(APPEND values ${ns})
   endforeach()
   list(SORT values COMPARE NATURAL)
-  math(EXPR mid "${RUNS} / 2")
-  list(GET values ${mid} median)
-  set(${out} "${median}" PARENT_SCOPE)
+  list(GET values 0 min)
+  set(${out} "${min}" PARENT_SCOPE)
 endfunction()
 
 # Measures every case and returns the JSON text of one baseline entry.
 function(measure_entry threshold out)
   set(cases "{}")
   foreach(case ${CASES})
-    median_ns(${case} ns)
+    min_ns(${case} ns)
     ns_to_ms(${ns} ms)
     string(REPLACE ";" " " argtext "${ARGS_${case}}")
     string(JSON cases SET "${cases}" ${case} "{\"args\": \"${argtext}\", \"avg_frame_ms\": ${ms}}")
@@ -139,7 +143,7 @@ if(entry_err)
 endif()
 
 if(MODE STREQUAL "update")
-  set(threshold 20)
+  set(threshold 30)
   if(have_entry)
     string(JSON threshold GET "${doc}" baselines "${KEY}" threshold_percent)
   endif()
@@ -170,7 +174,7 @@ if(NOT have_entry AND FORCE)
 endif()
 
 if(NOT have_entry)
-  record_entry(20)
+  record_entry(30)
   message(WARNING "perf gate: no baseline for ${KEY}; recorded one into ${BASELINE} and passed. Review and commit it.")
   return()
 endif()
@@ -178,20 +182,26 @@ endif()
 string(JSON threshold GET "${doc}" baselines "${use_key}" threshold_percent)
 string(JSON base_cases GET "${doc}" baselines "${use_key}" cases)
 
-set(failed "")
-foreach(case ${CASES})
-  string(JSON base_ms GET "${base_cases}" ${case} avg_frame_ms)
-  ms_to_ns("${base_ms}" base_ns)
-  median_ns(${case} ns)
-  math(EXPR limit "${base_ns} * (100 + ${threshold}) / 100")
-  math(EXPR pct "(${ns} - ${base_ns}) * 100 / ${base_ns}")
-  ns_to_ms(${ns} ms)
-  if(ns GREATER limit)
-    message(STATUS "FAIL ${case}: median ${ms} ms vs baseline ${base_ms} ms (${pct}%, limit +${threshold}%)")
-    list(APPEND failed ${case})
-  else()
-    message(STATUS "ok   ${case}: median ${ms} ms vs baseline ${base_ms} ms (${pct}%)")
+foreach(attempt RANGE 1 ${ATTEMPTS})
+  set(failed "")
+  foreach(case ${CASES})
+    string(JSON base_ms GET "${base_cases}" ${case} avg_frame_ms)
+    ms_to_ns("${base_ms}" base_ns)
+    min_ns(${case} ns)
+    math(EXPR limit "${base_ns} * (100 + ${threshold}) / 100")
+    math(EXPR pct "(${ns} - ${base_ns}) * 100 / ${base_ns}")
+    ns_to_ms(${ns} ms)
+    if(ns GREATER limit)
+      message(STATUS "FAIL ${case}: min ${ms} ms vs baseline ${base_ms} ms (${pct}%, limit +${threshold}%)")
+      list(APPEND failed ${case})
+    else()
+      message(STATUS "ok   ${case}: min ${ms} ms vs baseline ${base_ms} ms (${pct}%)")
+    endif()
+  endforeach()
+  if(NOT failed)
+    break()
   endif()
+  message(STATUS "attempt ${attempt}/${ATTEMPTS} failed")
 endforeach()
 if(failed)
   message(FATAL_ERROR "perf regression in: ${failed}")

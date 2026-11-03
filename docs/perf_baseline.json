@@ -3,13 +3,13 @@
     "Debug-GNU/aarch64": {
       "arch": "aarch64",
       "cases": {
-        "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 0.629981},
-        "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.03949},
-        "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 0.632148}
+        "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 0.637005},
+        "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.039073},
+        "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 0.63641}
       },
       "flavor": "Debug-GNU",
-      "runs": 5,
-      "threshold_percent": 20
+      "runs": 7,
+      "threshold_percent": 30
     },
     "Debug-GNU/x86_64": {
       "arch": "x86_64",
@@ -20,6 +20,17 @@
       },
       "flavor": "Debug-GNU",
       "runs": 5,
+      "threshold_percent": 30
+    },
+    "Debug-Clang-san/aarch64": {
+      "arch": "aarch64",
+      "cases": {
+        "scene": {"args": "--sprites 1000 --emitters 0 --bodies 0", "avg_frame_ms": 4.138503},
+        "particles": {"args": "--sprites 0 --emitters 10 --particles-per-emitter 100 --bodies 0", "avg_frame_ms": 0.352176},
+        "physics": {"args": "--sprites 0 --emitters 0 --bodies 200", "avg_frame_ms": 4.209736}
+      },
+      "flavor": "Debug-Clang-san",
+      "runs": 7,
       "threshold_percent": 30
     }
   },

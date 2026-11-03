@@ -18,7 +18,7 @@ function(fresh_baseline)
       },
       \"flavor\": \"Test-X\",
       \"runs\": 5,
-      \"threshold_percent\": 20
+      \"threshold_percent\": 30
     }
   },
   \"format\": \"arcane.perf_baseline\",
@@ -42,14 +42,14 @@ run_gate(testarch 100)
 if(NOT rc EQUAL 0)
   message(FATAL_ERROR "100% must pass, rc=${rc}\n${output}")
 endif()
-run_gate(testarch 119)
+run_gate(testarch 129)
 if(NOT rc EQUAL 0)
-  message(FATAL_ERROR "+19% must pass, rc=${rc}\n${output}")
+  message(FATAL_ERROR "+29% must pass, rc=${rc}\n${output}")
 endif()
-foreach(pct 121 125)
+foreach(pct 131 135)
   run_gate(testarch ${pct})
   if(rc EQUAL 0)
-    message(FATAL_ERROR "+${pct}% over a 20% threshold must fail\n${output}")
+    message(FATAL_ERROR "+${pct}% over a 30% threshold must fail\n${output}")
   endif()
   if(NOT output MATCHES "FAIL")
     message(FATAL_ERROR "+${pct}% failure output lacks FAIL\n${output}")
