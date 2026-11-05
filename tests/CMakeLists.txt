@@ -324,6 +324,8 @@ add_executable(test_hud_input_commands test_hud_input_commands.cpp)
 target_link_libraries(test_hud_input_commands PRIVATE arcane_tooling)
 target_include_directories(test_hud_input_commands SYSTEM PRIVATE ${TP}/stb)
 add_test(NAME test_hud_input_commands COMMAND test_hud_input_commands)
+# Building test_hud_widgets also builds every other ^test_hud ctest target.
+add_dependencies(test_hud_widgets test_hud_input_commands)
 
 # --- clip.* commands (sheet grid slicing, clip files) ----------------------------
 add_executable(test_clip_commands test_clip_commands.cpp)
