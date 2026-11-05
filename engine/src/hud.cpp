@@ -565,12 +565,7 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
                                    screen_width, screen_height);
       draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, button_color(*button));
       if (button->focused) {
-        const float t = std::max(1.0f, 2.0f * scale);
-        const Color outline{1.0f, 0.9f, 0.3f, 1.0f};
-        draw_quad(renderer, &white_, r.x, r.y, r.w, t, outline);
-        draw_quad(renderer, &white_, r.x, r.y + r.h - t, r.w, t, outline);
-        draw_quad(renderer, &white_, r.x, r.y, t, r.h, outline);
-        draw_quad(renderer, &white_, r.x + r.w - t, r.y, t, r.h, outline);
+        draw_focus_outline(r, renderer, screen_height);
       }
       float tw = 0.0f, th = 0.0f;
       hud_text_size(button->label, button->font_scale, tw, th);
@@ -583,6 +578,39 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
 }
 
 // --- runtime widgets ---------------------------------------------------------
+
+void HudRenderer::draw_focus_outline(const HudRect& r, SpriteRenderer& renderer, int screen_height, Color outline) {
+  const float t = std::max(1.0f, 2.0f * hud_scale(screen_height));
+  draw_quad(renderer, &white_, r.x, r.y, r.w, t, outline);
+  draw_quad(renderer, &white_, r.x, r.y + r.h - t, r.w, t, outline);
+  draw_quad(renderer, &white_, r.x, r.y, t, r.h, outline);
+  draw_quad(renderer, &white_, r.x + r.w - t, r.y, t, r.h, outline);
+}
+
+void HudRenderer::draw_rect(const HudRect& r, SpriteRenderer& renderer, int screen_width, int screen_height,
+                            Color color) {
+  renderer.flush();
+  renderer.set_camera(static_cast<float>(screen_width) * 0.5f, static_cast<float>(screen_height) * 0.5f, 1.0f);
+  draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, color);
+}
+
+void HudRenderer::draw_panel(const HudPanel& panel, SpriteRenderer& renderer, int screen_width, int screen_height) {
+  renderer.flush();
+  renderer.set_camera(static_cast<float>(screen_width) * 0.5f, static_cast<float>(screen_height) * 0.5f, 1.0f);
+  const HudRect r = hud_panel_rect(panel, screen_width, screen_height);
+  if (!panel.texture) {
+    draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, panel.tint);
+    return;
+  }
+  const float scale = panel.border_scale * hud_scale(screen_height);
+  const auto patches = hud_nine_slice(r, panel.border, panel.texture->width(), panel.texture->height(), scale);
+  for (const HudNineSlicePatch& p : patches) {
+    if (p.dest.w <= 0.0f || p.dest.h <= 0.0f) continue;
+    renderer.draw(SpriteDraw{.texture = panel.texture, .x = p.dest.x, .y = p.dest.y, .width = p.dest.w,
+                             .height = p.dest.h, .origin_x = 0.0f, .origin_y = 0.0f, .tint = panel.tint,
+                             .uv = p.uv});
+  }
+}
 
 std::array<HudNineSlicePatch, 9> hud_nine_slice(const HudRect& dest, const HudNineSlice& border, int texture_width,
                                                 int texture_height, float pixel_scale) noexcept {

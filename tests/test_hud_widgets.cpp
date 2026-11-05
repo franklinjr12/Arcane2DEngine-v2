@@ -1,8 +1,15 @@
 #include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <filesystem>
 #include <vector>
 
 #include "arcane/hud.hpp"
 #include "arcane/input.hpp"
+#include "arcane/renderer.hpp"
+#include "arcane/screenshot.hpp"
+#include "arcane/window.hpp"
 #include "test_assert.hpp"
 
 namespace {
@@ -163,9 +170,96 @@ void test_focus_consumes_input() {
   ARCANE_ASSERT_TRUE(actions.held("duck"));
 }
 
+// Golden screenshot of a mock panel with a scroll list; exits 77 without a GL display.
+int run_gl_case() {
+  constexpr int kW = 160, kH = 120;
+  auto window = Window::create({.width = kW, .height = kH, .title = "test_hud_widgets", .hidden = true});
+  if (!window || !load_gl_functions()) {
+    std::fprintf(stderr, "no GL-capable display available, skipping\n");
+    return 77;
+  }
+  auto renderer = SpriteRenderer::create();
+  auto hud = HudRenderer::create();
+  ARCANE_ASSERT_TRUE(renderer.has_value() && hud.has_value());
+
+  const unsigned char corner[4] = {20, 30, 110, 255}, edge[4] = {140, 180, 240, 255}, mid[4] = {110, 110, 110, 255};
+  std::vector<unsigned char> pixels(24 * 24 * 4);
+  for (int y = 0; y < 24; ++y) {
+    for (int x = 0; x < 24; ++x) {
+      const bool cx = x < 8 || x >= 16, cy = y < 8 || y >= 16;
+      const unsigned char* c = (cx && cy) ? corner : (cx || cy) ? edge : mid;
+      std::memcpy(&pixels[(static_cast<std::size_t>(y) * 24 + x) * 4], c, 4);
+    }
+  }
+  auto texture = Texture::load_from_pixels(pixels, 24, 24, TextureFilter::Nearest);
+  ARCANE_ASSERT_TRUE(texture.has_value());
+
+  int width = 0, height = 0;
+  window->framebuffer_size(width, height);
+  HudPanel panel;
+  panel.texture = &*texture;
+  panel.border = {8, 8, 8, 8};
+  // Layout units are 720p pixels; the 120px window scales them by 1/6, so these are an 8px inset,
+  // a 140x100 px panel and 8px corners (border_scale 6 undoes the scale for the border only).
+  const float units = 1.0f / hud_scale(kH);
+  panel.border_scale = units;
+  panel.offset_x = 8.0f * units;
+  panel.offset_y = 8.0f * units;
+  panel.width = 140.0f * units;
+  panel.height = 100.0f * units;
+  panel.tint = {1, 1, 1, 1};
+  const HudRect pr = hud_panel_rect(panel, width, height);
+
+  HudScrollList list;
+  list.item_count = 20;
+  list.visible_count = 4;
+  list.selected = 6;
+  list.ensure_visible();
+  const float pad = 8.0f;
+  const HudRect area{pr.x + pad, pr.y + pad, pr.w - 2 * pad, pr.h - 2 * pad};
+  const auto rows = list.item_rects(area, 16.0f, 2.0f);
+
+  renderer->begin_frame(width, height, Color{0.05f, 0.05f, 0.1f, 1.0f});
+  hud->draw_panel(panel, *renderer, width, height);
+  for (std::size_t i = 0; i < rows.size(); ++i) {
+    const Color row = i % 2 == 0 ? Color{0.8f, 0.5f, 0.2f, 1.0f} : Color{0.3f, 0.6f, 0.3f, 1.0f};
+    hud->draw_rect(rows[i], *renderer, width, height, row);
+    if (list.first_visible + static_cast<int>(i) == list.selected) hud->draw_focus_outline(rows[i], *renderer, height);
+  }
+  renderer->end_frame();
+
+  auto image = capture_framebuffer(width, height);
+  ARCANE_ASSERT_TRUE(image.has_value());
+  // Not blank: panel corner and a panel-edge-free center pixel have the texture colors.
+  auto px = [&](int x, int y) { return &image->pixels[(static_cast<std::size_t>(y) * width + x) * 4]; };
+  const int cxp = static_cast<int>(pr.x) + 2, cyp = static_cast<int>(pr.y) + 2;
+  ARCANE_ASSERT_TRUE(std::memcmp(px(cxp, cyp), corner, 3) == 0);
+  ARCANE_ASSERT_TRUE(std::memcmp(px(static_cast<int>(pr.x + pr.w * 0.5f), static_cast<int>(pr.y) + 2), edge, 3) == 0);
+  // Panel center below the last row (4 rows of 16 + 3 gaps of 2 inside an 84px-high area).
+  ARCANE_ASSERT_TRUE(std::memcmp(px(static_cast<int>(pr.x + pr.w * 0.5f), static_cast<int>(pr.y + pr.h) - 10), mid, 3) == 0);
+
+  const std::filesystem::path golden = std::filesystem::path(ARCANE_GOLDEN_DIR) / "render" / "hud_panel.png";
+  if (std::getenv("ARCANE_UPDATE_GOLDEN")) {
+    ARCANE_ASSERT_TRUE(write_png(golden, *image).has_value());
+    std::puts("golden updated");
+    return 0;
+  }
+  auto expected = read_png(golden);
+  if (!expected) {
+    std::fprintf(stderr, "missing golden %s (run with ARCANE_UPDATE_GOLDEN=1)\n", golden.string().c_str());
+    return 1;
+  }
+  const ImageDiff diff = compare_images(*image, *expected, 2);
+  std::printf("size_match=%d max_delta=%d differing=%ld\n", diff.same_size, diff.max_channel_delta, diff.differing_pixels);
+  ARCANE_ASSERT_TRUE(diff.same_size);
+  ARCANE_ASSERT_TRUE(static_cast<double>(diff.differing_pixels) <= 0.005 * width * height);
+  return 0;
+}
+
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+  if (argc > 1 && std::strcmp(argv[1], "--gl") == 0) return run_gl_case();
   test_nine_slice_scales();
   test_panel_rect();
   test_box_and_grid();

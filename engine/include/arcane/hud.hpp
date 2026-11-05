@@ -348,6 +348,17 @@ class ARCANE_API HudRenderer {
   // camera to pixel coordinates (origin top-left).
   void draw(const Hud& hud, SpriteRenderer& renderer, int screen_width, int screen_height);
 
+  // Widget drawing, same calling convention as draw(): each flushes and sets
+  // the pixel camera, so they can be called alone or after draw().
+  // 9-slice panel (flat tint quad when panel.texture is null).
+  void draw_panel(const HudPanel& panel, SpriteRenderer& renderer, int screen_width, int screen_height);
+  // Flat quad in pixel coordinates.
+  void draw_rect(const HudRect& rect, SpriteRenderer& renderer, int screen_width, int screen_height, Color color);
+  // Focus outline, same thickness as a focused HudButton. Takes no screen width,
+  // so it keeps the pixel camera set by draw()/draw_panel()/draw_rect().
+  void draw_focus_outline(const HudRect& rect, SpriteRenderer& renderer, int screen_height,
+                          Color color = {1.0f, 0.9f, 0.3f, 1.0f});
+
  private:
   HudRenderer(Texture white, Texture atlas, FontAtlas atlas_data)
       : white_(std::move(white)), atlas_(std::move(atlas)), atlas_data_(std::move(atlas_data)) {}
