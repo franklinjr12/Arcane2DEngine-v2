@@ -1,8 +1,10 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <expected>
 #include <functional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -215,6 +217,120 @@ class ARCANE_API HudInput {
   bool pointer_consumed_ = false;
 };
 
+// Runtime widgets, layered on the HUD without joining HudElement (no
+// serialization): 9-slice panels, box/grid layout, a scrolling list and a
+// directional focus group. All state is runtime-only; layout is in pixels.
+
+// Border insets of a 9-slice image, in source texels.
+struct HudNineSlice {
+  float left = 0.0f, top = 0.0f, right = 0.0f, bottom = 0.0f;
+};
+
+// A 9-slice panel description. A null texture means a flat tint quad.
+// Corners are drawn at border * border_scale * hud_scale(screen_height).
+struct HudPanel {
+  std::string id;
+  const Texture* texture = nullptr;
+  HudNineSlice border{};
+  float border_scale = 1.0f;
+  HudAnchor anchor = HudAnchor::TopLeft;
+  float offset_x = 0.0f, offset_y = 0.0f;
+  float width = 200.0f, height = 120.0f;
+  Color tint{};
+};
+
+struct HudNineSlicePatch {
+  HudRect dest;
+  UvRect uv;
+};
+
+// Splits `dest` into 9 patches, row-major: TL, T, TR, L, C, R, BL, B, BR.
+// Corner sizes are border * pixel_scale; if two opposite borders do not fit
+// they shrink proportionally. Edges stretch along their long axis. UVs use
+// v0 at the top edge, like the rest of the HUD.
+ARCANE_API std::array<HudNineSlicePatch, 9> hud_nine_slice(const HudRect& dest, const HudNineSlice& border,
+                                                           int texture_width, int texture_height,
+                                                           float pixel_scale) noexcept;
+// Screen rect of a panel in pixels (hud_layout of its anchor/offset/size).
+ARCANE_API HudRect hud_panel_rect(const HudPanel& panel, int screen_width, int screen_height) noexcept;
+
+enum class HudAxis { Horizontal, Vertical };
+
+// VBox/HBox: children stacked along `axis` with the given main-axis sizes,
+// stretched across the other axis inside `area` shrunk by `padding`.
+ARCANE_API std::vector<HudRect> hud_layout_box(const HudRect& area, HudAxis axis, std::span<const float> sizes,
+                                               float spacing, float padding);
+// Grid: `count` cells of cell_w x cell_h, row-major, `columns` per row.
+ARCANE_API std::vector<HudRect> hud_layout_grid(const HudRect& area, int columns, int count, float cell_w,
+                                                float cell_h, float spacing, float padding);
+
+// Scrolling list state: a selection and the window of visible items. Edge-
+// triggered up/down (keyboard, d-pad); the input backend has no wheel, so the
+// wheel delta is passed to update (positive = scroll up).
+class ARCANE_API HudScrollList {
+ public:
+  int item_count = 0;
+  int visible_count = 1;
+  int selected = 0;
+  int first_visible = 0;
+
+  std::vector<InputBinding> previous_bindings{{InputDevice::Keyboard, 265},
+                                              {InputDevice::GamepadButton, GamepadButtons::kDpadUp}};
+  std::vector<InputBinding> next_bindings{{InputDevice::Keyboard, 264},
+                                          {InputDevice::GamepadButton, GamepadButtons::kDpadDown}};
+  std::vector<InputBinding> confirm_bindings{{InputDevice::Keyboard, Keys::kEnter},
+                                             {InputDevice::GamepadButton, GamepadButtons::kA}};
+
+  void update(const InputBackend& backend, float wheel_delta = 0.0f);
+  bool activated() const noexcept { return activated_; }  // confirm edge during the last update
+  // Scrolls the window the minimum amount that keeps `selected` inside it.
+  void ensure_visible();
+  // Rects of the visible items only, stacked vertically inside `area`.
+  std::vector<HudRect> item_rects(const HudRect& area, float item_height, float spacing) const;
+
+ private:
+  bool previous_was_down_ = false, next_was_down_ = false, confirm_was_down_ = false;
+  bool activated_ = false;
+};
+
+// Directional focus over a set of rects (e.g. from hud_layout_grid). A press
+// moves focus to the nearest enabled item in that direction; while something
+// is focused, nav and confirm inputs read as up through gameplay_backend().
+class ARCANE_API HudFocusGroup {
+ public:
+  struct Item {
+    std::string id;
+    HudRect rect;
+    bool enabled = true;
+  };
+  std::vector<Item> items;
+  int focused = -1;
+
+  std::vector<InputBinding> up_bindings{{InputDevice::Keyboard, 265},
+                                        {InputDevice::GamepadButton, GamepadButtons::kDpadUp}};
+  std::vector<InputBinding> down_bindings{{InputDevice::Keyboard, 264},
+                                          {InputDevice::GamepadButton, GamepadButtons::kDpadDown}};
+  std::vector<InputBinding> left_bindings{{InputDevice::Keyboard, 263},
+                                          {InputDevice::GamepadButton, GamepadButtons::kDpadLeft}};
+  std::vector<InputBinding> right_bindings{{InputDevice::Keyboard, 262},
+                                           {InputDevice::GamepadButton, GamepadButtons::kDpadRight}};
+  std::vector<InputBinding> confirm_bindings{{InputDevice::Keyboard, Keys::kEnter},
+                                             {InputDevice::GamepadButton, GamepadButtons::kA}};
+
+  void update(const InputBackend& backend);
+  bool activated() const noexcept { return activated_; }
+  // Id of the focused item, or null.
+  const std::string* focused_id() const noexcept;
+  // Valid until the next update() (or until this group is moved/copied).
+  const InputBackend& gameplay_backend() const noexcept { return masked_; }
+
+ private:
+  void move(int dx, int dy);
+  MaskedInputBackend masked_;
+  bool was_down_[5] = {};
+  bool activated_ = false;
+};
+
 // The Hud live for the current Play/runtime session, set by the player/editor
 // main loop so gameplay code can add/update elements from on_update (mirrors
 // active_input_map / active_audio_system). Null outside Play.
@@ -231,6 +347,17 @@ class ARCANE_API HudRenderer {
   // has been drawn. Flushes the world batch and switches the renderer's
   // camera to pixel coordinates (origin top-left).
   void draw(const Hud& hud, SpriteRenderer& renderer, int screen_width, int screen_height);
+
+  // Widget drawing, same calling convention as draw(): each flushes and sets
+  // the pixel camera, so they can be called alone or after draw().
+  // 9-slice panel (flat tint quad when panel.texture is null).
+  void draw_panel(const HudPanel& panel, SpriteRenderer& renderer, int screen_width, int screen_height);
+  // Flat quad in pixel coordinates.
+  void draw_rect(const HudRect& rect, SpriteRenderer& renderer, int screen_width, int screen_height, Color color);
+  // Focus outline, same thickness as a focused HudButton. Takes no screen width,
+  // so it keeps the pixel camera set by draw()/draw_panel()/draw_rect().
+  void draw_focus_outline(const HudRect& rect, SpriteRenderer& renderer, int screen_height,
+                          Color color = {1.0f, 0.9f, 0.3f, 1.0f});
 
  private:
   HudRenderer(Texture white, Texture atlas, FontAtlas atlas_data)

@@ -565,12 +565,7 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
                                    screen_width, screen_height);
       draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, button_color(*button));
       if (button->focused) {
-        const float t = std::max(1.0f, 2.0f * scale);
-        const Color outline{1.0f, 0.9f, 0.3f, 1.0f};
-        draw_quad(renderer, &white_, r.x, r.y, r.w, t, outline);
-        draw_quad(renderer, &white_, r.x, r.y + r.h - t, r.w, t, outline);
-        draw_quad(renderer, &white_, r.x, r.y, t, r.h, outline);
-        draw_quad(renderer, &white_, r.x + r.w - t, r.y, t, r.h, outline);
+        draw_focus_outline(r, renderer, screen_height);
       }
       float tw = 0.0f, th = 0.0f;
       hud_text_size(button->label, button->font_scale, tw, th);
@@ -580,6 +575,209 @@ void HudRenderer::draw(const Hud& hud, SpriteRenderer& renderer, int screen_widt
                 hud_font_em * button->font_scale * scale, label_color);
     }
   }
+}
+
+// --- runtime widgets ---------------------------------------------------------
+
+void HudRenderer::draw_focus_outline(const HudRect& r, SpriteRenderer& renderer, int screen_height, Color outline) {
+  const float t = std::max(1.0f, 2.0f * hud_scale(screen_height));
+  draw_quad(renderer, &white_, r.x, r.y, r.w, t, outline);
+  draw_quad(renderer, &white_, r.x, r.y + r.h - t, r.w, t, outline);
+  draw_quad(renderer, &white_, r.x, r.y, t, r.h, outline);
+  draw_quad(renderer, &white_, r.x + r.w - t, r.y, t, r.h, outline);
+}
+
+void HudRenderer::draw_rect(const HudRect& r, SpriteRenderer& renderer, int screen_width, int screen_height,
+                            Color color) {
+  renderer.flush();
+  renderer.set_camera(static_cast<float>(screen_width) * 0.5f, static_cast<float>(screen_height) * 0.5f, 1.0f);
+  draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, color);
+}
+
+void HudRenderer::draw_panel(const HudPanel& panel, SpriteRenderer& renderer, int screen_width, int screen_height) {
+  renderer.flush();
+  renderer.set_camera(static_cast<float>(screen_width) * 0.5f, static_cast<float>(screen_height) * 0.5f, 1.0f);
+  const HudRect r = hud_panel_rect(panel, screen_width, screen_height);
+  if (!panel.texture) {
+    draw_quad(renderer, &white_, r.x, r.y, r.w, r.h, panel.tint);
+    return;
+  }
+  const float scale = panel.border_scale * hud_scale(screen_height);
+  const auto patches = hud_nine_slice(r, panel.border, panel.texture->width(), panel.texture->height(), scale);
+  for (const HudNineSlicePatch& p : patches) {
+    if (p.dest.w <= 0.0f || p.dest.h <= 0.0f) continue;
+    renderer.draw(SpriteDraw{.texture = panel.texture, .x = p.dest.x, .y = p.dest.y, .width = p.dest.w,
+                             .height = p.dest.h, .origin_x = 0.0f, .origin_y = 0.0f, .tint = panel.tint,
+                             .uv = p.uv});
+  }
+}
+
+std::array<HudNineSlicePatch, 9> hud_nine_slice(const HudRect& dest, const HudNineSlice& border, int texture_width,
+                                                int texture_height, float pixel_scale) noexcept {
+  auto fit = [](float a, float b, float total, float& out_a, float& out_b) {
+    out_a = std::max(a, 0.0f);
+    out_b = std::max(b, 0.0f);
+    const float sum = out_a + out_b;
+    if (sum > total && sum > 0.0f) {
+      const float k = std::max(total, 0.0f) / sum;
+      out_a *= k;
+      out_b *= k;
+    }
+  };
+  float lw = 0, rw = 0, th = 0, bh = 0;
+  fit(border.left * pixel_scale, border.right * pixel_scale, dest.w, lw, rw);
+  fit(border.top * pixel_scale, border.bottom * pixel_scale, dest.h, th, bh);
+  const float xs[4] = {dest.x, dest.x + lw, dest.x + dest.w - rw, dest.x + dest.w};
+  const float ys[4] = {dest.y, dest.y + th, dest.y + dest.h - bh, dest.y + dest.h};
+  const float tw = texture_width > 0 ? static_cast<float>(texture_width) : 1.0f;
+  const float tex_h = texture_height > 0 ? static_cast<float>(texture_height) : 1.0f;
+  const float us[4] = {0.0f, border.left / tw, 1.0f - border.right / tw, 1.0f};
+  const float vs[4] = {0.0f, border.top / tex_h, 1.0f - border.bottom / tex_h, 1.0f};
+  std::array<HudNineSlicePatch, 9> out{};
+  for (int r = 0; r < 3; ++r) {
+    for (int c = 0; c < 3; ++c) {
+      HudNineSlicePatch& p = out[static_cast<std::size_t>(r * 3 + c)];
+      p.dest = {xs[c], ys[r], xs[c + 1] - xs[c], ys[r + 1] - ys[r]};
+      p.uv = {us[c], vs[r], us[c + 1], vs[r + 1]};
+    }
+  }
+  return out;
+}
+
+HudRect hud_panel_rect(const HudPanel& panel, int screen_width, int screen_height) noexcept {
+  return hud_layout(panel.anchor, panel.offset_x, panel.offset_y, panel.width, panel.height, screen_width,
+                    screen_height);
+}
+
+std::vector<HudRect> hud_layout_box(const HudRect& area, HudAxis axis, std::span<const float> sizes, float spacing,
+                                    float padding) {
+  std::vector<HudRect> out;
+  out.reserve(sizes.size());
+  const float x0 = area.x + padding, y0 = area.y + padding;
+  const float cross_w = std::max(0.0f, area.w - 2.0f * padding);
+  const float cross_h = std::max(0.0f, area.h - 2.0f * padding);
+  float pos = axis == HudAxis::Vertical ? y0 : x0;
+  for (const float size : sizes) {
+    out.push_back(axis == HudAxis::Vertical ? HudRect{x0, pos, cross_w, size} : HudRect{pos, y0, size, cross_h});
+    pos += size + spacing;
+  }
+  return out;
+}
+
+std::vector<HudRect> hud_layout_grid(const HudRect& area, int columns, int count, float cell_w, float cell_h,
+                                     float spacing, float padding) {
+  std::vector<HudRect> out;
+  if (columns < 1 || count < 1) return out;
+  out.reserve(static_cast<std::size_t>(count));
+  for (int i = 0; i < count; ++i) {
+    const int c = i % columns, r = i / columns;
+    out.push_back({area.x + padding + static_cast<float>(c) * (cell_w + spacing),
+                   area.y + padding + static_cast<float>(r) * (cell_h + spacing), cell_w, cell_h});
+  }
+  return out;
+}
+
+namespace {
+bool any_binding_down(const InputBackend& backend, const std::vector<InputBinding>& bindings) {
+  return std::any_of(bindings.begin(), bindings.end(),
+                     [&](const InputBinding& b) { return backend.is_down(b.device, b.code); });
+}
+// True once per press: `down` now, not down last time.
+bool edge(bool down, bool& was_down) {
+  const bool pressed = down && !was_down;
+  was_down = down;
+  return pressed;
+}
+}  // namespace
+
+void HudScrollList::update(const InputBackend& backend, float wheel_delta) {
+  visible_count = std::max(1, visible_count);
+  const bool prev = edge(any_binding_down(backend, previous_bindings), previous_was_down_);
+  const bool next = edge(any_binding_down(backend, next_bindings), next_was_down_);
+  activated_ = edge(any_binding_down(backend, confirm_bindings), confirm_was_down_);
+  if (prev) --selected;
+  if (next) ++selected;
+  selected = std::clamp(selected, 0, std::max(0, item_count - 1));
+  ensure_visible();
+  const int steps = static_cast<int>(std::lround(wheel_delta));
+  if (steps != 0) {
+    const int max_first = std::max(0, item_count - visible_count);
+    first_visible = std::clamp(first_visible - steps, 0, max_first);
+    selected = std::clamp(selected, first_visible, std::min(first_visible + visible_count, std::max(1, item_count)) - 1);
+    selected = std::max(selected, 0);
+  }
+}
+
+void HudScrollList::ensure_visible() {
+  visible_count = std::max(1, visible_count);
+  selected = std::clamp(selected, 0, std::max(0, item_count - 1));
+  if (selected < first_visible) first_visible = selected;
+  if (selected >= first_visible + visible_count) first_visible = selected - visible_count + 1;
+  first_visible = std::clamp(first_visible, 0, std::max(0, item_count - visible_count));
+}
+
+std::vector<HudRect> HudScrollList::item_rects(const HudRect& area, float item_height, float spacing) const {
+  std::vector<HudRect> out;
+  const int last = std::min(item_count, first_visible + visible_count);
+  for (int i = first_visible; i < last; ++i)
+    out.push_back({area.x, area.y + static_cast<float>(i - first_visible) * (item_height + spacing), area.w,
+                   item_height});
+  return out;
+}
+
+const std::string* HudFocusGroup::focused_id() const noexcept {
+  if (focused < 0 || focused >= static_cast<int>(items.size())) return nullptr;
+  return &items[static_cast<std::size_t>(focused)].id;
+}
+
+void HudFocusGroup::move(int dx, int dy) {
+  const int count = static_cast<int>(items.size());
+  if (focused < 0 || focused >= count) {
+    focused = -1;
+    for (int i = 0; i < count; ++i) {
+      if (items[static_cast<std::size_t>(i)].enabled) {
+        focused = i;
+        return;
+      }
+    }
+    return;
+  }
+  const HudRect& from = items[static_cast<std::size_t>(focused)].rect;
+  const float fx = from.x + from.w * 0.5f, fy = from.y + from.h * 0.5f;
+  int best = -1;
+  float best_score = 0.0f;
+  for (int i = 0; i < count; ++i) {
+    const Item& it = items[static_cast<std::size_t>(i)];
+    if (i == focused || !it.enabled) continue;
+    const float ddx = it.rect.x + it.rect.w * 0.5f - fx, ddy = it.rect.y + it.rect.h * 0.5f - fy;
+    const float primary = dx != 0 ? ddx * static_cast<float>(dx) : ddy * static_cast<float>(dy);
+    if (primary <= 0.0f) continue;
+    const float cross = std::fabs(dx != 0 ? ddy : ddx);
+    const float score = primary + 2.0f * cross;
+    if (best < 0 || score < best_score) {
+      best = i;
+      best_score = score;
+    }
+  }
+  if (best >= 0) focused = best;
+}
+
+void HudFocusGroup::update(const InputBackend& backend) {
+  const std::vector<InputBinding>* all[5] = {&up_bindings, &down_bindings, &left_bindings, &right_bindings,
+                                             &confirm_bindings};
+  bool pressed[5];
+  for (int i = 0; i < 5; ++i) pressed[i] = edge(any_binding_down(backend, *all[i]), was_down_[i]);
+  const int count = static_cast<int>(items.size());
+  if (focused >= count) focused = -1;
+  if (pressed[0]) move(0, -1);
+  else if (pressed[1]) move(0, 1);
+  else if (pressed[2]) move(-1, 0);
+  else if (pressed[3]) move(1, 0);
+  activated_ = pressed[4] && focused >= 0 && items[static_cast<std::size_t>(focused)].enabled;
+  masked_ = MaskedInputBackend(backend);
+  if (focused >= 0)
+    for (const auto* bindings : all)
+      for (const InputBinding& b : *bindings) masked_.mask(b.device, b.code);
 }
 
 }  // namespace arcane
