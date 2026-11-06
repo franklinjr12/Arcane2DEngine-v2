@@ -780,4 +780,162 @@ void HudFocusGroup::update(const InputBackend& backend) {
       for (const InputBinding& b : *bindings) masked_.mask(b.device, b.code);
 }
 
+namespace {
+int item_at(const HudFocusGroup& group, Vec2 p) {
+  for (std::size_t i = 0; i < group.items.size(); ++i) {
+    const HudRect& r = group.items[i].rect;
+    if (p.x >= r.x && p.x < r.x + r.w && p.y >= r.y && p.y < r.y + r.h) return static_cast<int>(i);
+  }
+  return -1;
+}
+const std::string& unavailable_reason(const HudFocusGroup::Item& it) {
+  static const std::string kDisabled = "disabled";
+  return it.disabled_reason.empty() ? kDisabled : it.disabled_reason;
+}
+}  // namespace
+
+void HudDragDrop::reject(std::string source, std::string reason) {
+  events_.push_back({std::move(source), {}, false, std::move(reason)});
+  if (on_reject) on_reject(events_.back());
+}
+
+void HudDragDrop::pick(const HudFocusGroup& group, int index) {
+  if (index < 0 || index >= static_cast<int>(group.items.size())) return;
+  const HudFocusGroup::Item& it = group.items[static_cast<std::size_t>(index)];
+  if (!it.drag_source) return;
+  if (!it.enabled) {
+    reject(it.id, unavailable_reason(it));
+    return;
+  }
+  held_ = index;
+  held_id_ = it.id;
+}
+
+void HudDragDrop::resolve(const HudFocusGroup& group, int target) {
+  const HudFocusGroup::Item& dst = group.items[static_cast<std::size_t>(target)];
+  HudDropEvent ev{held_id_, dst.id, false, {}};
+  if (!dst.enabled) {
+    ev.reason = unavailable_reason(dst);
+  } else if (!dst.drop_target) {
+    ev.reason = "not a drop target";
+  } else if (accept) {
+    const HudDropVerdict v = accept(ev.source, ev.target);
+    ev.accepted = v.accept;
+    if (!v.accept) ev.reason = v.reason;
+  } else {
+    ev.accepted = true;
+  }
+  held_ = -1;
+  held_id_.clear();
+  events_.push_back(ev);
+  if (ev.accepted) {
+    if (on_drop) on_drop(events_.back());
+  } else if (on_reject) {
+    on_reject(events_.back());
+  }
+}
+
+void HudDragDrop::update(HudFocusGroup& group, const InputBackend& backend) {
+  events_.clear();
+  const int count = static_cast<int>(group.items.size());
+  if (held_ >= count) {
+    held_ = -1;
+    held_id_.clear();
+  }
+  const bool pointer_down = backend.is_down(InputDevice::MouseButton, pointer_button);
+  const bool pressed = pointer_down && !pointer_was_down_;
+  const bool released = !pointer_down && pointer_was_down_;
+  pointer_was_down_ = pointer_down;
+  const bool pick_edge = edge(any_binding_down(backend, pick_bindings), pick_was_down_);
+  const bool cancel_edge = edge(any_binding_down(backend, cancel_bindings), cancel_was_down_);
+  const int hover = item_at(group, backend.mouse_position());
+
+  bool pointer_consumed = false;
+  if (pressed && hover >= 0) {
+    if (holding()) {
+      if (group.items[static_cast<std::size_t>(hover)].id == held_id_) {
+        held_ = -1;
+        held_id_.clear();
+      } else {
+        resolve(group, hover);  // second click of select-then-place
+      }
+      pointer_consumed = true;
+    } else if (group.items[static_cast<std::size_t>(hover)].drag_source) {
+      pick(group, hover);
+      dragging_ = holding();
+      pointer_consumed = true;
+    }
+  } else if (pressed && holding()) {
+    held_ = -1;  // click on empty space while holding cancels
+    held_id_.clear();
+  }
+  if (released && dragging_) {
+    dragging_ = false;
+    if (holding()) {
+      if (hover < 0) {
+        held_ = -1;
+        held_id_.clear();
+      } else if (hover != held_ && group.items[static_cast<std::size_t>(hover)].id != held_id_) {
+        resolve(group, hover);
+      }  // released over the source: keep holding
+    }
+  }
+  if (cancel_edge && holding()) {
+    held_ = -1;
+    held_id_.clear();
+    dragging_ = false;
+  } else if (pick_edge && group.focused >= 0 && group.focused < count) {
+    if (!holding()) {
+      pick(group, group.focused);
+    } else if (group.items[static_cast<std::size_t>(group.focused)].id == held_id_) {
+      held_ = -1;
+      held_id_.clear();
+    } else {
+      resolve(group, group.focused);
+    }
+  }
+
+  masked_ = MaskedInputBackend(backend);
+  if (pointer_consumed || dragging_) masked_.mask(InputDevice::MouseButton, pointer_button);
+  if (holding()) {
+    for (const InputBinding& b : pick_bindings) masked_.mask(b.device, b.code);
+    for (const InputBinding& b : cancel_bindings) masked_.mask(b.device, b.code);
+  }
+}
+
+void HudTooltip::update(const HudFocusGroup& group, const InputBackend& backend, float dt) {
+  const auto text_of = [](const HudFocusGroup::Item& it) -> const std::string& {
+    return (!it.enabled && !it.disabled_reason.empty()) ? it.disabled_reason : it.tooltip;
+  };
+  int target = item_at(group, backend.mouse_position());
+  if (target < 0) target = group.focused;
+  if (target < 0 || target >= static_cast<int>(group.items.size()) ||
+      text_of(group.items[static_cast<std::size_t>(target)]).empty()) {
+    target = -1;
+  }
+  if (target < 0) {
+    visible_ = false;
+    target_ = -1;
+    timer_ = 0.0f;
+    text_.clear();
+    target_id_.clear();
+    return;
+  }
+  if (target_ < 0) {
+    visible_ = false;
+    timer_ = 0.0f;
+  }
+  target_ = target;
+  const HudFocusGroup::Item& it = group.items[static_cast<std::size_t>(target)];
+  text_ = text_of(it);
+  target_id_ = it.id;
+  float w = 160.0f, h = 24.0f;
+  hud_text_size(text_, 2.0f, w, h);
+  rect_ = {it.rect.x, it.rect.y + it.rect.h + offset_y, w, h};
+  if (!visible_) {
+    timer_ += dt;
+    visible_ = timer_ >= delay;
+  }
+}
+
 }  // namespace arcane

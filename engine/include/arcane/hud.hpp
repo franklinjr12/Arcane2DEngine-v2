@@ -302,6 +302,10 @@ class ARCANE_API HudFocusGroup {
     std::string id;
     HudRect rect;
     bool enabled = true;
+    std::string disabled_reason;  // shown by HudTooltip when !enabled
+    std::string tooltip;
+    bool drag_source = true;
+    bool drop_target = true;
   };
   std::vector<Item> items;
   int focused = -1;
@@ -329,6 +333,75 @@ class ARCANE_API HudFocusGroup {
   MaskedInputBackend masked_;
   bool was_down_[5] = {};
   bool activated_ = false;
+};
+
+struct HudDropVerdict {
+  bool accept = true;
+  std::string reason;
+};
+
+struct HudDropEvent {
+  std::string source, target;
+  bool accepted = false;
+  std::string reason;
+};
+
+// Drag-and-drop over the items of a HudFocusGroup. Mouse: press on a source,
+// release over a target (or release on the same item and click the target).
+// Keyboard/gamepad: pick on the focused item, move focus, pick again. Both
+// paths resolve through the same rules and produce identical events. Call
+// update() after group.update().
+class ARCANE_API HudDragDrop {
+ public:
+  std::function<HudDropVerdict(std::string_view source, std::string_view target)> accept;  // unset: accept all
+  std::function<void(const HudDropEvent&)> on_drop;    // once per accepted drop
+  std::function<void(const HudDropEvent&)> on_reject;  // once per rejected pick/drop
+  int pointer_button = MouseButtons::kLeft;
+  std::vector<InputBinding> pick_bindings{{InputDevice::Keyboard, Keys::kEnter},
+                                          {InputDevice::GamepadButton, GamepadButtons::kA}};
+  std::vector<InputBinding> cancel_bindings{{InputDevice::Keyboard, 256},
+                                            {InputDevice::GamepadButton, GamepadButtons::kB}};
+
+  void update(HudFocusGroup& group, const InputBackend& backend);
+  bool holding() const noexcept { return held_ >= 0; }
+  // Valid until the next update(); null when nothing is held.
+  const std::string* held_id() const noexcept { return held_ >= 0 ? &held_id_ : nullptr; }
+  bool dragging() const noexcept { return dragging_; }  // mouse button held after a press on a source
+  const std::vector<HudDropEvent>& events() const noexcept { return events_; }
+  const InputBackend& gameplay_backend() const noexcept { return masked_; }
+
+ private:
+  void resolve(const HudFocusGroup& group, int target);
+  void pick(const HudFocusGroup& group, int index);
+  void reject(std::string source, std::string reason);
+  MaskedInputBackend masked_;
+  std::vector<HudDropEvent> events_;
+  std::string held_id_;
+  int held_ = -1;
+  bool dragging_ = false;
+  bool pointer_was_down_ = false, pick_was_down_ = false, cancel_was_down_ = false;
+};
+
+// Delayed tooltip for the item under the pointer, else the focused item. The
+// text is the item's disabled_reason when disabled (and non-empty), else its
+// tooltip. Once visible it follows the target immediately.
+class ARCANE_API HudTooltip {
+ public:
+  float delay = 0.5f;
+  float offset_y = 4.0f;
+
+  void update(const HudFocusGroup& group, const InputBackend& backend, float dt);
+  bool visible() const noexcept { return visible_; }
+  const std::string& text() const noexcept { return text_; }
+  const std::string* target_id() const noexcept { return target_ >= 0 ? &target_id_ : nullptr; }
+  HudRect rect() const noexcept { return rect_; }
+
+ private:
+  bool visible_ = false;
+  int target_ = -1;
+  float timer_ = 0.0f;
+  std::string text_, target_id_;
+  HudRect rect_{};
 };
 
 // The Hud live for the current Play/runtime session, set by the player/editor
