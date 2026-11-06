@@ -141,6 +141,53 @@ class ARCANE_API Projectile : public Component {
   bool done_ = false;
 };
 
+// A dedicated attack collider: put it on a CHILD node of the attacker that has its own Kinematic RigidBody2D
+// (gravity_scale 0) and a *sensor* Collider2D on an attack layer (e.g. enemy_attack / player_attack) whose mask holds
+// only the target layers. It damages every overlapping Hurtbox (the target needs a solid collider) with `damage` and
+// optionally pushes the target's RigidBody2D with `knockback` through RigidBody2D::apply_impulse, away from the
+// attacker (the parent node, else this node). Contact mode (active_steps == 0): active while `enabled`, retried every
+// fixed step, so the target Health's invulnerability_time gives one hit per i-frame window. Swing mode
+// (active_steps > 0): inactive until activate(), then active for exactly that many fixed updates, hitting each target
+// at most once per activation. With follow_parent the node is kept at `offset` from its parent and its body is
+// teleported there each update. Also works on a root projectile node next to a Projectile (no parent, no follow).
+// Runtime state is never saved.
+class ARCANE_API AttackHitbox : public Component {
+ public:
+  float damage = 1.0f;
+  float knockback = 0.0f;  // impulse magnitude in RigidBody2D::apply_impulse units; 0 = none
+  int active_steps = 0;    // 0 = contact mode; > 0 = swing window length in fixed updates
+  bool enabled = true;
+  bool ignore_own_hierarchy = true;
+  bool follow_parent = true;
+  Vec2 offset{0.0f, 0.0f};
+
+  // Swing mode: starts a new window and clears the per-activation hit list. Contact mode: does nothing.
+  void activate();
+  bool active_now() const noexcept;
+  int hits_dealt() const noexcept { return hits_dealt_; }  // damaging hits only
+  int activation_count() const noexcept { return activations_; }
+
+  void on_start() override { follow(); }
+  void on_update(float fixed_dt) override;
+  void on_trigger_enter(Node& other) override { track(other); }
+  void on_trigger_exit(Node& other) override { untrack(other); }
+  void on_collision_enter(Node& other) override { track(other); }
+  void on_collision_exit(Node& other) override { untrack(other); }
+  void on_pool_reuse() override;
+
+ private:
+  void track(Node& other);
+  void untrack(Node& other);
+  void follow();
+  void try_hit(NodeId id);
+
+  std::vector<NodeId> overlapping_;
+  std::vector<NodeId> hit_this_activation_;
+  int remaining_steps_ = 0;
+  int hits_dealt_ = 0;
+  int activations_ = 0;
+};
+
 ARCANE_API void register_combat_components(ComponentRegistry& registry);
 
 }  // namespace arcane

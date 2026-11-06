@@ -41,7 +41,7 @@ components or scene data change (see `tests/test_topdown_replay.sh`). Perf numbe
 ## Remaining gaps
 
 - No shop or upgrades between waves.
-- No ranged enemies, line of sight, or separation between enemies; no dedicated enemy attack collider (the `enemy_attack` layer is declared but unused).
+- No ranged enemies, line of sight, or separation between enemies; `AttackHitbox` now provides a dedicated attack collider (contact/swing, knockback) for the `enemy_attack` layer; the sample does not use it yet.
 - No knockback (physics has no impulse API) or melee. Navigation is a uniform grid from solid tiles and ignores moving obstacles.
 - No audio.
 - Placeholder art only.
