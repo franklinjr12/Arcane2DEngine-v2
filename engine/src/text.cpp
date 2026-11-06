@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iterator>
+#include <string>
 
 #define STB_TRUETYPE_IMPLEMENTATION
 #include <stb_truetype.h>
@@ -115,6 +116,78 @@ void measure_text(std::string_view text, float pixel_size, float& out_w, float& 
   }
   out_w = std::max(widest, line);
   out_h = font_line_height(pixel_size) * static_cast<float>(lines);
+}
+
+TextLayout layout_text(std::string_view text, float pixel_size, const TextLayoutOptions& options) {
+  const std::vector<char32_t> cps = decode_utf8(text);
+  const bool wrap = options.max_width > 0.0f;
+  const float pitch = options.line_height > 0.0f ? options.line_height : font_line_height(pixel_size);
+  std::vector<float> adv(cps.size());
+  for (size_t i = 0; i < cps.size(); ++i) adv[i] = glyph_advance(cps[i], pixel_size);
+
+  struct Line { size_t begin, end; };
+  std::vector<Line> lines;
+  size_t pos = 0;
+  while (true) {
+    size_t j = pos, brk = std::string::npos, first_ink = std::string::npos;
+    float width = 0.0f;
+    size_t end = 0, next = 0;
+    bool done = false;
+    for (;; ++j) {
+      if (j == cps.size() || cps[j] == U'\n') {
+        end = j;
+        next = j + 1;
+        done = j == cps.size();
+        break;
+      }
+      if (wrap && j > pos && width + adv[j] > options.max_width) {
+        if (cps[j] == U' ') {
+          end = j;
+        } else if (brk != std::string::npos) {
+          end = brk;
+        } else {
+          end = j;
+        }
+        next = end;
+        while (next < cps.size() && cps[next] == U' ') ++next;
+        break;
+      }
+      width += adv[j];
+      if (cps[j] != U' ') {
+        if (first_ink == std::string::npos) first_ink = j;
+      } else if (first_ink != std::string::npos) {
+        brk = j;
+      }
+    }
+    lines.push_back({pos, end});
+    if (done) break;
+    pos = next;
+  }
+
+  TextLayout out;
+  float widest = 0.0f;
+  for (const Line& l : lines) {
+    size_t e = l.end;
+    if (wrap) while (e > l.begin && cps[e - 1] == U' ') --e;  // trailing spaces never count toward alignment
+    float w = 0.0f;
+    for (size_t i = l.begin; i < e; ++i) w += adv[i];
+    out.line_widths.push_back(w);
+    widest = std::max(widest, w);
+  }
+  out.width = wrap ? options.max_width : widest;
+  out.height = pitch * static_cast<float>(lines.size());
+  for (size_t li = 0; li < lines.size(); ++li) {
+    const float slack = out.width - out.line_widths[li];
+    float x = options.align == TextAlign::Center ? slack * 0.5f : options.align == TextAlign::Right ? slack : 0.0f;
+    if (x < 0.0f) x = 0.0f;  // an unbreakable glyph wider than max_width starts at the left edge
+    for (size_t i = lines[li].begin; i < lines[li].end; ++i) {
+      if (cps[i] != U' ') {
+        out.glyphs.push_back({cps[i], x, pitch * static_cast<float>(li), adv[i], !font_has_glyph(cps[i]), static_cast<int>(li)});
+      }
+      x += adv[i];
+    }
+  }
+  return out;
 }
 
 FontAtlas build_font_atlas() {

@@ -1,11 +1,12 @@
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/../third_party)
 
 # --- headless tests: no window, no GL, no audio device --------------------
-foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_atomic_save test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_display test_tilemap test_particles test_camera2d test_tween test_render_cull)
+foreach(t test_logger test_timestep test_json test_scene test_scene_json test_canonical_json test_atomic_save test_formats_v2 test_input test_animation test_animgraph test_audio test_hud test_text test_hud_input test_hud_widgets test_hud_dragdrop test_display test_tilemap test_particles test_camera2d test_tween test_render_cull test_math2d)
   add_executable(${t} ${t}.cpp)
   target_link_libraries(${t} PRIVATE arcane_runtime)
   add_test(NAME ${t} COMMAND ${t})
 endforeach()
+target_compile_definitions(test_hud_widgets PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
 target_include_directories(test_json PRIVATE ${TP}/json)
 target_include_directories(test_canonical_json PRIVATE ${TP}/json)
 
@@ -62,6 +63,10 @@ add_test(NAME test_combat COMMAND test_combat)
 add_executable(test_navigation test_navigation.cpp)
 target_link_libraries(test_navigation PRIVATE arcane_runtime)
 add_test(NAME test_navigation COMMAND test_navigation)
+
+add_executable(test_navigation_kit test_navigation_kit.cpp)
+target_link_libraries(test_navigation_kit PRIVATE arcane_runtime)
+add_test(NAME test_navigation_kit COMMAND test_navigation_kit)
 
 add_executable(test_audio_null test_audio_null.cpp)
 target_link_libraries(test_audio_null PRIVATE miniaudio)
@@ -324,6 +329,8 @@ add_executable(test_hud_input_commands test_hud_input_commands.cpp)
 target_link_libraries(test_hud_input_commands PRIVATE arcane_tooling)
 target_include_directories(test_hud_input_commands SYSTEM PRIVATE ${TP}/stb)
 add_test(NAME test_hud_input_commands COMMAND test_hud_input_commands)
+# Building test_hud_widgets also builds every other ^test_hud ctest target.
+add_dependencies(test_hud_widgets test_hud_input_commands test_hud_dragdrop)
 
 # --- clip.* commands (sheet grid slicing, clip files) ----------------------------
 add_executable(test_clip_commands test_clip_commands.cpp)
@@ -423,6 +430,9 @@ target_link_libraries(test_render_golden PRIVATE arcane_runtime)
 target_compile_definitions(test_render_golden PRIVATE ARCANE_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/golden")
 add_test(NAME test_render_golden COMMAND test_render_golden)
 set_tests_properties(test_render_golden PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
+  ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
+add_test(NAME test_hud_widgets_gl COMMAND test_hud_widgets --gl)
+set_tests_properties(test_hud_widgets_gl PROPERTIES LABELS gl SKIP_RETURN_CODE 77 TIMEOUT 60
   ENVIRONMENT "${ARCANE_GL_TEST_ENV}")
 
 add_executable(test_physics_events test_physics_events.cpp)

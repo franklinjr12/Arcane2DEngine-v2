@@ -87,9 +87,88 @@ void test_atlas() {
   ARCANE_ASSERT_TRUE(inked > 1000);
 }
 
+void test_layout_wrap() {
+  using namespace arcane;
+  const float px = 20.0f, sp = glyph_advance(U' ', px);
+  auto w = [&](const char* s) { float a, b; measure_text(s, px, a, b); return a; };
+  TextLayoutOptions o;
+  // No wrap: one line, positions are running advances.
+  TextLayout l = layout_text("ab cd", px, o);
+  ARCANE_ASSERT_TRUE(l.line_widths.size() == 1 && l.glyphs.size() == 4);
+  ARCANE_ASSERT_TRUE(std::fabs(l.glyphs[2].x - (w("ab") + sp)) < 1e-4f);
+  // Wrap exactly between words; the space at the break is dropped.
+  o.max_width = w("ab cd") - 0.5f;
+  l = layout_text("ab cd", px, o);
+  ARCANE_ASSERT_TRUE(l.line_widths.size() == 2 && l.glyphs.size() == 4);
+  ARCANE_ASSERT_TRUE(l.glyphs[2].line == 1 && l.glyphs[2].x == 0.0f);
+  ARCANE_ASSERT_TRUE(std::fabs(l.line_widths[0] - w("ab")) < 1e-4f);
+  ARCANE_ASSERT_TRUE(std::fabs(l.height - 2.0f * font_line_height(px)) < 1e-4f);
+  o.max_width = w("ab cd");  // fits exactly
+  ARCANE_ASSERT_TRUE(layout_text("ab cd", px, o).line_widths.size() == 1);
+  // A long word is split between characters; narrow widths still terminate.
+  o.max_width = w("WWW") + 0.1f;
+  l = layout_text("WWWWWWWW", px, o);
+  ARCANE_ASSERT_TRUE(l.line_widths.size() == 3 && l.glyphs.size() == 8);
+  o.max_width = 1.0f;
+  l = layout_text("abc d", px, o);
+  ARCANE_ASSERT_TRUE(l.glyphs.size() == 4 && l.line_widths.size() == 4);
+  // Explicit newlines, blank lines, custom line height.
+  o = {};
+  o.line_height = 30.0f;
+  l = layout_text("a\n\nb", px, o);
+  ARCANE_ASSERT_TRUE(l.line_widths.size() == 3 && l.glyphs[1].y == 60.0f && l.height == 90.0f);
+  ARCANE_ASSERT_TRUE(layout_text("", px).glyphs.empty() && layout_text("", px).line_widths.size() == 1);
+  // Deterministic.
+  o = {};
+  o.max_width = 60.0f;
+  const TextLayout a = layout_text("um dois tres quatro cinco", px, o), b = layout_text("um dois tres quatro cinco", px, o);
+  ARCANE_ASSERT_TRUE(a.glyphs.size() == b.glyphs.size());
+  for (size_t i = 0; i < a.glyphs.size(); ++i) ARCANE_ASSERT_TRUE(a.glyphs[i].x == b.glyphs[i].x && a.glyphs[i].y == b.glyphs[i].y);
+}
+
+void test_layout_align() {
+  using namespace arcane;
+  const float px = 20.0f;
+  TextLayoutOptions o;
+  o.max_width = 200.0f;
+  for (const TextAlign al : {TextAlign::Left, TextAlign::Center, TextAlign::Right}) {
+    o.align = al;
+    const TextLayout l = layout_text("ab\nabcd", px, o);
+    ARCANE_ASSERT_TRUE(l.width == 200.0f && l.glyphs.size() == 6);
+    const float slack0 = 200.0f - l.line_widths[0];
+    const float want = al == TextAlign::Left ? 0.0f : al == TextAlign::Center ? slack0 * 0.5f : slack0;
+    ARCANE_ASSERT_TRUE(std::fabs(l.glyphs[0].x - want) < 1e-4f);
+  }
+  // Without max_width, alignment is relative to the widest line.
+  o = {};
+  o.align = TextAlign::Right;
+  const TextLayout l = layout_text("i\nWWW", px, o);
+  ARCANE_ASSERT_TRUE(std::fabs(l.glyphs[0].x + l.line_widths[0] - l.width) < 1e-4f && l.glyphs[1].x == 0.0f);
+}
+
+void test_layout_utf8() {
+  using namespace arcane;
+  const float px = 20.0f;
+  // "ação não" in UTF-8: each accented letter is one glyph, not two bytes.
+  TextLayout l = layout_text("a\xC3\xA7\xC3\xA3o n\xC3\xA3o", px);
+  ARCANE_ASSERT_TRUE(l.glyphs.size() == 7 && l.glyphs[1].cp == U'\u00E7' && !l.glyphs[1].fallback);
+  // Invalid bytes become one fallback glyph each; following text survives.
+  l = layout_text("a\xC3z\x80\xFF" "b", px);
+  ARCANE_ASSERT_TRUE(l.glyphs.size() == 6);
+  ARCANE_ASSERT_TRUE(l.glyphs[1].cp == kReplacementChar && l.glyphs[1].fallback && l.glyphs[2].cp == U'z');
+  ARCANE_ASSERT_TRUE(l.glyphs[5].cp == U'b');
+  // Missing glyph (CJK) -> fallback box with the fallback advance.
+  l = layout_text("a\xE4\xB8\xAD" "b", px);
+  ARCANE_ASSERT_TRUE(l.glyphs.size() == 3 && l.glyphs[1].fallback && l.glyphs[1].advance == glyph_advance(0x4E2D, px));
+  ARCANE_ASSERT_TRUE(std::fabs(l.glyphs[2].x - (l.glyphs[1].x + l.glyphs[1].advance)) < 1e-4f);
+}
+
 }  // namespace
 
 int main() {
+  test_layout_wrap();
+  test_layout_align();
+  test_layout_utf8();
   test_decode_valid();
   test_decode_invalid();
   test_font_coverage();

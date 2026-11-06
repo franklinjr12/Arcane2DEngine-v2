@@ -145,3 +145,16 @@ env -u DISPLAY build-rel/bin/arcane_player --headless --project samples/platform
 
 Under 0.05 ms per frame including process start and module load (an upper bound for the simulation alone). Peak
 enemies and bodies were not recorded.
+
+## Navigation AI kit (R21)
+
+`separation_steering` (navigation.hpp) builds a spatial hash with cell size = radius (sorted cell/index pairs) and
+queries only the 3x3 cells around each agent, so a step is O(n) for bounded density. `test_navigation_kit` times
+300 agents x 300 steps (steering plus a position update) and fails above a budget of **20 ms per step**
+(`kBudgetMs` in the test). Measured average on this machine in the Debug build: **~0.9 ms per step** (2 vCPU,
+g++ 15.2.0, Linux; ~6.3 ms under clang ASan/UBSan, hence the generous budget). It is a headless, pure-CPU measurement with no window, GL or physics.
+
+`line_of_sight(physics, a, b, mask, ignore_a, ignore_b)` casts a Box2D ray (`PhysicsWorld::raycast`) on `mask`;
+hits on the ignored node ids (the viewer's and target's own bodies) are skipped, up to 8 re-casts. `keep_distance`
+returns zero inside [min, max], flees below min (full speed at distance 0) and seeks above max, ramping linearly
+over a quarter of the band width from the band edge.

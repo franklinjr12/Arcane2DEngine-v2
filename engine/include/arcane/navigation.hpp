@@ -8,6 +8,7 @@
 #include "arcane/export.hpp"
 #include "arcane/math2d.hpp"
 #include "arcane/node.hpp"
+#include "arcane/physics.hpp"
 #include "arcane/tilemap.hpp"
 
 namespace arcane {
@@ -56,6 +57,28 @@ ARCANE_API Vec2 flee(Vec2 pos, Vec2 threat, float max_speed) noexcept;
 ARCANE_API Vec2 arrive(Vec2 pos, Vec2 target, float max_speed, float slow_radius) noexcept;
 // Pushes away from neighbours closer than `radius` (stronger when closer); length is at most max_speed.
 ARCANE_API Vec2 separation(Vec2 pos, const std::vector<Vec2>& neighbours, float radius, float max_speed) noexcept;
+
+// An agent for batch separation: only agents on the same `layer` repel each other.
+struct SeparationAgent {
+  Vec2 position{};
+  int layer = 0;
+};
+// Writes one separation velocity per agent into `out` (resized to agents.size()). Same-layer agents closer than
+// `radius` push away with weight (radius - d) / radius; each result is at most max_speed. Uses a uniform spatial hash
+// (cell = radius, 3x3 cell query), so the cost is O(n) for bounded density. Deterministic; coincident agents are
+// pushed apart along an index-derived direction.
+ARCANE_API void separation_steering(const std::vector<SeparationAgent>& agents, float radius, float max_speed,
+                                    std::vector<Vec2>& out);
+// True when no solid shape on `mask` lies on the segment a -> b (Box2D raycast). Hits on `ignore_a` / `ignore_b`
+// (the viewer's and target's own bodies) do not block. a == b is clear.
+ARCANE_API bool line_of_sight(const PhysicsWorld& physics, Vec2 a, Vec2 b, int mask = kAllCollisionLayers,
+                              NodeId ignore_a = kInvalidNodeId, NodeId ignore_b = kInvalidNodeId);
+// Steering for ranged enemies: flees when closer than min_distance and seeks when farther than max_distance, with speed
+// ramping linearly from 0 at the band edge to max_speed over a quarter of the band width (full speed at distance 0
+// when fleeing); zero inside the band. A proportional response lags a moving target, so steer with a band slightly
+// tighter than the limit you must hold. Always finite;
+// at distance 0 it flees along +x.
+ARCANE_API Vec2 keep_distance(Vec2 pos, Vec2 target, float min_distance, float max_distance, float max_speed) noexcept;
 
 // Moves the sibling RigidBody2D toward a target node (or a position set from code) with seek/arrive/flee, following
 // a grid A* path over a Tilemap's solid cells when use_pathfinding is set. Runs in on_update (fixed step, before
