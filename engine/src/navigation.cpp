@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <queue>
+#include <utility>
 
 #include "arcane/component_registry.hpp"
 #include "arcane/physics.hpp"
@@ -218,6 +220,108 @@ Vec2 separation(Vec2 pos, const std::vector<Vec2>& neighbours, float radius, flo
   if (len <= 0.0f) return {};
   const float scale = max_speed * std::min(len, 1.0f) / len;
   return {sum.x * scale, sum.y * scale};
+}
+
+namespace {
+
+std::uint64_t cell_key(std::int64_t cx, std::int64_t cy) noexcept {
+  return (static_cast<std::uint64_t>(cx) & 0xFFFFFFFFull) << 32 | (static_cast<std::uint64_t>(cy) & 0xFFFFFFFFull);
+}
+
+}  // namespace
+
+void separation_steering(const std::vector<SeparationAgent>& agents, float radius, float max_speed,
+                         std::vector<Vec2>& out) {
+  const std::size_t n = agents.size();
+  out.assign(n, Vec2{});
+  if (radius <= 0.0f || n == 0) return;
+  const auto cell_of = [&](float v) { return static_cast<std::int64_t>(std::floor(v / radius)); };
+  // Sorted (cell, index) pairs act as the spatial hash; ties sort by index so neighbour order is deterministic.
+  std::vector<std::pair<std::uint64_t, std::uint32_t>> cells(n);
+  for (std::size_t i = 0; i < n; ++i) {
+    cells[i] = {cell_key(cell_of(agents[i].position.x), cell_of(agents[i].position.y)), static_cast<std::uint32_t>(i)};
+  }
+  std::sort(cells.begin(), cells.end());
+  constexpr float kGoldenAngle = 2.39996323f;
+  for (std::size_t i = 0; i < n; ++i) {
+    const Vec2 p = agents[i].position;
+    const std::int64_t cx = cell_of(p.x);
+    const std::int64_t cy = cell_of(p.y);
+    Vec2 sum;
+    for (std::int64_t dy = -1; dy <= 1; ++dy) {
+      for (std::int64_t dx = -1; dx <= 1; ++dx) {
+        const std::uint64_t key = cell_key(cx + dx, cy + dy);
+        auto it = std::lower_bound(cells.begin(), cells.end(), std::pair<std::uint64_t, std::uint32_t>{key, 0u});
+        for (; it != cells.end() && it->first == key; ++it) {
+          const std::size_t j = it->second;
+          if (j == i || agents[j].layer != agents[i].layer) continue;
+          Vec2 d{p.x - agents[j].position.x, p.y - agents[j].position.y};
+          float dist = length(d);
+          if (dist >= radius) continue;
+          if (dist <= 1e-6f) {
+            // Coincident: the lower index goes one way, the higher the opposite, so the pair separates.
+            const float angle = static_cast<float>(std::min(i, j)) * kGoldenAngle;
+            const float sign = i < j ? 1.0f : -1.0f;
+            d = {std::cos(angle) * sign, std::sin(angle) * sign};
+            dist = 0.0f;
+          } else {
+            d = {d.x / dist, d.y / dist};
+          }
+          const float weight = (radius - dist) / radius;
+          sum.x += d.x * weight;
+          sum.y += d.y * weight;
+        }
+      }
+    }
+    const float len = length(sum);
+    if (len <= 0.0f) continue;
+    const float scale = max_speed * std::min(len, 1.0f) / len;
+    out[i] = {sum.x * scale, sum.y * scale};
+  }
+}
+
+bool line_of_sight(const PhysicsWorld& physics, Vec2 a, Vec2 b, int mask, NodeId ignore_a, NodeId ignore_b) {
+  const Vec2 delta{b.x - a.x, b.y - a.y};
+  const float total = length(delta);
+  if (total <= 0.0f) return true;
+  const Vec2 dir{delta.x / total, delta.y / total};
+  Vec2 origin = a;
+  for (int i = 0; i < 8; ++i) {
+    const auto hit = physics.raycast(origin, b, mask);
+    if (!hit) return true;
+    const bool ignored = hit->node != kInvalidNodeId && (hit->node == ignore_a || hit->node == ignore_b);
+    if (!ignored) return false;
+    // A ray that starts inside a shape reports a hit at its origin, so leave an ignored shape through its far face:
+    // the closest hit when casting back from b is that face when it belongs to the same shape.
+    Vec2 exit = hit->point;
+    const auto back = physics.raycast(b, origin, mask);
+    if (back && back->node == hit->node) {
+      const Vec2 d{back->point.x - origin.x, back->point.y - origin.y};
+      if (d.x * dir.x + d.y * dir.y > 0.0f) exit = back->point;
+    }
+    origin = {exit.x + dir.x * 0.01f, exit.y + dir.y * 0.01f};
+    if ((b.x - origin.x) * dir.x + (b.y - origin.y) * dir.y <= 0.0f) return true;
+  }
+  return false;
+}
+
+Vec2 keep_distance(Vec2 pos, Vec2 target, float min_distance, float max_distance, float max_speed) noexcept {
+  const Vec2 d{target.x - pos.x, target.y - pos.y};
+  const float dist = length(d);
+  if (max_distance < min_distance) max_distance = min_distance;
+  // Speed ramps up linearly over a quarter of the band (at least 1 px) beyond either edge, so the kiter reacts
+  // quickly without jitter inside the band.
+  const float ramp = std::max((max_distance - min_distance) * 0.25f, 1.0f);
+  if (dist < min_distance) {
+    if (dist <= 1e-6f) return {max_speed, 0.0f};
+    const float speed = max_speed * std::min((min_distance - dist) / ramp, 1.0f);
+    return {-d.x / dist * speed, -d.y / dist * speed};
+  }
+  if (dist > max_distance) {
+    const float speed = max_speed * std::min((dist - max_distance) / ramp, 1.0f);
+    return {d.x / dist * speed, d.y / dist * speed};
+  }
+  return {};
 }
 
 SteeringAgent2D::SteeringAgent2D() = default;

@@ -64,6 +64,10 @@ add_executable(test_navigation test_navigation.cpp)
 target_link_libraries(test_navigation PRIVATE arcane_runtime)
 add_test(NAME test_navigation COMMAND test_navigation)
 
+add_executable(test_navigation_kit test_navigation_kit.cpp)
+target_link_libraries(test_navigation_kit PRIVATE arcane_runtime)
+add_test(NAME test_navigation_kit COMMAND test_navigation_kit)
+
 add_executable(test_audio_null test_audio_null.cpp)
 target_link_libraries(test_audio_null PRIVATE miniaudio)
 add_test(NAME test_audio_null COMMAND test_audio_null)
