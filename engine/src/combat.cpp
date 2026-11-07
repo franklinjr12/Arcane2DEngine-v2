@@ -180,6 +180,86 @@ void Hitbox::on_update(float fixed_dt) {
   });
 }
 
+void AttackHitbox::activate() {
+  if (active_steps <= 0) return;
+  remaining_steps_ = active_steps;
+  hit_this_activation_.clear();
+  ++activations_;
+}
+
+bool AttackHitbox::active_now() const noexcept {
+  return enabled && (active_steps <= 0 || remaining_steps_ > 0);
+}
+
+void AttackHitbox::track(Node& other) {
+  const NodeId id = other.id();
+  if (std::find(overlapping_.begin(), overlapping_.end(), id) == overlapping_.end()) overlapping_.push_back(id);
+  // Hit at once: a sibling Projectile may despawn its node on this same touch, before the next update.
+  if (active_now()) try_hit(id);
+}
+
+void AttackHitbox::untrack(Node& other) { std::erase(overlapping_, other.id()); }
+
+void AttackHitbox::follow() {
+  Node* owner = node();
+  if (!follow_parent || !owner || !owner->parent()) return;
+  owner->local_transform().position = offset;
+  if (auto* body = static_cast<RigidBody2D*>(owner->find_component("RigidBody2D"))) {
+    body->teleport(owner->world_transform().position);
+  }
+}
+
+void AttackHitbox::try_hit(NodeId id) {
+  Node* owner = node();
+  Scene* owner_scene = owner ? owner->scene() : nullptr;
+  Node* other = owner_scene ? owner_scene->find_node(id) : nullptr;
+  if (!other || other->pending_destroy()) return;
+  if (ignore_own_hierarchy && in_own_hierarchy(*owner, *other)) return;
+  auto* hurtbox = static_cast<Hurtbox*>(other->find_component("Hurtbox"));
+  if (!hurtbox) return;
+  if (active_steps > 0) {
+    if (std::find(hit_this_activation_.begin(), hit_this_activation_.end(), id) != hit_this_activation_.end()) return;
+    hit_this_activation_.push_back(id);
+  }
+  Node* attacker = owner->parent() ? owner->parent() : owner;
+  if (!(hurtbox->hurt(damage, attacker) > 0.0f)) return;
+  ++hits_dealt_;
+  if (!(knockback > 0.0f)) return;
+  const Vec2 dir = other->world_transform().position - attacker->world_transform().position;
+  if (math::length_sq(dir) <= 0.0f) return;
+  for (Node* n = other; n; n = n->parent()) {
+    if (auto* body = static_cast<RigidBody2D*>(n->find_component("RigidBody2D"))) {
+      const Vec2 unit = math::normalize(dir);
+      body->apply_impulse({unit.x * knockback, unit.y * knockback});
+      return;
+    }
+  }
+}
+
+void AttackHitbox::on_update(float) {
+  Node* owner = node();
+  Scene* owner_scene = owner ? owner->scene() : nullptr;
+  if (!owner_scene) return;
+  follow();
+  if (active_now()) {
+    const auto ids = overlapping_;  // hurt() listeners may change the set
+    for (const NodeId id : ids) try_hit(id);
+    if (active_steps > 0) --remaining_steps_;
+  }
+  std::erase_if(overlapping_, [owner_scene](NodeId id) {
+    Node* n = owner_scene->find_node(id);
+    return !n || n->pending_destroy();
+  });
+}
+
+void AttackHitbox::on_pool_reuse() {
+  overlapping_.clear();
+  hit_this_activation_.clear();
+  remaining_steps_ = 0;
+  hits_dealt_ = 0;
+  activations_ = 0;
+}
+
 void Projectile::launch(Vec2 dir, float new_speed) {
   const float length = std::sqrt(dir.x * dir.x + dir.y * dir.y);
   if (length > 0.0f) direction = {dir.x / length, dir.y / length};
@@ -263,6 +343,20 @@ void register_combat_components(ComponentRegistry& registry) {
             make_property<C>("rehit_interval", PropertyType::Float, &C::rehit_interval),
             make_property<C>("active", PropertyType::Bool, &C::active),
             make_property<C>("ignore_own_hierarchy", PropertyType::Bool, &C::ignore_own_hierarchy),
+        });
+  }
+  {
+    using C = AttackHitbox;
+    registry.register_component(
+        "AttackHitbox", [] { return std::make_unique<C>(); },
+        {
+            make_property<C>("damage", PropertyType::Float, &C::damage),
+            make_property<C>("knockback", PropertyType::Float, &C::knockback),
+            make_property<C>("active_steps", PropertyType::Int, &C::active_steps),
+            make_property<C>("enabled", PropertyType::Bool, &C::enabled),
+            make_property<C>("ignore_own_hierarchy", PropertyType::Bool, &C::ignore_own_hierarchy),
+            make_property<C>("follow_parent", PropertyType::Bool, &C::follow_parent),
+            make_property<C>("offset", PropertyType::Vec2, &C::offset),
         });
   }
   {
