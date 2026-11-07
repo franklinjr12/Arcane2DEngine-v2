@@ -2,6 +2,7 @@
 
 #include <expected>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -30,6 +31,16 @@ struct AudioPlayCommand {
   bool loop = false;
   AudioBus bus = AudioBus::Sfx;
 };
+
+// Per-sound voice limiting, keyed by the file path passed to play(). 0 = unlimited / no throttle.
+struct SoundVoiceLimits {
+  int max_voices = 0;                   // per-sound cap; when full the OLDEST voice of this sound is stolen
+  int priority = 0;                     // higher wins when a bus is full
+  double min_retrigger_interval = 0.0;  // seconds; play() inside the interval since the last *started* voice of this sound is dropped
+};
+
+// Outcome of one play() call (the command is recorded in every case).
+enum class AudioPlayResult { Played, PlayedStealing, Throttled, Dropped };
 
 // Arcane-owned audio playback, backed by miniaudio's ma_engine. Every
 // project/Play-mode runtime owns exactly one of these (see
@@ -62,7 +73,24 @@ class ARCANE_API AudioSystem {
   // via active_audio_system() below. There is no handle to later stop or
   // adjust this specific sound -- a looping AudioSource plays until the
   // stop_all() is called or the system tears down; see docs/decisions.md.
-  void play(const std::filesystem::path& file, float volume = 1.0f, bool loop = false, AudioBus bus = AudioBus::Sfx);
+  // Every call is recorded in commands(), including throttled/dropped ones.
+  // Voices are counted on both backends; null-backend voices have no end, so
+  // they stay active until stop_all().
+  AudioPlayResult play(const std::filesystem::path& file, float volume = 1.0f, bool loop = false,
+                       AudioBus bus = AudioBus::Sfx);
+
+  void set_sound_limits(const std::filesystem::path& sound, const SoundVoiceLimits& limits);
+  SoundVoiceLimits sound_limits(const std::filesystem::path& sound) const;
+  void set_bus_max_voices(AudioBus bus, int max_voices) noexcept;  // 0 = unlimited
+  int bus_max_voices(AudioBus bus) const noexcept;
+
+  // Time source in seconds for the re-trigger throttle (default: steady_clock since creation).
+  using Clock = std::function<double()>;
+  void set_clock(Clock clock);
+
+  int active_voices() const noexcept;
+  int active_voices(AudioBus bus) const noexcept;
+  int active_voices(const std::filesystem::path& sound) const noexcept;
 
   // Stop and release all active sounds, including loops.
   void stop_all() noexcept;
